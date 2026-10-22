@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit config for Rafael (BE-84 / CAR-3819). Flow: Decision log D5 + CONTRIBUTING.md.
+language: th-TH
+tone_instructions: "ตอบเป็นภาษาไทย สั้น ตรงประเด็น อ้างไฟล์และบรรทัด บอกเหตุผลและวิธีแก้ ไม่ต้องชม"
+
+reviews:
+  profile: assertive
+  # QA is the gate that sends work back (D5); CodeRabbit comments, it does not block merges
+  request_changes_workflow: false
+  high_level_summary: true
+  auto_review:
+    enabled: true
+    # draft PR = still with Dev / QA; review starts when QA marks the PR ready (D5)
+    drafts: false
+    # Git Flow bases: feature → develop · release/* + hotfix/* → main
+    base_branches:
+      - "develop"
+      - "main"
+      - "release/.*"
+    # every push after a CodeRabbit round gets reviewed again (D5 loop)
+    auto_incremental_review: true
+    # Booberman lesson: default pause after 5 reviewed commits stalls the loop on long PRs — 0 = never pause
+    auto_pause_after_reviewed_commits: 0
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!pnpm-lock.yaml"
+    - "!**/dist/**"
+    - "!**/.output/**"
+    - "!**/.wxt/**"
+  path_instructions:
+    - path: "apps/server/**"
+      instructions: |
+        Privacy (Decision log D11): never write audio, transcript, cues, Session Pack content or access tokens
+        to disk, buckets or logs. Session data lives in memory only and is deleted on session.end or after 24h.
+        Logs must not contain text / bullets / question / pack / pcm / token fields — treat any such log line as Major.
+        Secrets come from env (Secret Manager) only. Every incoming WebSocket message goes through
+        parseClientMessage from packages/protocol. WebSocket Origin must be checked against the extension allow-list,
+        and every /ws and /api/* call must verify the Google access token (aud + email_verified + @praneat.com).
+        Error responses use protocol error codes, never stack traces or payloads.
+    - path: "apps/server/src/brain/**"
+      instructions: |
+        A wrong cue is worse than no cue (D10). Every cue with notFound=false must carry sources, and every anchor
+        must be checked against the Session Pack after generation — bullets with unknown anchors are dropped.
+        Answers come only from the Session Pack (no general knowledge). Session Pack goes in a cache_control block.
+        Model ids come from config (DETECTOR_MODEL / ANSWERER_MODEL), never hard-coded. Latency is logged per stage.
+    - path: "packages/protocol/**"
+      instructions: |
+        Any breaking change to a message must bump PROTOCOL_VERSION.
+        This package must not import React, chrome.*, DOM-only or Node-only APIs (only zod and its own files).
+        Client→server messages stay strict objects; the client must not send fields the server should decide —
+        classify any client-sent server-owned field as Major.
+    - path: "apps/extension/**"
+      instructions: |
+        Chrome MV3 extension (D12). No remote code (no CDN scripts, no Google Picker). Manifest permissions only as used.
+        Never store audio, transcript, cues, resumeToken or access tokens in chrome.storage, IndexedDB or localStorage
+        (settings only). Audio capture and the WebSocket live in the offscreen document, not the service worker.
+        Captured tab audio must be routed back to an AudioContext destination so the user still hears the meeting.
+        Side panel UI must work at ~360px and ~500px width; cue bullets ≥ 24px; no sound, notifications or flashy animation.
+    - path: "bench/**"
+      instructions: |
+        Benchmark scripts only. Never commit audio files, transcripts or deal content; read keys from env / ADC.
+    - path: "**/*.test.ts"
+      instructions: |
+        Every assertion must be able to fail if the behaviour under test is removed (no comparing a value to itself
+        or to an unrelated constant). Compare against the initial state of the entity under test.
+    - path: ".claude/**"
+      instructions: |
+        Agent definitions and skills for the Linear graph. Check they stay consistent with CONTRIBUTING.md
+        and do not tell agents to merge PRs, touch Jira outside jira-sync, or put secrets / deal content anywhere.
+
+knowledge_base:
+  # issue context for "does this PR do what the ticket says"
+  linear:
+    usage: enabled
+    team_keys:
+      - "BE"
+      - "FE"
+  jira:
+    usage: enabled
+    project_keys:
+      - "CAR"
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/CLAUDE.md"
+      - "CONTRIBUTING.md"
+      - ".claude/skills/**/SKILL.md"
