@@ -49,7 +49,8 @@ reviews:
       instructions: |
         Any breaking change to a message must bump PROTOCOL_VERSION.
         This package must not import React, chrome.*, DOM-only or Node-only APIs (only zod and its own files).
-        Client→server messages stay strict objects; the client must not send fields the server should decide.
+        Client→server messages stay strict objects; the client must not send fields the server should decide —
+        classify any client-sent server-owned field as Major.
     - path: "apps/extension/**"
       instructions: |
         Chrome MV3 extension (D12). No remote code (no CDN scripts, no Google Picker). Manifest permissions only as used.
