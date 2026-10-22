@@ -1,0 +1,52 @@
+# CI for every PR into develop / main / release/* (BE-83). Job name `CI` = required status check in the ruleset (BE-76).
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main, "release/**"]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # D11: audio / env files never enter the repo
+      - name: No audio or env files committed
+        run: |
+          bad=$(git ls-files | grep -Ei '\.(wav|mp3|m4a|webm|flac|ogg)$|(^|/)\.env($|\.)' | grep -v '\.env\.example$' || true)
+          if [ -n "$bad" ]; then echo "::error::forbidden files (Decision log D11):"; echo "$bad"; exit 1; fi
+
+      # ponytail: pnpm steps switch on once the monorepo lands (BE-81); until then only the check above runs
+      - name: Detect workspace
+        id: ws
+        run: echo "exists=$([ -f package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        if: steps.ws.outputs.exists == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.ws.outputs.exists == 'true'
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - if: steps.ws.outputs.exists == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.ws.outputs.exists == 'true'
+        run: pnpm lint
+      - if: steps.ws.outputs.exists == 'true'
+        run: pnpm typecheck
+      - if: steps.ws.outputs.exists == 'true'
+        run: pnpm test
+      - if: steps.ws.outputs.exists == 'true'
+        run: pnpm build
