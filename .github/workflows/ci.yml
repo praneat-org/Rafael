@@ -25,7 +25,7 @@ jobs:
       # D11: audio / env files never enter the repo
       - name: No audio or env files committed
         run: |
-          bad=$(git ls-files | grep -Ei '\.(wav|mp3|m4a|webm|flac|ogg)$|(^|/)\.env($|\.)' | grep -v '\.env\.example$' || true)
+          bad=$(git ls-files | grep -Ei '\.(wav|mp3|m4a|aac|opus|webm|flac|ogg)$|(^|/)\.env($|\.)' | grep -v '\.env\.example$' || true)
           if [ -n "$bad" ]; then echo "::error::forbidden files (Decision log D11):"; echo "$bad"; exit 1; fi
 
       # ponytail: pnpm steps switch on once the monorepo lands (BE-81); until then only the check above runs
