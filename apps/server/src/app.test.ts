@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { expect, test } from 'vitest';
-import { createApp } from './app';
+import { createApp } from './app.js';
 
 test('GET /api/health returns ok', async () => {
   const server = createApp().listen(0);

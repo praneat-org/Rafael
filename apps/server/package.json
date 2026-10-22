@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/index.js",
     "typecheck": "tsc -p .",
-    "test": "vitest run"
+    "test": "tsc -p tsconfig.build.json && vitest run"
   }
 }
