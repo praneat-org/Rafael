@@ -6,4 +6,23 @@ Live pitch copilot — Chrome extension that listens to a meeting (Meet tab or r
 - How work flows (agents, QA, CodeRabbit, Jira Sync): Linear doc "Graph spec: Rafael" · run `/tick`, `/tick be`, `/tick fe` in Claude Code
 - Decisions: Linear doc "Decision log — Rafael"
 
-Monorepo setup lands in BE-81.
+## Setup
+
+```sh
+corepack enable          # pnpm version comes from package.json
+pnpm install
+pnpm dev                 # server :8080 + extension (WXT dev) — load apps/extension/.output/chrome-mv3-dev as unpacked
+```
+
+Before a PR: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
+
+## Layout
+
+| Path | What |
+| -- | -- |
+| `apps/extension` | Chrome MV3 extension (WXT + React) — side panel |
+| `apps/server` | Node + TS server (`/api/health`, later `/ws`) |
+| `packages/protocol` | message types shared by both (no React / `chrome.*` / Node imports) |
+| `bench/*` | benchmarks (workspace members) |
+
+Node version: `.nvmrc` · contribution flow: [CONTRIBUTING.md](CONTRIBUTING.md)
