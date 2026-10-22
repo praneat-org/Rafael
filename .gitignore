@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.output/
+.wxt/
+coverage/
+*.log
+.DS_Store
+
+# secrets
+.env
+.env.*
+!.env.example
+
+# test audio / deal content never enters the repo (Decision log D11)
+*.wav
+*.mp3
+*.m4a
+*.webm
+*.flac
+
+# local agent memory
+.remember/
