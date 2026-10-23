@@ -4,5 +4,5 @@ export type TokenVerifier = (accessToken: string) => Promise<{ email: string } |
 
 export const denyAll: TokenVerifier = async () => null;
 
-/** Dev only: accepts any non-empty token. index.ts refuses it when NODE_ENV=production. */
+/** Dev only: accepts any non-empty token. index.ts exits unless NODE_ENV === 'development' and K_SERVICE is unset. */
 export const devFake: TokenVerifier = async () => ({ email: 'dev@localhost' });

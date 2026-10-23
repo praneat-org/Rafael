@@ -41,8 +41,15 @@ test.each([
   const child = spawn('node', ['dist/index.js'], {
     env: { PATH: process.env.PATH, PORT: '0', DEV_FAKE_AUTH: '1', ...env },
   });
-  const code = await new Promise((resolve) => child.once('exit', resolve));
-  expect(code).toBe(1);
+  try {
+    const code = await new Promise((resolve, reject) => {
+      child.once('exit', resolve);
+      setTimeout(() => reject(new Error('server did not exit')), 5000).unref();
+    });
+    expect(code).toBe(1);
+  } finally {
+    child.kill();
+  }
 });
 
 test('localhost Origin is rejected unless NODE_ENV=development', async () => {

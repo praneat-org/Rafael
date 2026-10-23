@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { AUDIO_FRAME_BYTES, type ServerMessage } from '@rafael/protocol';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import WebSocket from 'ws';
 import { createApp } from '../app.js';
 import type { TokenVerifier } from '../auth/verifier.js';
@@ -12,12 +12,14 @@ const verifier: TokenVerifier = async (t) =>
   t.startsWith('good-') ? { email: `${t.slice(5)}@praneat.com` } : null;
 
 let servers: ReturnType<typeof createApp>[] = [];
-afterEach(() => {
-  for (const s of servers) {
-    s.shutdown();
-    s.closeAllConnections();
-    s.close();
-  }
+afterEach(async () => {
+  await Promise.all(
+    servers.map((s) => {
+      s.shutdown();
+      s.closeAllConnections();
+      return new Promise((res) => s.close(res));
+    }),
+  );
   servers = [];
 });
 
@@ -200,7 +202,41 @@ test('audio frames inside a session are counted, not stored', async () => {
   for (let i = 0; i < 3; i++) c.ws.send(new Uint8Array(AUDIO_FRAME_BYTES));
   send(c, { t: 'pause' });
   send(c, { t: 'resume' });
-  await new Promise((r) => setTimeout(r, 50));
-  expect(store.get(ready.sessionId)?.audioFrames).toBe(3);
+  await vi.waitFor(() => expect(store.get(ready.sessionId)?.audioFrames).toBe(3));
   c.ws.close();
+});
+
+test('hung verifier still hits the hello timeout (4408)', async () => {
+  const { port } = start({ verifier: () => new Promise(() => {}), helloTimeoutMs: 50 });
+  const c = connect(port);
+  await open(c);
+  send(c, { t: 'hello', accessToken: 'good-alice' });
+  expect(await c.closed).toBe(4408);
+});
+
+test('socket closed while session.start is queued behind a slow verifier creates no session', async () => {
+  let release: () => void = () => {};
+  const slow: TokenVerifier = () =>
+    new Promise((res) => {
+      release = () => res({ email: 'alice@praneat.com' });
+    });
+  class CountingStore extends MemorySessionStore {
+    created = 0;
+    override create(...a: Parameters<MemorySessionStore['create']>) {
+      this.created++;
+      return super.create(...a);
+    }
+  }
+  const store = new CountingStore();
+  const { port } = start({ store, verifier: slow });
+  const c = connect(port);
+  await open(c);
+  send(c, { t: 'hello', accessToken: 'x' });
+  send(c, { t: 'session.start', packId: 'p' });
+  await new Promise((r) => setTimeout(r, 50)); // both messages reach the server and queue up
+  c.ws.terminate();
+  await c.closed;
+  release();
+  await new Promise((r) => setTimeout(r, 50)); // let the queued session.start run
+  expect(store.created).toBe(0);
 });

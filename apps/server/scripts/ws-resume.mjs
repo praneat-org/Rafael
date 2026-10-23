@@ -1,5 +1,5 @@
 // Manual check: start -> drop socket -> reconnect with resumeToken -> same sessionId.
-// Server: DEV_FAKE_AUTH=1 pnpm --filter server dev      Client: node apps/server/scripts/ws-resume.mjs [ws://127.0.0.1:8080/ws]
+// Server: NODE_ENV=development DEV_FAKE_AUTH=1 pnpm --filter server dev      Client: node apps/server/scripts/ws-resume.mjs [ws://127.0.0.1:8080/ws]
 import WebSocket from 'ws';
 
 const url = process.argv[2] ?? 'ws://127.0.0.1:8080/ws';

@@ -106,12 +106,13 @@ export function attachWs(http: Server, opts: WsOptions) {
           fail(parsed.ok ? 'UNAUTHORIZED' : parsed.error.code);
           return ws.close(CLOSE_UNAUTHORIZED, 'hello required');
         }
-        clearTimeout(helloTimer);
+        // helloTimer keeps running while verifying: a hung verifier still gets 4408
         const who = await verifier(parsed.data.accessToken).catch(() => null);
         if (!who) {
           fail('UNAUTHORIZED');
           return ws.close(CLOSE_UNAUTHORIZED, 'unauthorized');
         }
+        clearTimeout(helloTimer);
         email = who.email;
         return;
       }
@@ -122,6 +123,9 @@ export function attachWs(http: Server, opts: WsOptions) {
           return fail('BAD_MESSAGE'); // already authenticated
         case 'session.start': {
           if (session) return fail('BAD_MESSAGE');
+          // socket closed while this message waited in the queue: attaching now would
+          // never be detached and the session would live for the full 24 h TTL
+          if (ws.readyState !== ws.OPEN) return;
           const s = m.resumeToken
             ? store.resume(m.resumeToken, email)
             : store.create(email, m.packId);
