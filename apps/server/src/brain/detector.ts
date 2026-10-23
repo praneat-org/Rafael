@@ -72,7 +72,7 @@ export function similarity(a: string, b: string): number {
 }
 
 export type DetectorDeps = {
-  llm: LlmClient;
+  llm: Pick<LlmClient, 'complete'>;
   config: BrainConfig;
   /** injected wall clock (ms) so tests control time */
   now?: () => number;

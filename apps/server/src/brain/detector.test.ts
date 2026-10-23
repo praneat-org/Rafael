@@ -8,7 +8,7 @@ const config = loadBrainConfig({ DETECTOR_MODEL: 'fake-model' });
 // Fake LLM: replies are scripted per call; records the requests it received.
 function fake(replies: (string | Error)[]) {
   const reqs: LlmRequest[] = [];
-  const llm: LlmClient = {
+  const llm: Pick<LlmClient, 'complete'> = {
     async complete(req) {
       reqs.push(req);
       const r = replies.shift();

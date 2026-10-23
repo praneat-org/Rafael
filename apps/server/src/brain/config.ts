@@ -20,6 +20,16 @@ export type BrainConfig = {
     /** char-bigram Dice similarity at/above which two questions count as the same */
     dedupeSimilarity: number;
   };
+  answerer: {
+    maxBullets: number;
+    maxWordsPerBullet: number;
+    maxTokens: number;
+    timeoutMs: number;
+    /** first-token budget (skill cue-brain); exceeding it logs a warn */
+    firstTokenBudgetMs: number;
+    /** D21: <= 1 h */
+    cacheTtlSeconds: number;
+  };
 };
 
 export function loadBrainConfig(env: Record<string, string | undefined>): BrainConfig {
@@ -34,6 +44,14 @@ export function loadBrainConfig(env: Record<string, string | undefined>): BrainC
       timeoutMs: 400,
       maxTokens: 200,
       dedupeSimilarity: 0.85,
+    },
+    answerer: {
+      maxBullets: 3,
+      maxWordsPerBullet: 15,
+      maxTokens: 400,
+      timeoutMs: 8000,
+      firstTokenBudgetMs: 1200,
+      cacheTtlSeconds: 3600,
     },
   };
 }
