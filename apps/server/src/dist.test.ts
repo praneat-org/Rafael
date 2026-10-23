@@ -1,10 +1,14 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { expect, test } from 'vitest';
+import WebSocket from 'ws';
 
-// runs the built server with plain node (what Docker / Cloud Run will do); `pnpm test` builds first
-test('built server answers /api/health', async () => {
-  const child = spawn('node', ['dist/index.js'], { env: { ...process.env, PORT: '0' } });
+// runs the built bundle with plain node (what Docker / Cloud Run will do); `pnpm test` builds first.
+// The /ws leg proves @rafael/protocol is really bundled in (no src/*.ts import at runtime).
+test('built server answers /api/health and speaks protocol v1 on /ws', async () => {
+  const child = spawn('node', ['dist/index.js'], {
+    env: { ...process.env, PORT: '0', DEV_FAKE_AUTH: '1', NODE_ENV: 'development' },
+  });
   try {
     const port = await new Promise<number>((resolve, reject) => {
       createInterface({ input: child.stdout }).once('line', (l) => resolve(JSON.parse(l).port));
@@ -12,6 +16,53 @@ test('built server answers /api/health', async () => {
     });
     const res = await fetch(`http://127.0.0.1:${port}/api/health`);
     expect(res.status).toBe(200);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: 'http://localhost' });
+    const reply = new Promise<{ t: string }>((resolve) =>
+      ws.once('message', (d) => resolve(JSON.parse(d.toString()))),
+    );
+    await new Promise((r) => ws.once('open', r));
+    ws.send(JSON.stringify({ v: 1, t: 'hello', accessToken: 'x' }));
+    ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'p' }));
+    expect((await reply).t).toBe('session.ready');
+    ws.close();
+  } finally {
+    child.kill();
+  }
+});
+
+// fail-closed: fake auth must never start outside an explicit development env
+test.each([
+  ['K_SERVICE set, no NODE_ENV', { K_SERVICE: 'rafael' }],
+  ['NODE_ENV=Production', { NODE_ENV: 'Production' }],
+  ['NODE_ENV=prod', { NODE_ENV: 'prod' }],
+  ['development but on Cloud Run', { NODE_ENV: 'development', K_SERVICE: 'rafael' }],
+])('DEV_FAKE_AUTH refuses to start: %s', async (_name, env) => {
+  const child = spawn('node', ['dist/index.js'], {
+    env: { PATH: process.env.PATH, PORT: '0', DEV_FAKE_AUTH: '1', ...env },
+  });
+  try {
+    const code = await new Promise((resolve, reject) => {
+      child.once('exit', resolve);
+      setTimeout(() => reject(new Error('server did not exit')), 5000).unref();
+    });
+    expect(code).toBe(1);
+  } finally {
+    child.kill();
+  }
+});
+
+test('localhost Origin is rejected unless NODE_ENV=development', async () => {
+  const child = spawn('node', ['dist/index.js'], { env: { PATH: process.env.PATH, PORT: '0' } });
+  try {
+    const port = await new Promise<number>((resolve) => {
+      createInterface({ input: child.stdout }).once('line', (l) => resolve(JSON.parse(l).port));
+    });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: 'http://localhost' });
+    const status = await new Promise((resolve) =>
+      ws.once('unexpected-response', (_req, res) => resolve(res.statusCode)),
+    );
+    expect(status).toBe(403);
   } finally {
     child.kill();
   }
