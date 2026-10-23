@@ -26,6 +26,13 @@ export class CaptureSlot {
     }
   }
 
+  /** Wrap a frame/level callback: nothing gets out while paused, whether or not the handle exists yet. */
+  guard<A extends unknown[]>(fn: (...a: A) => void): (...a: A) => void {
+    return (...a) => {
+      if (!this.paused) fn(...a);
+    };
+  }
+
   pause() {
     this.paused = true;
     this.handle?.pause();

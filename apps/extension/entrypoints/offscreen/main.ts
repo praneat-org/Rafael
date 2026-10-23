@@ -60,10 +60,10 @@ function beginCapture(opts: CaptureCmd, t: Transport) {
       return startCapture(
         opts,
         streamId,
-        (f) => t.sendAudio(f),
-        (level) => {
+        capture.guard((f) => t.sendAudio(f)),
+        capture.guard((level) => {
           if (isCurrent()) audio.patch({ level });
-        },
+        }),
       );
     },
     // reason code only, never content (D11)

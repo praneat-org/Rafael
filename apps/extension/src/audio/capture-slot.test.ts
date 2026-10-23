@@ -100,3 +100,24 @@ test('a new begin() after an accepted handle stops the old one and makes its isC
   expect(h1.pause).not.toHaveBeenCalled();
   expect(h2.pause).toHaveBeenCalledOnce();
 });
+
+test('pause before the handle exists: guarded callbacks send nothing, and again after resume they do', async () => {
+  const s = new CaptureSlot();
+  const sent = vi.fn();
+  const d = deferred<CaptureHandle>();
+  let send: (n: number) => void = () => {};
+  const p = s.begin(() => {
+    send = s.guard(sent); // frames can flow while the mic getUserMedia is still pending
+    return d.promise;
+  }, vi.fn());
+  s.pause();
+  send(1);
+  expect(sent).not.toHaveBeenCalled();
+  d.resolve(handle());
+  await p;
+  send(2);
+  expect(sent).not.toHaveBeenCalled();
+  s.resume();
+  send(3);
+  expect(sent).toHaveBeenCalledExactlyOnceWith(3);
+});
