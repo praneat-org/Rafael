@@ -1,7 +1,7 @@
 import { ServerMessage } from '@rafael/protocol';
 import { expect, test } from 'vitest';
 import type { DriveFile, ReadResult, SourceProvider } from './drive.js';
-import { buildPack, estimateTokens, PackStore, PackTooLargeError } from './pack.js';
+import { buildPack, estimateTokens, PackStore, PackTooLargeError, renderPackText } from './pack.js';
 
 // Synthetic content only — no customer data.
 const F = (fileId: string, name: string): DriveFile => ({ fileId, name, mimeType: 'x' });
@@ -58,6 +58,50 @@ test('duplicate file names and duplicate locators get unique anchors, determinis
   ]);
   expect(p1.files.find((f) => f.fileId === 'a')!.file).toBe('Price'); // lowest fileId first
   expect(p2).toEqual({ ...p1, builtAt: p2.builtAt, buildMs: p2.buildMs });
+});
+
+test('names that tie (NFC vs NFD, zero-width) give one packId under every list order', async () => {
+  const nfc = 'Café';
+  const nfd = 'Café';
+  const files = [F('4', nfd), F('2', nfc), F('3', 'a​b'), F('1', 'ab')];
+  const reads = { '1': doc('one'), '2': doc('two'), '3': doc('three'), '4': doc('four') };
+  const ids = new Set<string>();
+  let perm = files;
+  for (let i = 0; i < 24; i++) {
+    perm = [...perm.slice(1), perm[0]!];
+    if (i % 2) perm = [...perm].reverse();
+    ids.add((await buildPack(provider(perm, reads), 'x')).packId);
+  }
+  expect(ids.size).toBe(1);
+  const p = await buildPack(provider(files, reads), 'x');
+  expect(p.anchors).toEqual([
+    `[${nfc} › เอกสาร]`, // fileId 2
+    `[${nfc} (2) › เอกสาร]`, // fileId 4 (was NFD)
+    '[ab › เอกสาร]', // fileId 1
+    '[ab (2) › เอกสาร]', // fileId 3 (zero-width stripped)
+  ]);
+});
+
+test('chunks are the single source: text and anchors derive from them', async () => {
+  const p = await buildPack(
+    provider([F('1', 'Deck'), F('2', 'Deck')], {
+      '1': { chunks: [{ locator: 'slide 1', text: '  a \n' }] },
+      '2': { chunks: [{ locator: 'slide 1', text: 'b' }] },
+    }),
+    'x',
+  );
+  expect(p.chunks).toEqual([
+    { anchor: '[Deck › slide 1]', file: 'Deck', fileId: '1', locator: 'slide 1', text: 'a' },
+    {
+      anchor: '[Deck (2) › slide 1]',
+      file: 'Deck (2)',
+      fileId: '2',
+      locator: 'slide 1',
+      text: 'b',
+    },
+  ]);
+  expect(p.text).toBe(renderPackText(p.chunks));
+  expect(p.anchors).toEqual(p.chunks.map((c) => c.anchor));
 });
 
 test('anchor delimiters in file names are neutralised', async () => {

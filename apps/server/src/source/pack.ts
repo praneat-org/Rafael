@@ -22,10 +22,24 @@ export interface PackFileRef {
   file: string; // display name used inside anchors (unique per pack)
   fileId: string;
 }
+/** One anchored chunk. file / locator are the deduped labels used in `anchor`. */
+export interface PackChunk {
+  anchor: string; // `[file › locator]`, unique per pack
+  file: string;
+  fileId: string;
+  locator: string;
+  text: string; // trimmed body, without the anchor line
+}
+
+/** The only place pack text is formatted: text, anchors and chunks cannot disagree. */
+export const renderPackText = (chunks: PackChunk[]) =>
+  chunks.map((c) => `${c.anchor}\n${c.text}`).join('\n\n');
+
 export interface Pack {
   packId: string; // sha256 of text: same input => same id
-  text: string; // byte-stable: no timestamps / session ids (cache prefix)
-  anchors: string[]; // exact `[file › locator]` ids, unique; BE-94 verifies against this list
+  text: string; // = renderPackText(chunks); byte-stable, no timestamps / session ids (cache prefix)
+  anchors: string[]; // = chunks.map(c => c.anchor); BE-94 verifies against this list
+  chunks: PackChunk[];
   tokens: number;
   files: PackFileRef[];
   unreadable: (PackFileRef & { reason: string })[];
@@ -56,16 +70,22 @@ export interface BuildOptions {
   now?: () => number;
 }
 
+// NFC + strip zero-width so visually identical names (Mac NFD vs NFC) give one label
 const clean = (s: string) =>
   s
+    .normalize('NFC')
+    .replace(/[​-‍⁠﻿]/g, '')
     .replace(/[[\]›\r\n]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim() || 'untitled';
 
-/** Deterministic unique labels: sort by (name, fileId); 2nd+ file with the same name gets ` (n)`. */
+// total order by UTF-16 code unit (locale-independent; localeCompare ties on NFC/NFD)
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Deterministic unique labels: sort by (clean name, fileId); 2nd+ file with the same name gets ` (n)`. */
 function labels(files: DriveFile[]): Map<string, string> {
   const sorted = [...files].sort(
-    (a, b) => a.name.localeCompare(b.name) || a.fileId.localeCompare(b.fileId),
+    (a, b) => cmp(clean(a.name), clean(b.name)) || cmp(a.fileId, b.fileId),
   );
   const used = new Set<string>();
   const out = new Map<string, string>();
@@ -87,7 +107,7 @@ function hintsFrom(names: string[], texts: string[], max: number): string[] {
     for (const w of n.match(HINT) ?? []) freq.set(w, (freq.get(w) ?? 0) + 1000);
   for (const t of texts) for (const w of t.match(HINT) ?? []) freq.set(w, (freq.get(w) ?? 0) + 1);
   return [...freq]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]))
     .slice(0, max)
     .map(([w]) => w);
 }
@@ -104,8 +124,8 @@ export async function buildPack(
 
   const listed = await provider.listFolder(folder);
   const label = labels(listed);
-  const order = [...listed].sort((a, b) =>
-    label.get(a.fileId)!.localeCompare(label.get(b.fileId)!),
+  const order = [...listed].sort(
+    (a, b) => cmp(label.get(a.fileId)!, label.get(b.fileId)!) || cmp(a.fileId, b.fileId),
   );
   const ref = (f: DriveFile): PackFileRef => ({ file: label.get(f.fileId)!, fileId: f.fileId });
 
@@ -134,9 +154,8 @@ export async function buildPack(
     }),
   );
 
-  const anchors: string[] = [];
   const seen = new Set<string>();
-  const parts: { fileId: string; text: string }[] = [];
+  const chunks: PackChunk[] = [];
   const unreadable: Pack['unreadable'] = [];
   order.forEach((f, i) => {
     const r = results[i]!;
@@ -144,31 +163,27 @@ export async function buildPack(
       unreadable.push({ ...ref(f), reason: r.unreadable });
       return;
     }
+    const file = label.get(f.fileId)!;
     for (const c of r.chunks) {
       const base = clean(c.locator);
-      let loc = base;
-      for (let n = 2; seen.has(`[${label.get(f.fileId)} › ${loc}]`); n++) loc = `${base} (${n})`;
-      const a = `[${label.get(f.fileId)} › ${loc}]`;
-      seen.add(a);
-      anchors.push(a);
-      parts.push({ fileId: f.fileId, text: `${a}\n${c.text.trim()}` });
+      let locator = base;
+      for (let n = 2; seen.has(`[${file} › ${locator}]`); n++) locator = `${base} (${n})`;
+      const anchor = `[${file} › ${locator}]`;
+      seen.add(anchor);
+      chunks.push({ anchor, file, fileId: f.fileId, locator, text: c.text.trim() });
     }
   });
 
-  const text = parts.map((p) => p.text).join('\n\n');
+  const text = renderPackText(chunks);
+  const anchors = chunks.map((c) => c.anchor);
   const tokens = text ? await count(text) : 0;
-  const files = order.filter((f) => parts.some((p) => p.fileId === f.fileId)).map(ref);
+  const files = order.filter((f) => chunks.some((c) => c.fileId === f.fileId)).map(ref);
 
   if (tokens > max) {
     const perFile = await Promise.all(
       files.map(async (f) => ({
         ...f,
-        tokens: await count(
-          parts
-            .filter((p) => p.fileId === f.fileId)
-            .map((p) => p.text)
-            .join('\n\n'),
-        ),
+        tokens: await count(renderPackText(chunks.filter((c) => c.fileId === f.fileId))),
       })),
     );
     emit('error', tokens);
@@ -176,7 +191,7 @@ export async function buildPack(
     throw new PackTooLargeError(
       tokens,
       max,
-      perFile.sort((a, b) => b.tokens - a.tokens || a.file.localeCompare(b.file)),
+      perFile.sort((a, b) => b.tokens - a.tokens || cmp(a.file, b.file)),
     );
   }
   if (tokens > max * (o.warnRatio ?? 0.8)) log('pack.near_limit', { tokens, max });
@@ -194,12 +209,13 @@ export async function buildPack(
     packId: createHash('sha256').update(text).digest('hex').slice(0, 32),
     text,
     anchors,
+    chunks,
     tokens,
     files,
     unreadable,
     hints: hintsFrom(
       files.map((f) => f.file),
-      parts.map((p) => p.text),
+      chunks.map((c) => c.text),
       o.maxHints ?? 100,
     ),
     builtAt: t0,
