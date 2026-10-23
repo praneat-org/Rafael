@@ -32,7 +32,7 @@ export class MockTransport implements Transport {
   private gotHello = false;
 
   /** latencyMs = simulated delay before each server message. */
-  constructor(private latencyMs = 400) {}
+  constructor(private latencyMs = 0) {}
 
   connect(): void {
     this.setStatus('connecting');

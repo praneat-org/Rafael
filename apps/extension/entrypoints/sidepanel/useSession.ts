@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Browser } from 'wxt/browser';
-import {
-  ENSURE_OFFSCREEN,
-  type OffscreenToPanel,
-  type PanelToOffscreen,
-  PORT_NAME,
-} from '../../src/messages';
+import { type OffscreenToPanel, type PanelToOffscreen, PORT_NAME } from '../../src/messages';
+import { requestOffscreen } from '../../src/offscreen-client';
 import { initialState, type SessionState } from '../../src/session';
 
 /** The only place the side panel talks to the offscreen document. Display-only state. */
@@ -16,7 +12,7 @@ export function useSession() {
 
   useEffect(() => {
     let alive = true;
-    browser.runtime.sendMessage(ENSURE_OFFSCREEN).then((ok) => {
+    requestOffscreen((m) => browser.runtime.sendMessage(m)).then((ok) => {
       if (!alive) return;
       if (!ok) return setOffline(true);
       const p = browser.runtime.connect({ name: PORT_NAME });
