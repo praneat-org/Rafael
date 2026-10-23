@@ -63,8 +63,15 @@ export function SetupView({ send }: { send: Send }) {
           <input type="file" accept=".wav" onChange={(e) => setWav(e.target.files?.[0] ?? null)} />
         </label>
       )}
-      {!s.mock && <p className="note">เชื่อม server จริงยังไม่พร้อม (รอ FE-35) — เปิดโหมดจำลองก่อน</p>}
-      <button type="button" className="primary" disabled={!s.mock} onClick={start}>
+      {!s.mock && !import.meta.env.DEV && (
+        <p className="note">ล็อกอินจริงยังไม่พร้อม (รอ FE-39) — เปิดโหมดจำลองก่อน</p>
+      )}
+      <button
+        type="button"
+        className="primary"
+        disabled={!s.mock && !import.meta.env.DEV}
+        onClick={start}
+      >
         เริ่ม session
       </button>
     </main>
