@@ -4,11 +4,11 @@ DRAFT for human / DPO review. Facts come from `docs/privacy/providers.md` (BE-93
 
 ## 1. Customer notice at meeting start
 
-TH: "ในการประชุมนี้ ทีมของเรามีระบบช่วยฟังเพื่อค้นหาข้อมูลจากเอกสารของเราเอง มาตอบคำถามได้เร็วขึ้น โดยไม่บันทึกเสียงและไม่เก็บข้อความการสนทนา หากไม่สะดวก แจ้งได้เลยครับ/ค่ะ เราจะปิดระบบทันที"
+TH: "ในการประชุมนี้ ทีมของเรามีระบบช่วยฟังเพื่อค้นหาข้อมูลจากเอกสารของเราเอง ระบบของเราไม่เก็บไฟล์เสียงหรือข้อความการสนทนาไว้หลังจบการประชุม โดยเสียงและข้อความจะถูกประมวลผลโดยผู้ให้บริการภายนอกตามเงื่อนไขของผู้ให้บริการ หากไม่สะดวก แจ้งได้เลยครับ/ค่ะ เราจะปิดระบบทันที"
 
-EN: "Our team is using an assistant that listens during this meeting to look up answers from our own documents faster. It does not record the audio or keep a transcript. If you would rather we did not, just say so and we will switch it off."
+EN: "Our team is using an assistant in this meeting to look up answers from our own documents. Our system keeps no recording or transcript after the meeting; audio and text are processed by external service providers under their terms. If you would rather we did not, just say so and we will switch it off."
 
-Wording caution: "does not record" is true for our servers (D11), but audio is processed by an external STT provider and Google may log prompts for abuse monitoring (providers.md). Legal/DPO must decide whether to add "ประมวลผลโดยผู้ให้บริการภายนอก". Do not use the notice until settled.
+Scope: every claim is limited to our own system and says providers process under their own terms (Google keeps flagged prompts up to 90 days unless a Master Agreement applies, see section 3). DPO to finalize wording. The "after the meeting" claim depends on BE-85 / BE-94 / BE-96 (see status column).
 
 ## 2. Do not use when
 
@@ -28,19 +28,21 @@ Rep mic + tab audio -> Chrome extension -> WSS -> Cloud Run asia-southeast1 (mem
   cue -> extension side panel (rep's screen only)
 ```
 
-| Data | Goes to | Kept by us | Kept by processor |
+| Data | Goes to | Kept by us (proof card, status) | Kept by processor |
 |---|---|---|---|
-| Audio | STT provider | No (D11: no disk / bucket / log) | Chirp 3: not logged unless we opt in. Deepgram: `mip_opt_out=true`, kept only to process |
-| Transcript / questions | Gemini prompt | Server memory for the session only (TTL 24h max, dropped at end) | Not used for training; Google may log prompts for abuse monitoring (exemption UNVERIFIED) |
-| Session Pack (docs from Drive) | Gemini explicit CachedContent (D21) | Memory only | ttl <= 1h, deleted on `session.end`; not zero-retention by Google's definition |
-| Cue | Extension | No | n/a |
-| Server logs | Cloud Logging | Metadata only (session id, email hash, sizes, latency, tokens); content redacted (D11) | Google Cloud |
+| Audio | STT provider | No. BE-89 STT adapters: not built; BE-96 retention test: PR #14 in review. Status: not implemented | Chirp 3: not logged unless we opt in (V2 UNVERIFIED). Deepgram: `mip_opt_out=true`, kept only to process |
+| Transcript / questions | Gemini prompt | Server memory only, TTL 24h max. BE-85 (#8): in-memory SessionStore merged; BE-96 (#14) in review. Status: partly implemented | Not used for training. Google logs prompts only if classifiers flag them, up to 90 days, in the selected region; exempt by default if Praneat has a Google Cloud Master Agreement (to check). Frontier models (e.g. Gemini 4 Argon): prompts + responses up to 30 days. Source: providers.md [10] |
+| Session Pack (docs from Drive) | Drive API (read), then Gemini explicit CachedContent (D21) | Memory only (BE-85 #8 merged for session memory). Cache ttl <= 1h and delete on `session.end`: BE-94 PR #17 draft. Status: not merged | Cache ttl <= 1h; not zero-retention by Google's definition |
+| Cue | Extension | No. Nothing persisted in merged code; BE-96 (#14) will test. Status: in review | n/a |
+| Server logs | Cloud Logging | Metadata only, content redacted (D11). Logger redaction card: not verified here. Status: not confirmed | Google Cloud |
 
-Processors and regions: Google Cloud (Cloud Run, Vertex Gemini in asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU/US endpoints; no Asia endpoint found). All involve cross-border transfer out of Thailand.
+Processors and regions: Google Workspace / Drive API (reads the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy and Praneat's Google agreement), Google Cloud (Cloud Run, Vertex Gemini in asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US assumed; no Asia endpoint found). All involve cross-border transfer out of Thailand.
 
 Audit log: session start/end, email hash, error codes, token usage. No audio / transcript / cue content.
 
 ## 4. Questions for the DPO
+
+0. Does Praneat have a Google Cloud Master Agreement (default exemption from abuse-monitoring prompt logging)? If we choose a Frontier model (e.g. Gemini 4 Argon), prompts + responses are logged up to 30 days: acceptable?
 
 1. Is Singapore / US / EU processing acceptable under PDPA cross-border rules with a DPA, or must processing stay in an ASEAN-only region?
 2. Is "does not record" wording acceptable given external STT and Google abuse-monitoring logs? Do we need to request an exception from Google?
@@ -51,7 +53,7 @@ Audit log: session start/end, email hash, error codes, token usage. No audio / t
 
 ## 5. Proof needed before sending (not yet verified)
 
-- D11 enforcement (no content in logs): logger redaction PR (server skeleton BE-85; link on review).
-- D21 cache deleted on `session.end`: brain/cache PR not merged yet (UNVERIFIED).
-- Deepgram `mip_opt_out` / Chirp no-logging config: adapters (BE-77/79) not built yet.
+- D11 enforcement (no content in logs): BE-85 (#8) merged; BE-96 retention test (#14) in review.
+- D21 cache deleted on `session.end`: BE-94 (#17) draft, not merged.
+- Deepgram `mip_opt_out` / Chirp no-logging config: STT adapters BE-89 not built.
 - Google written answers on abuse logging and explicit-cache ZDR.
