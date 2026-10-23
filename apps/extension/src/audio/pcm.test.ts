@@ -29,10 +29,14 @@ test('Resampler 44.1k -> 16k stays within 1 sample of the ratio', () => {
   expect(Math.abs(n - 16000)).toBeLessThanOrEqual(1);
 });
 
-test('Resampler keeps a low tone and averages away a tone at the new Nyquist', () => {
+test('Resampler keeps a low tone and attenuates a tone that would alias to DC', () => {
   const peak = (a: Float32Array) => Math.max(...a.subarray(10).map(Math.abs));
+  // 16 kHz tone at 48 kHz in: plain decimation (every 3rd sample) would give a constant ~1.0
+  const alias = Float32Array.from({ length: 4800 }, (_, i) =>
+    Math.cos((2 * Math.PI * 16000 * i) / 48000),
+  );
   expect(peak(new Resampler(48000).process(sine(4800, 48000, 440)))).toBeGreaterThan(0.9);
-  expect(peak(new Resampler(48000).process(sine(4800, 48000, 24000)))).toBeLessThan(0.1);
+  expect(peak(new Resampler(48000).process(alias))).toBeLessThan(0.1);
 });
 
 test('Resampler rejects upsampling', () => {
