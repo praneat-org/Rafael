@@ -91,6 +91,8 @@ export function attachWs(http: Server, opts: WsOptions) {
     ws.on('error', () => ws.terminate());
 
     async function handle(data: RawData, isBinary: boolean) {
+      // resumed on a newer socket: this one may still be closing, must not touch or end the session
+      if (session && session.socket !== ws) return;
       if (isBinary) {
         // audio is only accepted inside a session (and so after hello)
         if (!session) return;

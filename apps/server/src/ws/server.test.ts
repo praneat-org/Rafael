@@ -246,3 +246,34 @@ test('socket closed while session.start is queued behind a slow verifier creates
   await new Promise((r) => setTimeout(r, 50)); // let the queued session.start run
   expect(store.created).toBe(0);
 });
+
+test('replaced socket cannot end the session it lost to a resume', async () => {
+  // keep the old socket open after replace, as if its close had not happened yet
+  class LazyCloseStore extends MemorySessionStore {
+    override attach(id: string, socket: Parameters<MemorySessionStore['attach']>[1]) {
+      const s = this.get(id);
+      if (s) s.socket = undefined;
+      super.attach(id, socket);
+    }
+  }
+  const store = new LazyCloseStore();
+  const { port } = start({ store });
+  const a = connect(port);
+  await open(a);
+  send(a, { t: 'hello', accessToken: 'good-alice' });
+  send(a, { t: 'session.start', packId: 'p' });
+  const ready = await a.next();
+  if (ready.t !== 'session.ready') throw new Error();
+  const b = connect(port);
+  await open(b);
+  send(b, { t: 'hello', accessToken: 'good-alice' });
+  send(b, { t: 'session.start', packId: 'p', resumeToken: ready.resumeToken });
+  expect((await b.next()).t).toBe('session.ready');
+  send(a, { t: 'session.end' });
+  send(a, { t: 'pause' });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(store.get(ready.sessionId)).toBeDefined();
+  expect(b.ws.readyState).toBe(WebSocket.OPEN);
+  a.ws.close();
+  b.ws.close();
+});
