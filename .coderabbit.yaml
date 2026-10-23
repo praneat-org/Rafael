@@ -44,7 +44,7 @@ reviews:
       instructions: |
         A wrong cue is worse than no cue (D10). Every cue with notFound=false must carry sources, and every anchor
         must be checked against the Session Pack after generation — bullets with unknown anchors are dropped.
-        Answers come only from the Session Pack (no general knowledge). Session Pack goes in a cache_control block.
+        Answers come only from the Session Pack (no general knowledge). Session Pack goes in a stable cached prefix (Gemini context caching via Vertex AI, D20), called through a provider-agnostic LlmClient.
         Model ids come from config (DETECTOR_MODEL / ANSWERER_MODEL), never hard-coded. Latency is logged per stage.
     - path: "packages/protocol/**"
       instructions: |
