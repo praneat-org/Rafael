@@ -30,15 +30,15 @@ Rep mic + tab audio -> Chrome extension -> WSS -> Cloud Run asia-southeast1 (mem
 
 | Data | Goes to | Kept by us (proof card, status) | Kept by processor |
 |---|---|---|---|
-| Audio | STT provider | No. BE-89 STT adapters: not built; BE-96 retention test: PR #14 in review. Status: not implemented | Chirp 3: not logged unless we opt in (V2 UNVERIFIED). Deepgram: `mip_opt_out=true`, kept only to process |
+| Audio | STT provider | No. BE-89 STT adapters: not built; BE-96 retention test: PR #14 in review. Status: not implemented | Chirp 3: not logged unless we opt in (V2 UNVERIFIED). Deepgram: `mip_opt_out=true` must be set by the STT adapter (BE-89, not built); opted-out requests are kept only to process |
 | Transcript / questions | Gemini prompt | Server memory only, TTL 24h max. BE-85 (#8): in-memory SessionStore merged; BE-96 (#14) in review. Status: partly implemented | Not used for training. Google logs prompts only if classifiers flag them, up to 90 days, in the selected region; exempt by default if Praneat has a Google Cloud Master Agreement (to check). Frontier models (e.g. Gemini 4 Argon): prompts + responses up to 30 days. Source: providers.md [10] |
 | Session Pack (docs from Drive) | Drive API (read), then Gemini explicit CachedContent (D21) | Memory only (BE-85 #8 merged for session memory). Cache ttl <= 1h and delete on `session.end`: BE-94 PR #17 draft. Status: not merged | Cache ttl <= 1h; not zero-retention by Google's definition |
 | Cue | Extension | No. Nothing persisted in merged code; BE-96 (#14) will test. Status: in review | n/a |
 | Server logs | Cloud Logging | Metadata only, content redacted (D11). Logger redaction card: not verified here. Status: not confirmed | Google Cloud |
 
-Processors and regions: Google Workspace / Drive API (reads the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy and Praneat's Google agreement), Google Cloud (Cloud Run, Vertex Gemini in asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US assumed; no Asia endpoint found). All involve cross-border transfer out of Thailand.
+Processors and regions: Google Workspace / Drive API (reads the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy and Praneat's Google agreement), Google Cloud (Cloud Run, Vertex Gemini in asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US UNVERIFIED; no Asia endpoint found). Per provider: Vertex Gemini asia-southeast1 (no Thailand region, so outside Thailand); Drive region UNVERIFIED; Chirp 3 asia-southeast1 UNVERIFIED (`us`/`eu` documented); Deepgram EU (or US, UNVERIFIED).
 
-Audit log: session start/end, email hash, error codes, token usage. No audio / transcript / cue content.
+Audit log (planned, BE-97, not built): session start/end, email hash, error codes, token usage; no audio / transcript / cue content by design.
 
 ## 4. Questions for the DPO
 
