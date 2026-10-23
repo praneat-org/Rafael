@@ -1,5 +1,5 @@
-// Minimal LLM seam. Q1 (Anthropic API vs Vertex AI) is still open: the real client implements this
-// interface once decided; Detector and tests only depend on it.
+// Minimal LLM seam. D20: Gemini via Vertex AI, model not locked yet; the real client implements this
+// interface; Detector and tests only depend on it.
 export type LlmRequest = {
   model: string;
   /** static instructions: keep byte-identical across calls so it can be cached */
