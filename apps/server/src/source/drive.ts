@@ -75,6 +75,18 @@ const slideText = (els: SlideEl[] = []): string =>
     .join('\n')
     .trim();
 
+// stream the body and stop at the cap, so a file with no `size` can't be fully buffered first
+async function readCapped(res: Response, max: number): Promise<Uint8Array | null> {
+  const parts: Uint8Array[] = [];
+  let n = 0;
+  for await (const c of res.body ?? []) {
+    n += c.length;
+    if (n > max) return null; // leaving the loop cancels the stream
+    parts.push(c);
+  }
+  return new Uint8Array(Buffer.concat(parts)); // pdf.js rejects Buffer subclass
+}
+
 export function createDriveProvider(opts: DriveOptions): SourceProvider {
   const f = opts.fetch ?? fetch;
   const maxBytes = opts.maxFileBytes ?? 20 * 1024 * 1024;
@@ -128,10 +140,13 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         return text.trim() ? { chunks: [{ locator: 'เอกสาร', text }] } : { unreadable: 'empty' };
       }
       case M.sheet: {
-        const meta = await json<{ sheets?: { properties: { title: string } }[] }>(
-          `${SHEETS}/${id}?fields=sheets.properties.title`,
-        );
-        const titles = (meta.sheets ?? []).map((s) => s.properties.title);
+        const meta = await json<{
+          sheets?: { properties: { title: string; sheetType?: string } }[];
+        }>(`${SHEETS}/${id}?fields=sheets.properties(title,sheetType)`);
+        // chart-only (OBJECT) sheets make batchGet 400 for the whole file — ask for GRID tabs only
+        const titles = (meta.sheets ?? [])
+          .filter((s) => (s.properties.sheetType ?? 'GRID') === 'GRID')
+          .map((s) => s.properties.title);
         if (!titles.length) return { unreadable: 'empty' };
         const p = new URLSearchParams();
         for (const t of titles) p.append('ranges', `'${t.replaceAll("'", "''")}'`);
@@ -155,10 +170,11 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       }
       case M.pdf: {
         if (file.size !== undefined && file.size > maxBytes) return { unreadable: 'too large' };
-        const buf = new Uint8Array(
-          await (await get(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`)).arrayBuffer(),
+        const buf = await readCapped(
+          await get(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`),
+          maxBytes,
         );
-        if (buf.length > maxBytes) return { unreadable: 'too large' };
+        if (!buf) return { unreadable: 'too large' };
         const { text } = await extractText(await getDocumentProxy(buf), { mergePages: false });
         const chunks = text.flatMap((t, i) =>
           t.trim() ? [{ locator: `หน้า ${i + 1}`, text: t.trim() }] : [],

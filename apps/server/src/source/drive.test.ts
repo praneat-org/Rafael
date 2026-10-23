@@ -78,7 +78,7 @@ test('listFolder paginates, sends Shared Drive params and the user token', async
   for (const u of calls) {
     expect(u.searchParams.get('supportsAllDrives')).toBe('true');
     expect(u.searchParams.get('includeItemsFromAllDrives')).toBe('true');
-    expect(u.searchParams.get('q')).toContain("'F1' in parents");
+    expect(u.searchParams.get('q')).toContain("'F1' in parents and trashed=false");
   }
   expect(headers).toEqual(['Bearer tok', 'Bearer tok']);
 });
@@ -90,6 +90,7 @@ test('Docs export as markdown', async () => {
   );
   expect(r).toEqual({ chunks: [{ locator: 'เอกสาร', text: '# Title\nbody' }] });
   expect(calls[0]!.searchParams.get('mimeType')).toBe('text/markdown');
+  expect(calls[0]!.searchParams.get('supportsAllDrives')).toBe('true');
 });
 
 test('Sheets -> one CSV chunk per tab, quoting handled, empty tab skipped', async () => {
@@ -110,9 +111,10 @@ test('Sheets -> one CSV chunk per tab, quoting handled, empty tab skipped', asyn
     '/spreadsheets/f1': () =>
       j({
         sheets: [
-          { properties: { title: 'Price' } },
-          { properties: { title: 'Empty' } },
-          { properties: { title: "Bob's" } },
+          { properties: { title: 'Price', sheetType: 'GRID' } },
+          { properties: { title: 'Chart', sheetType: 'OBJECT' } },
+          { properties: { title: 'Empty', sheetType: 'GRID' } },
+          { properties: { title: "Bob's", sheetType: 'GRID' } },
         ],
       }),
   });
@@ -192,4 +194,10 @@ test('too large, unsupported mime, http error, corrupt pdf -> unreadable with re
     unreadable: 'google api 403',
   });
   expect(await p.readFile(file('application/pdf', 9))).toEqual({ unreadable: 'read failed' });
+});
+
+test('PDF with no size in listing is capped while downloading', async () => {
+  const { fn } = fakeFetch({ 'alt=media': () => new Response(pdf(['Alpha page'])) });
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 100 });
+  expect(await p.readFile(file('application/pdf'))).toEqual({ unreadable: 'too large' });
 });
