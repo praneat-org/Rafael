@@ -22,6 +22,11 @@ const v = z.literal(PROTOCOL_VERSION);
 // ---- Client -> Server: strict objects. Server-owned values (sessionId, cueId,
 // latency, email, ...) are never accepted from the client.
 export const ClientMessage = z.discriminatedUnion('t', [
+  /**
+   * Must be the first message on a connection (D19). The token never goes in the
+   * URL (request logs, D11). Ordering is enforced by the server (BE-85/BE-87).
+   */
+  z.strictObject({ v, t: z.literal('hello'), accessToken: z.string().min(1).max(4096) }),
   z.strictObject({
     v,
     t: z.literal('session.start'),

@@ -14,6 +14,7 @@ const j = (o: unknown) => JSON.stringify(o);
 
 describe('client messages', () => {
   const valid = [
+    { v: 1, t: 'hello', accessToken: 'tok' },
     { v: 1, t: 'session.start', packId: 'p1' },
     { v: 1, t: 'session.start', packId: 'p1', resumeToken: 'r' },
     { v: 1, t: 'ask', text: 'hi' },
@@ -30,10 +31,20 @@ describe('client messages', () => {
     ['wrong type', { v: 1, t: 'ask', text: 5 }],
     ['unknown t', { v: 1, t: 'nope' }],
     ['no v', { t: 'pause' }],
+    ['hello without token', { v: 1, t: 'hello' }],
+    ['hello empty token', { v: 1, t: 'hello', accessToken: '' }],
+    ['hello oversized token', { v: 1, t: 'hello', accessToken: 'x'.repeat(4097) }],
+    ['hello extra field', { v: 1, t: 'hello', accessToken: 'tok', email: 'a@praneat.com' }],
     ['client-sent server-owned field', { v: 1, t: 'session.start', packId: 'p', sessionId: 'x' }],
     ['extra field on pause', { v: 1, t: 'pause', email: 'a@praneat.com' }],
   ])('BAD_MESSAGE: %s', (_n, m) => {
     expect(parseClientMessage(j(m))).toEqual({ ok: false, error: { code: 'BAD_MESSAGE' } });
+  });
+
+  test('error result never contains the token', () => {
+    const r = parseClientMessage(j({ v: 1, t: 'hello', accessToken: 'SECRET-TOK', extra: 1 }));
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(r)).not.toContain('SECRET-TOK');
   });
 
   test('VERSION_MISMATCH', () => {
