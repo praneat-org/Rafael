@@ -84,9 +84,9 @@ test('ask -> streamed cue with one id, partial then final, <= 3 bullets, with so
   t.send({ v: 1, t: 'ask', text: 'ราคาเท่าไหร่' });
   vi.advanceTimersByTime(10_000);
   const cues = got.slice(before).filter((m) => m.t === 'cue');
-  expect(cues.map((c) => c.partial)).toEqual([true, true, false]);
+  expect(cues.map((c) => c.partial)).toEqual([true, true, true, false]);
   expect(new Set(cues.map((c) => c.cueId)).size).toBe(1);
   expect(cues.at(-1)?.bullets.length).toBeLessThanOrEqual(3);
-  expect(cues.at(-1)?.sources.length).toBeGreaterThan(0);
+  expect(cues.map((c) => c.sources.length)).toEqual([1, 2, 3, 3]);
   expect(cues[0]?.question).toBe('ราคาเท่าไหร่');
 });

@@ -27,25 +27,29 @@ export function buildMockScript(): ServerMessage[] {
 /** Reply to `ask` in mock mode: a streaming cue (placeholder Thai text, not deal content). */
 export function buildAskScript(question: string): ServerMessage[] {
   const cueId = `ask-${Math.random().toString(36).slice(2, 8)}`;
-  const base = {
-    v: 1 as const,
-    t: 'cue' as const,
+  const sources = [
+    { file: 'proposal-2026.pdf', fileId: 'f1', locator: 'หน้า 12' },
+    { file: 'implementation-plan.pdf', fileId: 'f2', locator: 'หน้า 4' },
+    { file: 'integration-guide.pdf', fileId: 'f3', locator: 'สไลด์ 7' },
+  ];
+  // realistic max cue: 3 bullets x ~15 words, 3 sources growing with each partial (QA FE-37)
+  const bullets = [
+    'แพ็กเกจมาตรฐานคิดราคาต่อผู้ใช้ต่อเดือน รวมการสนับสนุนทางอีเมลและการอัปเดตทุกไตรมาสตามสัญญา',
+    'ระยะเวลาติดตั้งประมาณสองสัปดาห์ รวมการย้ายข้อมูลเดิมและอบรมผู้ใช้งานหลักของลูกค้า',
+    'เชื่อมต่อระบบ ERP เดิมผ่าน API มาตรฐาน โดยไม่ต้องเปลี่ยนโครงสร้างฐานข้อมูลของลูกค้า',
+  ];
+  const cue = (n: number, partial: boolean): ServerMessage => ({
+    v: 1,
+    t: 'cue',
     cueId,
     question,
-    sources: [{ file: 'example.pdf', fileId: 'file-1', locator: 'หน้า 3' }],
+    sources: sources.slice(0, n),
     latencyMs: 1800,
     notFound: false,
-  };
-  const bullets = [
-    'ราคาเริ่มต้นต่อผู้ใช้ต่อเดือน ตามแพ็กเกจมาตรฐาน',
-    'ติดตั้งและเริ่มใช้งานได้ภายในหนึ่งสัปดาห์',
-    'รองรับการเชื่อมต่อกับระบบเดิมของลูกค้า',
-  ];
-  return [
-    { ...base, partial: true, bullets: [bullets[0]?.slice(0, 18) ?? ''] },
-    { ...base, partial: true, bullets: bullets.slice(0, 2) },
-    { ...base, partial: false, bullets },
-  ];
+    partial,
+    bullets: bullets.slice(0, n),
+  });
+  return [cue(1, true), cue(2, true), cue(3, true), cue(3, false)];
 }
 
 export class MockTransport implements Transport {
