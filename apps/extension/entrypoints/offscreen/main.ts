@@ -1,4 +1,5 @@
 import type { Browser } from 'wxt/browser';
+import { AudioStatus } from '../../src/audio/audio-state';
 import { CaptureFailed, startCapture } from '../../src/audio/capture';
 import { CaptureSlot } from '../../src/audio/capture-slot';
 import {
@@ -20,12 +21,6 @@ let state = initialState;
 let transport: Transport | null = null;
 let stopAudio: (() => void) | null = null;
 const capture = new CaptureSlot();
-let audio: Extract<OffscreenToPanel, { k: 'audio' }> = {
-  k: 'audio',
-  level: 0,
-  paused: false,
-  error: null,
-};
 const ports = new Set<Browser.runtime.Port>();
 
 function dispatch(a: Action) {
@@ -34,15 +29,14 @@ function dispatch(a: Action) {
   for (const p of ports) p.postMessage(msg);
 }
 
-function postAudio(patch: Partial<typeof audio>) {
-  audio = { ...audio, ...patch };
-  for (const p of ports) p.postMessage(audio);
-}
+const audio = new AudioStatus((a) => {
+  for (const p of ports) p.postMessage(a);
+});
 
 type CaptureCmd = NonNullable<Extract<PanelToOffscreen, { k: 'start' }>['capture']>;
 
 function beginCapture(opts: CaptureCmd, t: Transport) {
-  postAudio({ level: 0, paused: false, error: null });
+  audio.reset();
   // a start from an old session is stale: isCurrent() is false, nothing it does may reach the panel
   return capture.begin(
     async (isCurrent) => {
@@ -68,18 +62,18 @@ function beginCapture(opts: CaptureCmd, t: Transport) {
         streamId,
         (f) => t.sendAudio(f),
         (level) => {
-          if (isCurrent()) postAudio({ level });
+          if (isCurrent()) audio.patch({ level });
         },
       );
     },
     // reason code only, never content (D11)
-    (e) => postAudio({ error: e instanceof CaptureFailed ? e.reason : 'tab-capture' }),
+    (e) => audio.patch({ error: e instanceof CaptureFailed ? e.reason : 'tab-capture' }),
   );
 }
 
 function teardown() {
   capture.stop();
-  postAudio({ level: 0, paused: false });
+  audio.reset(); // incl. error: an old session's failure must not leak into the next
   stopAudio?.();
   stopAudio = null;
   transport?.close();
@@ -116,10 +110,10 @@ function onCommand(cmd: PanelToOffscreen) {
     dispatch({ k: 'end' });
   } else if (cmd.k === 'pause') {
     capture.pause();
-    postAudio({ paused: true, level: 0 });
+    audio.patch({ paused: true, level: 0 });
   } else if (cmd.k === 'resume') {
     capture.resume();
-    postAudio({ paused: false });
+    audio.patch({ paused: false });
   } else dispatch({ k: 'reset' });
 }
 
@@ -129,5 +123,5 @@ browser.runtime.onConnect.addListener((port) => {
   port.onMessage.addListener(onCommand);
   port.onDisconnect.addListener(() => ports.delete(port)); // closing the panel does not stop the session
   port.postMessage({ k: 'state', state } satisfies OffscreenToPanel);
-  port.postMessage(audio);
+  port.postMessage(audio.state);
 });

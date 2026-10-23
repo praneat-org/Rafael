@@ -73,8 +73,7 @@ test('pipeline emits fixed-size contiguous frames from 128-sample blocks', () =>
 test('pipeline at 48 kHz input still produces ~10 frames per second', () => {
   const { p, frames } = pipeline(48000);
   feed(p, sine(48000, 48000, 440));
-  expect(frames.length).toBeGreaterThanOrEqual(9);
-  expect(frames.length).toBeLessThanOrEqual(10);
+  expect(frames).toHaveLength(10); // 48000 in -> exactly 16000 out (see Resampler test) = 10 frames
 });
 
 test('pause stops frames at once, drops the partial frame, resume continues the sequence', () => {
@@ -87,8 +86,10 @@ test('pause stops frames at once, drops the partial frame, resume continues the 
   expect(frames).toHaveLength(0);
   expect(levels.at(-1)).toBe(0);
   p.resume();
-  feed(p, tone);
-  expect(frames).toHaveLength(1); // the old half frame was dropped, so exactly one fresh frame
+  p.push(tone.subarray(0, 800));
+  expect(frames).toHaveLength(0); // had the old 800 been kept, these 800 would complete a frame
+  p.push(tone.subarray(800));
+  expect(frames).toHaveLength(1);
   expect(seqOf(frames[0])).toBe(0);
   feed(p, tone);
   expect(seqOf(frames[1])).toBe(1);

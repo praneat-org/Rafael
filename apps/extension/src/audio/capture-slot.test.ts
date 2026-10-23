@@ -69,3 +69,34 @@ test('pause while starting is applied as soon as capture is up; resume cancels i
   await p2;
   expect(h2.pause).not.toHaveBeenCalled();
 });
+
+test('stop() after a handle was accepted stops its streams and drops it', async () => {
+  const s = new CaptureSlot();
+  const h = handle();
+  await s.begin(async () => h, vi.fn());
+  s.stop();
+  expect(h.stop).toHaveBeenCalledOnce();
+  s.pause();
+  s.resume();
+  expect(h.pause).not.toHaveBeenCalled();
+  expect(h.resume).not.toHaveBeenCalled();
+});
+
+test('a new begin() after an accepted handle stops the old one and makes its isCurrent() false', async () => {
+  const s = new CaptureSlot();
+  const h1 = handle();
+  let cur1: () => boolean = () => false;
+  await s.begin(async (c) => {
+    cur1 = c;
+    return h1;
+  }, vi.fn());
+  expect(cur1()).toBe(true);
+  const h2 = handle();
+  await s.begin(async () => h2, vi.fn());
+  expect(h1.stop).toHaveBeenCalledOnce();
+  expect(cur1()).toBe(false);
+  expect(h2.stop).not.toHaveBeenCalled();
+  s.pause();
+  expect(h1.pause).not.toHaveBeenCalled();
+  expect(h2.pause).toHaveBeenCalledOnce();
+});
