@@ -3,10 +3,14 @@ import { createApp } from './app.js';
 import { denyAll, devFake, type TokenVerifier } from './auth/verifier.js';
 import { log } from './log.js';
 
-const prod = process.env.NODE_ENV === 'production';
-const dev = process.env.DEV_FAKE_AUTH === '1' && !prod;
+// fail-closed: dev conveniences only when explicitly NODE_ENV=development and not on Cloud Run
+const isDev = process.env.NODE_ENV === 'development' && !process.env.K_SERVICE;
+if (process.env.DEV_FAKE_AUTH !== undefined && !(isDev && process.env.DEV_FAKE_AUTH === '1')) {
+  log('fatal', { reason: 'DEV_FAKE_AUTH set outside explicit development env' });
+  process.exit(1);
+}
 // real verifier comes with BE-87; until then everything but dev-fake is rejected
-const verifier: TokenVerifier = dev ? devFake : denyAll;
+const verifier: TokenVerifier = process.env.DEV_FAKE_AUTH === '1' ? devFake : denyAll;
 
 const server = createApp({
   verifier,
@@ -14,7 +18,7 @@ const server = createApp({
     .split(',')
     .filter(Boolean)
     .map((id) => `chrome-extension://${id.trim()}`),
-  allowLocalhost: !prod,
+  allowLocalhost: isDev,
 }).listen(Number(process.env.PORT ?? 8080), () => {
   const { port } = server.address() as AddressInfo;
   log('listening', { port });

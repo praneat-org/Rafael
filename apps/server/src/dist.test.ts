@@ -30,3 +30,33 @@ test('built server answers /api/health and speaks protocol v1 on /ws', async () 
     child.kill();
   }
 });
+
+// fail-closed: fake auth must never start outside an explicit development env
+test.each([
+  ['K_SERVICE set, no NODE_ENV', { K_SERVICE: 'rafael' }],
+  ['NODE_ENV=Production', { NODE_ENV: 'Production' }],
+  ['NODE_ENV=prod', { NODE_ENV: 'prod' }],
+  ['development but on Cloud Run', { NODE_ENV: 'development', K_SERVICE: 'rafael' }],
+])('DEV_FAKE_AUTH refuses to start: %s', async (_name, env) => {
+  const child = spawn('node', ['dist/index.js'], {
+    env: { PATH: process.env.PATH, PORT: '0', DEV_FAKE_AUTH: '1', ...env },
+  });
+  const code = await new Promise((resolve) => child.once('exit', resolve));
+  expect(code).toBe(1);
+});
+
+test('localhost Origin is rejected unless NODE_ENV=development', async () => {
+  const child = spawn('node', ['dist/index.js'], { env: { PATH: process.env.PATH, PORT: '0' } });
+  try {
+    const port = await new Promise<number>((resolve) => {
+      createInterface({ input: child.stdout }).once('line', (l) => resolve(JSON.parse(l).port));
+    });
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: 'http://localhost' });
+    const status = await new Promise((resolve) =>
+      ws.once('unexpected-response', (_req, res) => resolve(res.statusCode)),
+    );
+    expect(status).toBe(403);
+  } finally {
+    child.kill();
+  }
+});
