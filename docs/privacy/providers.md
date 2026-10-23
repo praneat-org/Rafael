@@ -62,15 +62,15 @@ We call the regional endpoint in asia-southeast1 (same as Cloud Run), but "Endpo
 
 ## Sources (checked 2026-10-24)
 
-[1]: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/data-governance
-[2]: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/locations
-[3]: https://docs.cloud.google.com/speech-to-text/docs/data-logging
-[4]: https://docs.cloud.google.com/speech-to-text/docs/models/chirp-3
-[5]: https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program
-[6]: https://deepgram.com/learn/deepgram-eu-endpoint-now-generally-available  <!-- (fetched) -->
-[7]: https://deepgram.com/learn/deepgram-india-endpoint-now-generally-available  <!-- (search snippet) -->
-[8]: https://developers.deepgram.com/docs/models-languages-overview
-[9]: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/context-cache/context-cache-overview
-[10]: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/abuse-monitoring
-[11]: https://cloud.google.com/terms/data-processing-addendum/  <!-- (first 100k chars read; subprocessors/transfers not read) -->
-[12]: https://developers.google.com/terms/api-services-user-data-policy
+1. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/data-governance
+2. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/locations
+3. https://docs.cloud.google.com/speech-to-text/docs/data-logging
+4. https://docs.cloud.google.com/speech-to-text/docs/models/chirp-3
+5. https://developers.deepgram.com/docs/the-deepgram-model-improvement-partnership-program
+6. https://deepgram.com/learn/deepgram-eu-endpoint-now-generally-available (fetched)
+7. https://deepgram.com/learn/deepgram-india-endpoint-now-generally-available (search snippet)
+8. https://developers.deepgram.com/docs/models-languages-overview
+9. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/context-cache/context-cache-overview
+10. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/abuse-monitoring
+11. https://cloud.google.com/terms/data-processing-addendum/ (first 100k chars read; subprocessors/transfers not read)
+12. https://developers.google.com/terms/api-services-user-data-policy
