@@ -8,7 +8,7 @@ import {
   parseClientMessage,
   parseServerMessage,
   SAMPLES_PER_FRAME,
-} from './index';
+} from './index.js';
 
 const j = (o: unknown) => JSON.stringify(o);
 

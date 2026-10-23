@@ -2,7 +2,7 @@
 // Only zod + local files: no React / chrome.* / DOM / Node imports.
 import { z } from 'zod';
 
-export * from './audio';
+export * from './audio.js';
 
 export const PROTOCOL_VERSION = 1;
 
