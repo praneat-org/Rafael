@@ -24,6 +24,30 @@ export function buildMockScript(): ServerMessage[] {
   ];
 }
 
+/** Reply to `ask` in mock mode: a streaming cue (placeholder Thai text, not deal content). */
+export function buildAskScript(question: string): ServerMessage[] {
+  const cueId = `ask-${Math.random().toString(36).slice(2, 8)}`;
+  const base = {
+    v: 1 as const,
+    t: 'cue' as const,
+    cueId,
+    question,
+    sources: [{ file: 'example.pdf', fileId: 'file-1', locator: 'หน้า 3' }],
+    latencyMs: 1800,
+    notFound: false,
+  };
+  const bullets = [
+    'ราคาเริ่มต้นต่อผู้ใช้ต่อเดือน ตามแพ็กเกจมาตรฐาน',
+    'ติดตั้งและเริ่มใช้งานได้ภายในหนึ่งสัปดาห์',
+    'รองรับการเชื่อมต่อกับระบบเดิมของลูกค้า',
+  ];
+  return [
+    { ...base, partial: true, bullets: [bullets[0]?.slice(0, 18) ?? ''] },
+    { ...base, partial: true, bullets: bullets.slice(0, 2) },
+    { ...base, partial: false, bullets },
+  ];
+}
+
 export class MockTransport implements Transport {
   private msgCbs = new Set<(m: ServerMessage) => void>();
   private statusCbs = new Set<(s: TransportStatus) => void>();
@@ -52,6 +76,10 @@ export class MockTransport implements Transport {
     }
     if (msg.t === 'session.start') {
       buildMockScript().forEach((m, i) => {
+        this.later(() => this.emit(m), this.latencyMs * (i + 1));
+      });
+    } else if (msg.t === 'ask') {
+      buildAskScript(msg.text).forEach((m, i) => {
         this.later(() => this.emit(m), this.latencyMs * (i + 1));
       });
     } else if (msg.t === 'session.end') {

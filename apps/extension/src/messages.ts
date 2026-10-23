@@ -13,6 +13,9 @@ export type PanelToOffscreen =
       wavBase64?: string;
     }
   | { k: 'end' }
+  | { k: 'pause' }
+  | { k: 'resume' }
+  | { k: 'ask'; text: string }
   | { k: 'reset' };
 
 export type OffscreenToPanel = { k: 'state'; state: SessionState };

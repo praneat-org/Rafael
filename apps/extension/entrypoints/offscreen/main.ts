@@ -48,7 +48,19 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
 
 function onCommand(cmd: PanelToOffscreen) {
   if (cmd.k === 'start') start(cmd);
-  else if (cmd.k === 'end') {
+  else if (cmd.k === 'pause' || cmd.k === 'resume') {
+    if (state.phase !== 'live') return;
+    // Pause stops audio immediately, before the server is told. ponytail: mock audio is not
+    // restarted on resume; real capture (FE-36) pauses / resumes its own stream here.
+    if (cmd.k === 'pause') {
+      stopAudio?.();
+      stopAudio = null;
+    }
+    transport?.send({ v: 1, t: cmd.k });
+    dispatch({ k: cmd.k });
+  } else if (cmd.k === 'ask') {
+    if (state.phase === 'live') transport?.send({ v: 1, t: 'ask', text: cmd.text.slice(0, 2000) });
+  } else if (cmd.k === 'end') {
     transport?.send({ v: 1, t: 'session.end' });
     teardown();
     dispatch({ k: 'end' });
