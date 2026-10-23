@@ -32,6 +32,13 @@ type Entry = { session: Session; ttl?: NodeJS.Timeout; grace?: NodeJS.Timeout };
 export class MemorySessionStore implements SessionStore {
   private byId = new Map<string, Entry>();
   private byToken = new Map<string, string>();
+  private endHooks: ((s: Session) => void)[] = [];
+
+  /** Cleanup hook run on every end (session.end, grace, 24 h TTL). Transcript / pack / Gemini
+   * CachedContent owners (BE-89/91/94) register here so nothing outlives the session (D11, D21). */
+  onEnd(fn: (s: Session) => void) {
+    this.endHooks.push(fn);
+  }
 
   constructor(
     private ttlMs = SESSION_TTL_MS,
@@ -95,6 +102,11 @@ export class MemorySessionStore implements SessionStore {
     clearTimeout(e.grace);
     this.byId.delete(id);
     this.byToken.delete(e.session.resumeToken);
+    for (const fn of this.endHooks) {
+      try {
+        fn(e.session);
+      } catch {} // one failing cleanup must not block the others or the socket close
+    }
     e.session.socket?.close(1000, 'session ended');
   }
 }
