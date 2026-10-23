@@ -24,7 +24,7 @@ apps/server/src/
 - deploy ผ่าน `cloudbuild*.yaml` · region `asia-southeast1` · `--timeout=3600` (สูงสุด) → WebSocket ถูกตัดที่ 60 นาทีเสมอ client ต้อง reconnect + resume
 - `--session-affinity` (best effort — ไม่รับประกัน) · instance ถูก scale-in / redeploy ได้ → session ใน memory หาย → resume ไม่เจอ → ตอบ error code ให้ client เริ่ม session ใหม่ ไม่ crash
 - SIGTERM → ปิดทุก socket ด้วย close code ที่ protocol กำหนด (client รู้ว่าให้ reconnect) ภายใน 10 วิ
-- secret (Anthropic key, STT key, OAuth client id ที่ใช้เทียบ) ผ่าน `--set-secrets` จาก Secret Manager → อ่านจาก `process.env` เท่านั้น · ห้ามอยู่ใน `cloudbuild*.yaml` / Dockerfile / repo
+- secret (LLM / STT key ถ้ามี, OAuth client id ที่ใช้เทียบ) ผ่าน `--set-secrets` จาก Secret Manager → อ่านจาก `process.env` เท่านั้น · ห้ามอยู่ใน `cloudbuild*.yaml` / Dockerfile / repo
 - Dockerfile: multi-stage, `pnpm deploy --prod`, รันด้วย user ไม่ใช่ root
 
 ## WebSocket `/ws`

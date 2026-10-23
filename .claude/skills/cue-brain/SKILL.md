@@ -1,6 +1,6 @@
 ---
 name: cue-brain
-description: วิธีเขียน apps/server/src/brain ของ Rafael — Detector จับคำถามลูกค้าจาก transcript, Answerer ตอบจาก Session Pack เท่านั้นพร้อม anchor [file › page], prompt caching, ตรวจ anchor หลัง generate, stream partial cue, latency budget ต่อ stage และ eval ใช้เมื่อแตะ brain/, eval/ หรือ prompt
+description: วิธีเขียน apps/server/src/brain ของ Rafael — Detector จับคำถามลูกค้าจาก transcript, Answerer ตอบจาก Session Pack เท่านั้นพร้อม anchor [file › page], context caching (Gemini ผ่าน Vertex AI, D20), ตรวจ anchor หลัง generate, stream partial cue, latency budget ต่อ stage และ eval ใช้เมื่อแตะ brain/, eval/ หรือ prompt
 ---
 
 # Cue brain — Rafael
@@ -8,6 +8,7 @@ description: วิธีเขียน apps/server/src/brain ของ Rafael 
 transcript (จาก STT) → **Detector** → คำถาม → **Answerer** (+ Session Pack) → cue (≤3 bullet, ทุก bullet มี anchor) → stream ไป extension
 
 ## Config
+- LLM = Google Gemini ผ่าน Vertex AI (D20) เรียกผ่าน `LlmClient` (provider-agnostic) · model ยังไม่ล็อก
 - model id มาจาก env / config: `DETECTOR_MODEL` (ตัวเล็ก เร็ว), `ANSWERER_MODEL` · ห้าม hardcode ในโค้ดหรือ prompt
 - ค่าที่ปรับได้ (ขนาด window, dedupe, จำนวน bullet, max_tokens) อยู่ใน config เดียว ไม่กระจาย
 
@@ -20,8 +21,8 @@ transcript (จาก STT) → **Detector** → คำถาม → **Answerer**
 
 ## Answerer
 - Session Pack = ข้อความที่ดึงจาก Drive แบ่งเป็นชิ้นที่มี id `[file › page]` ชัด (file = ชื่อไฟล์, page = หน้า / slide / section)
-- ใส่ pack เป็น **cached prefix**: block ใน `system` ที่ลำดับและเนื้อหาไม่เปลี่ยนตลอด session + `cache_control: { type: 'ephemeral' }` ที่ block สุดท้ายของ pack · คำถามอยู่ใน `messages` หลัง prefix เสมอ (เปลี่ยนอะไรก่อน breakpoint = cache miss ทุกครั้ง)
-- warm cache ตอนโหลด pack เสร็จ (เรียกสั้น ๆ 1 ครั้ง) เพื่อให้คำถามแรกไม่ช้า · cache หมดอายุเมื่อเงียบนาน → ดู `usage.cache_read_input_tokens` ใน log เพื่อยืนยันว่า hit
+- ใส่ pack เป็น **cached prefix**: block ใน `system` ที่ลำดับและเนื้อหาไม่เปลี่ยนตลอด session + สร้างเป็น Gemini context cache (`cachedContent`) จาก prefix นั้น (ผ่าน `LlmClient`) · คำถามอยู่ใน `messages` หลัง prefix เสมอ (เปลี่ยน prefix = cache miss ทุกครั้ง)
+- warm cache ตอนโหลด pack เสร็จ (เรียกสั้น ๆ 1 ครั้ง) เพื่อให้คำถามแรกไม่ช้า · cache หมดอายุตาม `ttl` / `expireTime` (ไม่ใช่ idle) → ตั้ง ttl สั้น (≤ 1 ชม.) ต่ออายุระหว่าง session ยังอยู่ และ **ลบ `cachedContent` ทันทีเมื่อ `session.end` / session หมดอายุ** (D11) · `LlmClient` อ่าน `cachedContentTokenCount` จาก usage metadata แล้วแปลงเป็น `cacheReadTokens` ก่อน log เพื่อยืนยันว่า hit
 - กติกาใน prompt: ตอบจาก pack เท่านั้น · ≤ 3 bullet · bullet ละ ≤ 15 คำ · ทุก bullet ลงท้ายด้วย anchor `[file › page]` ที่มีใน pack · ไม่มีข้อมูล → `notFound`
 - **stream:** ใช้ streaming API ส่ง partial cue ทุกครั้งที่ bullet ครบหนึ่งอัน (ไม่ส่งครึ่ง anchor) · first token ≤ 1200 ms
 
