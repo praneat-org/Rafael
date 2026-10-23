@@ -1,4 +1,26 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
+
+// spy on every pdf.js document so tests can assert it is released; failExtract forces the parse-error path
+const pdfSpy = vi.hoisted(() => ({
+  destroys: [] as ReturnType<typeof vi.fn>[],
+  failExtract: false,
+}));
+vi.mock('unpdf', async (orig) => {
+  const real = await orig<typeof import('unpdf')>();
+  return {
+    ...real,
+    getDocumentProxy: async (...a: Parameters<typeof real.getDocumentProxy>) => {
+      const doc = await real.getDocumentProxy(...a);
+      const destroy = vi.fn(doc.loadingTask.destroy.bind(doc.loadingTask));
+      doc.loadingTask.destroy = destroy;
+      pdfSpy.destroys.push(destroy);
+      return doc;
+    },
+    extractText: (...a: Parameters<typeof real.extractText>) =>
+      pdfSpy.failExtract ? Promise.reject(new Error('boom')) : real.extractText(...a),
+  };
+});
+
 import { createDriveProvider, type DriveFile, parseFolderId } from './drive.js';
 
 // Synthetic fixtures in the shape of the real API responses — no customer data.
@@ -200,4 +222,20 @@ test('PDF with no size in listing is capped while downloading', async () => {
   const { fn } = fakeFetch({ 'alt=media': () => new Response(pdf(['Alpha page'])) });
   const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 100 });
   expect(await p.readFile(file('application/pdf'))).toEqual({ unreadable: 'too large' });
+});
+
+test('pdf.js document is destroyed on success, parse error, and too-many-pages', async () => {
+  const { fn } = fakeFetch({ 'alt=media': () => new Response(pdf(['A', 'B'])) });
+  const read = (maxPdfPages?: number) =>
+    createDriveProvider({ accessToken: 't', fetch: fn, maxPdfPages }).readFile(
+      file('application/pdf'),
+    );
+  pdfSpy.destroys.length = 0;
+  expect(await read()).toHaveProperty('chunks');
+  expect(await read(1)).toEqual({ unreadable: 'too many pages' });
+  pdfSpy.failExtract = true;
+  expect(await read()).toEqual({ unreadable: 'read failed' });
+  pdfSpy.failExtract = false;
+  expect(pdfSpy.destroys).toHaveLength(3);
+  for (const d of pdfSpy.destroys) expect(d).toHaveBeenCalledTimes(1);
 });

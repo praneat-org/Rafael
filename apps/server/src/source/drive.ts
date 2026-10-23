@@ -24,6 +24,7 @@ export interface DriveOptions {
   accessToken: string; // user's drive.readonly token from the session (D13)
   fetch?: typeof fetch; // injectable for tests
   maxFileBytes?: number; // PDF download limit; larger => unreadable
+  maxPdfPages?: number; // bounds pdf.js parse work; more pages => unreadable
 }
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
@@ -90,6 +91,7 @@ async function readCapped(res: Response, max: number): Promise<Uint8Array | null
 export function createDriveProvider(opts: DriveOptions): SourceProvider {
   const f = opts.fetch ?? fetch;
   const maxBytes = opts.maxFileBytes ?? 20 * 1024 * 1024;
+  const maxPages = opts.maxPdfPages ?? 500;
 
   // errors carry only the status — never the response body (may echo content / token)
   async function get(url: string): Promise<Response> {
@@ -175,7 +177,14 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
           maxBytes,
         );
         if (!buf) return { unreadable: 'too large' };
-        const { text } = await extractText(await getDocumentProxy(buf), { mergePages: false });
+        const doc = await getDocumentProxy(buf);
+        let text: string[];
+        try {
+          if (doc.numPages > maxPages) return { unreadable: 'too many pages' };
+          ({ text } = await extractText(doc, { mergePages: false }));
+        } finally {
+          await doc.loadingTask.destroy(); // release pdf.js worker / page memory on every path
+        }
         const chunks = text.flatMap((t, i) =>
           t.trim() ? [{ locator: `หน้า ${i + 1}`, text: t.trim() }] : [],
         );
