@@ -28,7 +28,7 @@ function start(extra: Parameters<typeof createApp>[0] = {}) {
   const app = createApp({ store, verifier, allowedOrigins: [ORIGIN], ...extra });
   servers.push(app);
   app.listen(0);
-  return { store, port: (app.address() as AddressInfo).port };
+  return { app, store, port: (app.address() as AddressInfo).port };
 }
 
 type Client = {
@@ -216,9 +216,12 @@ test('hung verifier still hits the hello timeout (4408)', async () => {
 
 test('socket closed while session.start is queued behind a slow verifier creates no session', async () => {
   let release: () => void = () => {};
+  let verifierCalled: () => void = () => {};
+  const called = new Promise<void>((r) => (verifierCalled = r));
   const slow: TokenVerifier = () =>
     new Promise((res) => {
       release = () => res({ email: 'alice@praneat.com' });
+      verifierCalled();
     });
   class CountingStore extends MemorySessionStore {
     created = 0;
@@ -228,14 +231,15 @@ test('socket closed while session.start is queued behind a slow verifier creates
     }
   }
   const store = new CountingStore();
-  const { port } = start({ store, verifier: slow });
+  const { app, port } = start({ store, verifier: slow });
+  const serverSideClosed = new Promise((r) => app.once('connection', (sock) => sock.once('close', r)));
   const c = connect(port);
   await open(c);
   send(c, { t: 'hello', accessToken: 'x' });
   send(c, { t: 'session.start', packId: 'p' });
-  await new Promise((r) => setTimeout(r, 50)); // both messages reach the server and queue up
+  await called; // hello is inside the verifier; session.start is queued behind it
   c.ws.terminate();
-  await c.closed;
+  await serverSideClosed; // server has seen the close, so its socket is no longer OPEN
   release();
   await new Promise((r) => setTimeout(r, 50)); // let the queued session.start run
   expect(store.created).toBe(0);
