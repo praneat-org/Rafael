@@ -45,6 +45,9 @@ reviews:
         A wrong cue is worse than no cue (D10). Every cue with notFound=false must carry sources, and every anchor
         must be checked against the Session Pack after generation — bullets with unknown anchors are dropped.
         Answers come only from the Session Pack (no general knowledge). Session Pack goes in a stable cached prefix (Gemini context caching via Vertex AI, D20), called through a provider-agnostic LlmClient.
+        Vertex AI CachedContent is the one approved exception to D11's memory-only rule (D20): the server creates it in our own GCP project,
+        with a short ttl (<= 1h) renewed only while the session is alive, and must delete it on session.end or session expiry
+        (missing delete = Major). Never cache audio, transcripts or cues, and never log cache content.
         Model ids come from config (DETECTOR_MODEL / ANSWERER_MODEL), never hard-coded. Latency is logged per stage.
     - path: "packages/protocol/**"
       instructions: |
