@@ -12,7 +12,9 @@ export type BrainConfig = {
   detector: {
     windowMs: number;
     dedupeMs: number;
-    /** per-attempt timeout; Detector budget is 600 ms, retry once on failure */
+    /** stage budget (skill cue-brain); exceeding it logs a warn */
+    budgetMs: number;
+    /** per-attempt timeout; worst case = 2 x timeoutMs (one retry) */
     timeoutMs: number;
     maxTokens: number;
     /** char-bigram Dice similarity at/above which two questions count as the same */
@@ -28,9 +30,10 @@ export function loadBrainConfig(env: Record<string, string | undefined>): BrainC
     detector: {
       windowMs: 30_000,
       dedupeMs: 60_000,
-      timeoutMs: 1_500,
+      budgetMs: 600,
+      timeoutMs: 400,
       maxTokens: 200,
-      dedupeSimilarity: 0.8,
+      dedupeSimilarity: 0.85,
     },
   };
 }

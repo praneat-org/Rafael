@@ -40,8 +40,9 @@ Positive examples (isQuestion=true, fromCustomer=true):
   "ระบบรองรับผู้ใช้พร้อมกันกี่คนครับ"
   "How long does the onboarding take?"`;
 
-// Thai politeness particles / English fillers carry no meaning for dedupe.
-const FILLER = /(ครับ|ค่ะ|คะ|นะครับ|นะคะ|นะ|หรือเปล่า|หรือไม่|please|\?|\u0e2f)/gi;
+// Politeness particles only when they end a word/phrase (followed by space, punctuation or end).
+// Never strip mid-word: "ชนะ", "คะแนน" must survive. Bare "นะ" is not stripped (ambiguous with "ชนะ").
+const FILLER = /(?:ครับ|ค่ะ|คะ|please)(?=[\s\p{P}]|$)/giu;
 
 export function normalizeQuestion(q: string): string {
   return q
@@ -77,6 +78,8 @@ export type DetectorDeps = {
   now?: () => number;
   perf?: () => number;
   log?: (e: DetectorLog) => void;
+  /** called (no text) when a segment exceeds the stage budget */
+  warn?: (e: { stage: 'detector'; ms: number; budgetMs: number }) => void;
 };
 
 /** One Detector per session: it owns that session's window and dedupe history (memory only, D11). */
@@ -126,9 +129,11 @@ export function createDetector(deps: DetectorDeps) {
       }
     }
     const done = (r: DetectorResult): DetectorResult => {
+      const ms = Math.round(perf() - t0);
+      if (ms > cfg.budgetMs) deps.warn?.({ stage: 'detector', ms, budgetMs: cfg.budgetMs });
       log?.({
         stage: 'detector',
-        ms: Math.round(perf() - t0),
+        ms,
         model: config.detectorModel,
         inputTokens: res?.inputTokens,
         outputTokens: res?.outputTokens,

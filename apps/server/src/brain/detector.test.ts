@@ -119,6 +119,20 @@ describe('detector', () => {
     expect(bad.reqs).toHaveLength(2);
   });
 
+  it('warns (no text) when a segment exceeds the 600 ms budget', async () => {
+    const f = fake([no]);
+    let p = 0;
+    const warns: unknown[] = [];
+    const d = createDetector({
+      llm: f.llm,
+      config,
+      perf: () => (p += 700),
+      warn: (e) => warns.push(e),
+    });
+    await d.onFinalSegment({ text: 'ข้อความลับ' });
+    expect(warns).toEqual([{ stage: 'detector', ms: 700, budgetMs: 600 }]);
+  });
+
   it('log never contains transcript or question text (D11)', async () => {
     const s = setup([q('คำถามลับของลูกค้า')]);
     await s.d.onFinalSegment({ text: 'ข้อความลับ' });
@@ -128,12 +142,33 @@ describe('detector', () => {
 });
 
 describe('dedupe helpers', () => {
-  it('normalize strips particles and punctuation', () => {
+  it('normalize strips trailing particles and punctuation', () => {
     expect(normalizeQuestion('ราคาเท่าไหร่ครับ?')).toBe('ราคาเท่าไหร่');
+    expect(normalizeQuestion('ขอถามหน่อยค่ะ ราคาเท่าไหร่คะ')).toBe('ขอถามหน่อยราคาเท่าไหร่');
+  });
+  it('normalize never cuts particles inside words', () => {
+    expect(normalizeQuestion('ใครชนะ')).toBe('ใครชนะ');
+    expect(normalizeQuestion('คะแนนเท่าไหร่')).toBe('คะแนนเท่าไหร่');
+    expect(normalizeQuestion('ครับผมขอถาม')).toBe('ครับผมขอถาม');
   });
   it('similarity', () => {
     expect(similarity('abc', 'abc')).toBe(1);
     expect(similarity('ราคาเท่าไหร่', 'ผู้ใช้พร้อมกันกี่คน')).toBeLessThan(0.3);
+  });
+  const sim = (a: string, b: string) => similarity(normalizeQuestion(a), normalizeQuestion(b));
+  it('true duplicates score well above threshold, similar-but-different well below', () => {
+    const t = loadBrainConfig({ DETECTOR_MODEL: 'm' }).detector.dedupeSimilarity;
+    const dup = [
+      sim('ระบบรองรับผู้ใช้พร้อมกันกี่คน', 'ระบบรองรับผู้ใช้พร้อมกันกี่คนครับ'),
+      sim('ราคาต่อเดือนเท่าไหร่', 'ราคาต่อเดือนเท่าไหร่คะ?'),
+    ];
+    const diff = [
+      sim('ระบบรองรับผู้ใช้พร้อมกันกี่คน', 'ระบบรองรับกี่ภาษา'),
+      sim('ราคาต่อเดือนเท่าไหร่', 'ราคาต่อปีเท่าไหร่'),
+      sim('ใครชนะการประมูลครั้งก่อน', 'คะแนนการประมูลครั้งก่อนเท่าไหร่'),
+    ];
+    for (const d of dup) expect(d).toBeGreaterThanOrEqual(t + 0.1);
+    for (const d of diff) expect(d).toBeLessThanOrEqual(t - 0.1);
   });
 });
 
