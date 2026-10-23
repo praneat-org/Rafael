@@ -40,12 +40,12 @@ Scope note: BE-93's title says "Claude API". Per **D20** the LLM is **Google Gem
 
 - Setting: `mip_opt_out=true` on every request (live streaming included). [5]
 - Retention for opted-out requests: only as needed to process. Fuller retention terms, DPA, subprocessor list: **UNVERIFIED**.
-- Region: EU endpoint `api.eu.deepgram.com` (AWS EU, voice data stays in the EU). Dedicated single-tenant deployment possible in a chosen cloud region. No Singapore/Thailand endpoint found. India/Australia posts say operational metadata and billing are processed in the US (EU equivalent UNVERIFIED). [6][7]
+- Region: EU endpoint `api.eu.deepgram.com`, "all processing fully contained within the EU" [6]. No Singapore/Thailand endpoint found. **UNVERIFIED** (search snippets only, not on [6]): AWS EU hosting, dedicated single-tenant deployment, and US processing of operational metadata / billing for regional endpoints [7].
 - Thai: Nova-3 supports `th`. [8]
 
 ## Google Drive API (server reads the Session Pack with the user's `drive.readonly` token)
 
-- Data: our server sends the user's access token and file requests; Drive returns the pack file content. Drive is a processor of Praneat's own Workspace data under Praneat's Google agreement and the Google Cloud Data Processing Addendum (formerly the Workspace "Data Processing Amendment"): Google is processor, deletion within max 180 days after term end [11]. Drive's own retention of the files is a Praneat Workspace admin setting: **not found / not researched** (not Rafael-controlled).
+- Data: our server sends the user's access token and file requests; Drive returns the pack file content. Drive is a processor of Praneat's own Workspace data under Praneat's Google agreement and the Google Cloud Data Processing Addendum (formerly the Workspace "Data Processing Amendment"; that it lists Drive among covered services is **UNVERIFIED**, Appendix not read): Google is processor, deletion within max 180 days after term end [11]. Drive's own retention of the files is a Praneat Workspace admin setting: **not found / not researched** (not Rafael-controlled).
 - Our app is bound by the Google API Services User Data Policy: Limited Use (use only for user-facing features, no transfer except listed exceptions, human reading only in narrow cases, data secured in transit and at rest). The page does not mention AI model training and sets no retention period. [12] Open question for DPO / legal: whether sending pack content to Gemini is a permitted transfer.
 - Token handling: in memory only, per session (D11). Proof card: BE-85 (#8, merged) for in-memory session state; the Drive reader card was not checked here.
 
