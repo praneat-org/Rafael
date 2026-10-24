@@ -18,6 +18,12 @@ export class Resampler {
     this.step = from / to;
   }
 
+  /** Drop the partial window (e.g. across a pause) so old audio never blends into new. */
+  reset(): void {
+    this.acc = 0;
+    this.filled = 0;
+  }
+
   process(input: Float32Array): Float32Array {
     const out: number[] = [];
     for (const x of input) {
@@ -83,6 +89,7 @@ export class AudioPipeline {
   pause(): void {
     this.paused = true;
     this.n = 0;
+    this.resampler?.reset();
     this.onLevel(0);
   }
 

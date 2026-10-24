@@ -101,3 +101,14 @@ test('level is reported per frame', () => {
   expect(levels).toHaveLength(1);
   expect(levels[0]).toBeGreaterThan(0.6); // sine RMS ~0.707
 });
+
+test('pause drops the resampler partial window: first output after resume depends only on post-resume input', () => {
+  const levels: number[] = [];
+  const p = new AudioPipeline({ sendAudio: () => {} }, (r) => levels.push(r), 48000);
+  p.push(new Float32Array(1).fill(1)); // 1 of 3 samples of a window, then pause
+  p.pause();
+  p.resume();
+  levels.length = 0;
+  p.push(new Float32Array(4800)); // silence: exactly one frame, all zero unless the old 1.0 leaked in
+  expect(levels).toEqual([0]);
+});
