@@ -17,6 +17,13 @@ const ALLOWED = [
   'inputTokens',
   'cacheReadTokens',
   'outputTokens',
+  // pack builder (BE-91): counts / ms only, never content
+  'tokens',
+  'max',
+  'files',
+  'unreadable',
+  'anchors',
+  'buildMs',
 ] as const;
 type Allowed = (typeof ALLOWED)[number];
 const allowed = new Set<string>(ALLOWED);
