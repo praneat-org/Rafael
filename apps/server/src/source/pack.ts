@@ -120,6 +120,16 @@ export async function buildPack(
   const now = o.now ?? Date.now;
   const count: TokenCounter = o.countTokens ?? estimateTokens;
   const max = o.maxTokens ?? 150_000;
+  const concurrency = o.concurrency ?? 4;
+  const warnRatio = o.warnRatio ?? 0.8;
+  const maxHints = o.maxHints ?? 100;
+  // bad options fail loudly up front (0 workers would otherwise surface as a TypeError later)
+  if (!(Number.isFinite(max) && max > 0)) throw new RangeError('maxTokens must be > 0');
+  if (!Number.isInteger(concurrency) || concurrency < 1)
+    throw new RangeError('concurrency must be a positive integer');
+  if (!(warnRatio >= 0 && warnRatio <= 1)) throw new RangeError('warnRatio must be within 0..1');
+  if (!Number.isInteger(maxHints) || maxHints < 0)
+    throw new RangeError('maxHints must be a non-negative integer');
   const t0 = now();
 
   const listed = await provider.listFolder(folder);
@@ -145,10 +155,14 @@ export async function buildPack(
   // bounded-concurrency reads; results land by index so output order never depends on timing
   let next = 0;
   await Promise.all(
-    Array.from({ length: Math.min(o.concurrency ?? 4, order.length) }, async () => {
+    Array.from({ length: Math.min(concurrency, order.length) }, async () => {
       while (next < order.length) {
         const i = next++;
-        results[i] = await provider.readFile(order[i]!);
+        try {
+          results[i] = await provider.readFile(order[i]!);
+        } catch {
+          results[i] = { unreadable: 'read failed' }; // fixed text, never e.message (D11)
+        }
         readDone.push(order[i]!);
         if ('unreadable' in results[i]!) unreadableDone.push(order[i]!);
         emit('loading');
@@ -196,7 +210,7 @@ export async function buildPack(
       perFile.sort((a, b) => b.tokens - a.tokens || cmp(a.file, b.file)),
     );
   }
-  if (tokens > max * (o.warnRatio ?? 0.8)) log('pack.near_limit', { tokens, max });
+  if (tokens > max * warnRatio) log('pack.near_limit', { tokens, max });
 
   const buildMs = now() - t0;
   emit('ready', tokens);

@@ -271,6 +271,41 @@ test('reads are capped at `concurrency` in flight', async () => {
   expect(peak).toBe(2);
 });
 
+test('bad options throw RangeError up front', async () => {
+  const p = provider([F('1', 'A')], { '1': doc('x') });
+  for (const o of [
+    { concurrency: 0 },
+    { concurrency: -1 },
+    { concurrency: Number.NaN },
+    { concurrency: 1.5 },
+    { maxTokens: 0 },
+    { maxTokens: Number.NaN },
+    { warnRatio: -0.1 },
+    { warnRatio: 1.1 },
+    { warnRatio: Number.NaN },
+    { maxHints: -1 },
+  ])
+    await expect(buildPack(p, 'x', o), JSON.stringify(o)).rejects.toBeInstanceOf(RangeError);
+  await expect(buildPack(p, 'x', { warnRatio: 0, maxHints: 0 })).resolves.toBeDefined();
+});
+
+test('a readFile that rejects marks the file unreadable (fixed reason, no error text), pack still builds', async () => {
+  const msgs: ServerMessage[] = [];
+  const p: SourceProvider = {
+    listFolder: async () => [F('1', 'Good'), F('2', 'Bad')],
+    readFile: async (f) => {
+      if (f.fileId === '2') throw new Error('secret-from-provider');
+      return doc('ok');
+    },
+  };
+  const pack = await buildPack(p, 'x', { onStatus: (m) => msgs.push(m) });
+  expect(pack.unreadable).toEqual([{ file: 'Bad', fileId: '2', reason: 'read failed' }]);
+  expect(pack.anchors).toEqual(['[Good › เอกสาร]']);
+  const last = msgs.at(-1)!;
+  expect(last.t === 'pack.status' && last.unreadable).toEqual([{ file: 'Bad', fileId: '2' }]);
+  expect(JSON.stringify(pack)).not.toContain('secret-from-provider');
+});
+
 test('PACK_TOO_LARGE still thrown when a per-file count would fail (per-file uses the estimate)', async () => {
   const states: string[] = [];
   const reads = { '1': doc('x'), '2': doc('y') };
