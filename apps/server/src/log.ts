@@ -2,6 +2,7 @@
 // a compile error for literals and is dropped at runtime (only a count is logged: key names can leak too).
 const ALLOWED = [
   'sessionId',
+  'fileId', // Drive file id (an id, never content)
   'emailHash',
   'stage',
   'ms',

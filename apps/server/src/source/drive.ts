@@ -23,7 +23,7 @@ export interface SourceProvider {
 export interface DriveOptions {
   accessToken: string; // user's drive.readonly token from the session (D13)
   fetch?: typeof fetch; // injectable for tests
-  maxFileBytes?: number; // PDF download limit; larger => unreadable
+  maxFileBytes?: number; // cap on every response body (list, export, API JSON, PDF); larger => unreadable
   maxPdfPages?: number; // bounds pdf.js parse work; more pages => unreadable
 }
 
@@ -136,7 +136,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         });
       pageToken = r.nextPageToken;
     } while (pageToken);
-    log('source.list', { files: out.length });
+    log('source.list', { count: out.length });
     return out;
   }
 
@@ -214,8 +214,8 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
     }
     log('source.read', {
       fileId: file.fileId,
-      chunks: 'chunks' in res ? res.chunks.length : 0,
-      unreadable: 'unreadable' in res,
+      count: 'chunks' in res ? res.chunks.length : 0,
+      ...('unreadable' in res ? { reason: res.unreadable } : {}), // our own constants / "google api <status>"
     });
     return res;
   }
