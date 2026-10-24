@@ -23,7 +23,8 @@ export interface SourceProvider {
 export interface DriveOptions {
   accessToken: string; // user's drive.readonly token from the session (D13)
   fetch?: typeof fetch; // injectable for tests
-  maxFileBytes?: number; // PDF download limit; larger => unreadable
+  maxFileBytes?: number; // cap on every response body (list, export, API JSON, PDF); larger => unreadable
+  requestTimeoutMs?: number; // deadline per request, covering fetch + body read (default 30s)
   maxPdfPages?: number; // bounds pdf.js parse work; more pages => unreadable
 }
 
@@ -92,14 +93,28 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
   const f = opts.fetch ?? fetch;
   const maxBytes = opts.maxFileBytes ?? 20 * 1024 * 1024;
   const maxPages = opts.maxPdfPages ?? 500;
+  const timeoutMs = opts.requestTimeoutMs ?? 30_000;
 
   // errors carry only the status — never the response body (may echo content / token)
-  async function get(url: string): Promise<Response> {
-    const res = await f(url, { headers: { Authorization: `Bearer ${opts.accessToken}` } });
+  async function get(url: string, signal: AbortSignal): Promise<Response> {
+    const res = await f(url, { headers: { Authorization: `Bearer ${opts.accessToken}` }, signal });
     if (!res.ok) throw new Error(`google api ${res.status}`);
     return res;
   }
-  const json = async <T>(url: string) => (await get(url)).json() as Promise<T>;
+  // every body is read through the byte cap (Docs/Sheets/Slides have no `size` to pre-check)
+  // and under one deadline: the race also fires for a fetch / stream that ignores the signal
+  const read = async (url: string, max: number) => {
+    const signal = AbortSignal.timeout(timeoutMs);
+    const timedOut = new Promise<never>((_, rej) =>
+      signal.addEventListener('abort', () => rej(new Error('timeout')), { once: true }),
+    );
+    const b = await Promise.race([get(url, signal).then((r) => readCapped(r, max)), timedOut]);
+    if (!b) throw new Error('too large');
+    return b;
+  };
+  const text = async (url: string, max = maxBytes) =>
+    new TextDecoder().decode(await read(url, max));
+  const json = async <T>(url: string, max = maxBytes) => JSON.parse(await text(url, max)) as T;
 
   async function listFolder(folderIdOrUrl: string): Promise<DriveFile[]> {
     const id = parseFolderId(folderIdOrUrl);
@@ -128,7 +143,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         });
       pageToken = r.nextPageToken;
     } while (pageToken);
-    log('source.list', { files: out.length });
+    log('source.list', { count: out.length });
     return out;
   }
 
@@ -138,8 +153,8 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       case M.doc: {
         const p = new URLSearchParams({ mimeType: 'text/markdown', supportsAllDrives: 'true' });
         // ponytail: Docs have no pages — one chunk; split by heading when packs need finer anchors
-        const text = await (await get(`${DRIVE}/files/${id}/export?${p}`)).text();
-        return text.trim() ? { chunks: [{ locator: 'เอกสาร', text }] } : { unreadable: 'empty' };
+        const md = await text(`${DRIVE}/files/${id}/export?${p}`);
+        return md.trim() ? { chunks: [{ locator: 'เอกสาร', text: md }] } : { unreadable: 'empty' };
       }
       case M.sheet: {
         const meta = await json<{
@@ -172,11 +187,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       }
       case M.pdf: {
         if (file.size !== undefined && file.size > maxBytes) return { unreadable: 'too large' };
-        const buf = await readCapped(
-          await get(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`),
-          maxBytes,
-        );
-        if (!buf) return { unreadable: 'too large' };
+        const buf = await read(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`, maxBytes);
         const doc = await getDocumentProxy(buf);
         let text: string[];
         try {
@@ -191,7 +202,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         return chunks.length ? { chunks } : { unreadable: 'no text layer (scanned?)' };
       }
       default:
-        return { unreadable: `unsupported mime ${file.mimeType}` };
+        return { unreadable: 'unsupported mime' };
     }
   }
 
@@ -203,13 +214,18 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       // message is our own `google api <status>` or a parser error — never file text
       res = {
         unreadable:
-          e instanceof Error && e.message.startsWith('google api') ? e.message : 'read failed',
+          e instanceof Error &&
+          (e.message.startsWith('google api') ||
+            e.message === 'too large' ||
+            e.message === 'timeout')
+            ? e.message
+            : 'read failed',
       };
     }
     log('source.read', {
       fileId: file.fileId,
-      chunks: 'chunks' in res ? res.chunks.length : 0,
-      unreadable: 'unreadable' in res,
+      count: 'chunks' in res ? res.chunks.length : 0,
+      ...('unreadable' in res ? { reason: res.unreadable } : {}), // our own constants / "google api <status>"
     });
     return res;
   }

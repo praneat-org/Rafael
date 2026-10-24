@@ -1,5 +1,5 @@
 import { ServerMessage } from '@rafael/protocol';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import type { DriveFile, ReadResult, SourceProvider } from './drive.js';
 import { buildPack, estimateTokens, PackStore, PackTooLargeError, renderPackText } from './pack.js';
 
@@ -102,6 +102,19 @@ test('chunks are the single source: text and anchors derive from them', async ()
   ]);
   expect(p.text).toBe(renderPackText(p.chunks));
   expect(p.anchors).toEqual(p.chunks.map((c) => c.anchor));
+});
+
+test('pack logs keep their fields (allowlisted) and never contain content', async () => {
+  const lines: string[] = [];
+  const spy = vi.spyOn(console, 'log').mockImplementation((l) => void lines.push(String(l)));
+  try {
+    await buildPack(provider([F('1', 'SecretName')], { '1': doc('secretbody') }), 'x');
+  } finally {
+    spy.mockRestore();
+  }
+  const built = JSON.parse(lines.find((l) => l.includes('pack.built'))!);
+  expect(built).toMatchObject({ tokens: expect.any(Number), files: 1, anchors: 1 });
+  expect(lines.join('\n')).not.toMatch(/droppedCount|secretbody|SecretName/);
 });
 
 test('anchor delimiters in file names are neutralised', async () => {
