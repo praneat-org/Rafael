@@ -26,10 +26,11 @@ export class CaptureSlot {
     }
   }
 
-  /** Wrap a frame/level callback: nothing gets out while paused, whether or not the handle exists yet. */
+  /** Wrap a frame/level callback: nothing gets out from an old generation or while paused, whether or not the handle exists yet. */
   guard<A extends unknown[]>(fn: (...a: A) => void): (...a: A) => void {
+    const g = this.gen; // call from inside start(): bound to this begin()'s generation
     return (...a) => {
-      if (!this.paused) fn(...a);
+      if (g === this.gen && !this.paused) fn(...a);
     };
   }
 

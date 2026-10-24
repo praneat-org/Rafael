@@ -121,3 +121,38 @@ test('pause before the handle exists: guarded callbacks send nothing, and again 
   send(3);
   expect(sent).toHaveBeenCalledExactlyOnceWith(3);
 });
+
+test('frame from the old generation after stop() never reaches the transport', async () => {
+  const s = new CaptureSlot();
+  const spy = vi.fn();
+  let send: (n: number) => void = () => {};
+  await s.begin(async () => {
+    send = s.guard(spy);
+    return handle();
+  }, vi.fn());
+  send(1);
+  expect(spy).toHaveBeenCalledOnce();
+  s.stop();
+  send(2);
+  expect(spy).toHaveBeenCalledOnce();
+});
+
+test('after a new begin(), only the new generation reaches the transport', async () => {
+  const s = new CaptureSlot();
+  const oldSpy = vi.fn();
+  const newSpy = vi.fn();
+  let oldSend: (n: number) => void = () => {};
+  let newSend: (n: number) => void = () => {};
+  await s.begin(async () => {
+    oldSend = s.guard(oldSpy);
+    return handle();
+  }, vi.fn());
+  await s.begin(async () => {
+    newSend = s.guard(newSpy);
+    return handle();
+  }, vi.fn());
+  oldSend(1);
+  newSend(2);
+  expect(oldSpy).not.toHaveBeenCalled();
+  expect(newSpy).toHaveBeenCalledExactlyOnceWith(2);
+});
