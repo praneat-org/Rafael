@@ -8,7 +8,7 @@ export type TokenCounter = (text: string) => number | Promise<number>;
 
 // ponytail: conservative over-estimate (ASCII ~3 chars/token, every other char = 1 token, so Thai is
 // never under-counted). Upgrade: inject LlmClient.countTokens (Vertex countTokens, D20) when it exists.
-export const estimateTokens: TokenCounter = (text) => {
+export const estimateTokens = (text: string): number => {
   let ascii = 0;
   let other = 0;
   for (const ch of text) {
@@ -131,6 +131,7 @@ export async function buildPack(
 
   const results: Awaited<ReturnType<SourceProvider['readFile']>>[] = new Array(order.length);
   const readDone: DriveFile[] = [];
+  const unreadableDone: DriveFile[] = []; // kept apart so emit stays O(n)
   const emit = (state: 'loading' | 'ready' | 'error', tokens = 0) =>
     o.onStatus?.({
       v: PROTOCOL_VERSION,
@@ -138,7 +139,7 @@ export async function buildPack(
       state,
       files: readDone.map(ref),
       tokens,
-      unreadable: readDone.filter((f) => 'unreadable' in results[order.indexOf(f)]!).map(ref),
+      unreadable: unreadableDone.map(ref),
     });
 
   // bounded-concurrency reads; results land by index so output order never depends on timing
@@ -149,6 +150,7 @@ export async function buildPack(
         const i = next++;
         results[i] = await provider.readFile(order[i]!);
         readDone.push(order[i]!);
+        if ('unreadable' in results[i]!) unreadableDone.push(order[i]!);
         emit('loading');
       }
     }),
@@ -180,12 +182,12 @@ export async function buildPack(
   const files = order.filter((f) => chunks.some((c) => c.fileId === f.fileId)).map(ref);
 
   if (tokens > max) {
-    const perFile = await Promise.all(
-      files.map(async (f) => ({
-        ...f,
-        tokens: await count(renderPackText(chunks.filter((c) => c.fileId === f.fileId))),
-      })),
-    );
+    // ponytail: per-file ranking uses the sync estimate (ordering only, no extra counter calls that
+    // could fail or fan out); exact per-file numbers if the UI needs them (BE-110)
+    const perFile = files.map((f) => ({
+      ...f,
+      tokens: estimateTokens(renderPackText(chunks.filter((c) => c.fileId === f.fileId))),
+    }));
     emit('error', tokens);
     log('pack.too_large', { tokens, max, files: files.length });
     throw new PackTooLargeError(

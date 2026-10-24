@@ -244,8 +244,64 @@ test('refresh in flight when the session ends does not resurrect the pack; newer
   expect(await slow).toBeUndefined();
   expect(s.get('s')).toBeUndefined();
 
-  const slow2 = s.refresh('t', async () => (await gate, mk('first')));
+  // `first` is held until `second` has finished, so it completes last and must be dropped
+  let release2!: () => void;
+  const gate2 = new Promise<void>((r) => (release2 = r));
+  const first = s.refresh('t', async () => (await gate2, mk('first')));
   await s.refresh('t', () => mk('second'));
-  await slow2;
+  release2();
+  expect(await first).toBeUndefined();
   expect(s.get('t')!.text).toContain('second');
+});
+
+test('reads are capped at `concurrency` in flight', async () => {
+  let inFlight = 0;
+  let peak = 0;
+  const files = ['1', '2', '3', '4', '5'].map((id) => F(id, `f${id}`));
+  const p: SourceProvider = {
+    listFolder: async () => files,
+    readFile: async () => {
+      peak = Math.max(peak, ++inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+      return doc('x');
+    },
+  };
+  await buildPack(p, 'x', { concurrency: 2 });
+  expect(peak).toBe(2);
+});
+
+test('PACK_TOO_LARGE still thrown when a per-file count would fail (per-file uses the estimate)', async () => {
+  const states: string[] = [];
+  const reads = { '1': doc('x'), '2': doc('y') };
+  const err = await buildPack(provider([F('1', 'A'), F('2', 'B')], reads), 'x', {
+    maxTokens: 10,
+    // only the full-pack call succeeds; any per-file call rejects
+    countTokens: (t) =>
+      t.includes('[A ') && t.includes('[B ') ? 1000 : Promise.reject(new Error('count failed')),
+    onStatus: (m) => states.push(m.state),
+  }).catch((e) => e);
+  expect(err).toBeInstanceOf(PackTooLargeError);
+  expect(states.at(-1)).toBe('error');
+});
+
+test('pack.too_large and pack.built log only numbers (no file names), incl. unreadable file', async () => {
+  const lines: string[] = [];
+  const spy = vi.spyOn(console, 'log').mockImplementation((l) => void lines.push(String(l)));
+  try {
+    const reads = { '1': doc('secretbody'), '2': { unreadable: 'empty' } } as const;
+    const files = [F('1', 'SecretName'), F('2', 'HiddenScan')];
+    await buildPack(provider(files, reads), 'x');
+    await buildPack(provider(files, reads), 'x', { maxTokens: 1 }).catch(() => {});
+  } finally {
+    spy.mockRestore();
+  }
+  for (const msg of ['pack.built', 'pack.too_large']) {
+    const rec = JSON.parse(lines.find((l) => l.includes(msg))!) as Record<string, unknown>;
+    for (const [k, v] of Object.entries(rec)) if (k !== 'msg') expect(typeof v, k).toBe('number');
+    expect(rec).not.toHaveProperty('droppedCount');
+  }
+  expect(lines.join('\n')).not.toMatch(/SecretName|HiddenScan|secretbody/);
+  const built = JSON.parse(lines.find((l) => l.includes('pack.built'))!);
+  expect(built.unreadable).toBe(1);
 });
