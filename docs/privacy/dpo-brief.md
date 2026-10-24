@@ -4,13 +4,13 @@ DRAFT for human / DPO review. Facts come from `docs/privacy/providers.md` (BE-93
 
 ## 1. Customer notice at meeting start
 
-**DRAFT, do not send to customers yet.** The "no recording or transcript after the meeting" claim is not yet backed by merged code: current develop keeps session state in memory (BE-85) and the end-of-session cleanup and retention tests are pending BE-94, BE-96 and BE-89, plus DPO approval.
+**DRAFT, do not send to customers yet.** The "no recording or transcript after the meeting" claim is not yet backed by merged code: current develop keeps session state in memory (BE-85) and the server writes nothing to disk or logs (BE-96 #14), but cleanup of transcript, pack and cue on session end is pending BE-89, BE-94 and BE-108, the extension side is pending FE-37, plus DPO approval.
 
 TH: "ในการประชุมนี้ ทีมของเรามีระบบช่วยฟังเพื่อค้นหาข้อมูลจากเอกสารของเราเอง ระบบของเราไม่เก็บไฟล์เสียงหรือข้อความการสนทนาไว้หลังจบการประชุม โดยเสียงและข้อความจะถูกประมวลผลโดยผู้ให้บริการภายนอกตามเงื่อนไขของผู้ให้บริการ หากไม่สะดวก แจ้งได้เลยครับ/ค่ะ เราจะปิดระบบทันที"
 
 EN: "Our team is using an assistant in this meeting to look up answers from our own documents. Our system keeps no recording or transcript after the meeting; audio and text are processed by external service providers under their terms. If you would rather we did not, just say so and we will switch it off."
 
-Scope: every claim is limited to our own system and says providers process under their own terms (Google keeps flagged prompts up to 90 days unless a Master Agreement applies, see section 3). DPO to finalize wording. The "after the meeting" claim stays DRAFT until BE-94, BE-96, BE-89 are merged and the DPO approves (see status column).
+Scope: every claim is limited to our own system and says providers process under their own terms (Google keeps flagged prompts up to 90 days unless a Master Agreement applies, see section 3). DPO to finalize wording. The "after the meeting" claim stays DRAFT until BE-89, BE-94, BE-108, FE-37 are merged and the DPO approves (see status column).
 
 ## 2. Do not use when
 
@@ -32,11 +32,11 @@ Rep mic + tab audio -> Chrome extension -> WSS -> Cloud Run asia-southeast1 (mem
 
 | Data | Goes to | Kept by us (proof card, status) | Kept by processor |
 |---|---|---|---|
-| Audio | STT provider | Intended: no raw audio stored (D11); UNVERIFIED until BE-96 (#14) retention test and logger redaction are merged. BE-89 STT adapters: not built; BE-96 retention test: PR #14 in review. Status: not implemented | Chirp 3/V2 logging: UNVERIFIED. Reference: the V1 data-logging page says "By default, Cloud Speech-to-Text does not log customer audio data or transcripts" [providers.md 3]. Deepgram: `mip_opt_out=true` must be set by the STT adapter (BE-89, not built); opted-out requests are kept only to process |
-| Transcript / questions | Gemini prompt | Intended: server memory only, TTL 24h max (UNVERIFIED until BE-96 #14 merges). BE-85 (#8): in-memory SessionStore merged; BE-96 (#14) in review. Status: partly implemented | Not used for training. Google logs prompts only if classifiers flag them, up to 90 days, in the selected region; exempt by default if Praneat has a Google Cloud Master Agreement (to check). Frontier models (e.g. Gemini 4 Argon): prompts + responses up to 30 days. Source: providers.md [10] |
-| Session Pack (docs from Drive) | Drive API (read), then Gemini explicit CachedContent (D21) | Intended: memory only (BE-85 #8 merged for session memory; Drive reader not built). Cache ttl <= 1h and delete on `session.end`: BE-94 PR #17 draft. Status: not merged | Cache ttl <= 1h; not zero-retention by Google's definition |
-| Cue | Extension | Intended: not persisted (D11); UNVERIFIED until BE-96 (#14) retention test is merged. Status: in review | n/a |
-| Server logs | Cloud Logging | Intended: metadata only, content redacted (D11). Logger redaction card: not verified here. Status: not confirmed | Google Cloud |
+| Audio | STT provider | Server side: nothing written to disk or logs for audio frames (BE-96 #14 merged: retention test + log field allowlist). UNVERIFIED for the STT path: BE-89 STT adapters not built, so what the STT provider receives and the adapter behavior are untested. Status: partly implemented | Chirp 3/V2 logging: UNVERIFIED. Reference: the V1 data-logging page says "By default, Cloud Speech-to-Text does not log customer audio data or transcripts" [providers.md 3]. Deepgram: `mip_opt_out=true` must be set by the STT adapter (BE-89, not built); opted-out requests are kept only to process |
+| Transcript / questions | Gemini prompt | Server side: memory only, TTL 24h max; nothing on disk or in logs (BE-85 #8 SessionStore and BE-96 #14 retention test + log allowlist, both merged). UNVERIFIED: removal of transcript content via onEnd (BE-89 / BE-108 not merged); no transcript exists in the server yet. Status: partly implemented | Not used for training without our prior permission or instruction [providers.md 1]. Google logs prompts only if classifiers flag them, up to 90 days, in the selected region; exempt by default if Praneat has a Google Cloud Master Agreement (to check). Frontier models (e.g. Gemini 4 Argon): prompts + responses up to 30 days. Source: providers.md [10] |
+| Session Pack (docs from Drive) | Drive API (read), then Gemini explicit CachedContent (D21) | Intended: memory only (BE-85 #8 merged for session memory; Drive reader not merged (BE-90 #16 open); pack removal via onEnd UNVERIFIED (BE-94 / BE-108)). Cache ttl <= 1h and delete on `session.end`: BE-94 PR #17 draft. Status: not merged | Cache ttl <= 1h; not zero-retention by Google's definition |
+| Cue | Extension | Server side: cues are not generated or stored yet (brain not merged); the log allowlist (BE-96 #14, merged) drops content fields. UNVERIFIED: the extension side panel (FE-37 #11, not merged). Status: not implemented | n/a |
+| Server logs | Cloud Logging | Metadata only: log allowlist drops any other field and logs only a dropped count (BE-96 #14, merged; `apps/server/src/log.ts`, `log.test.ts`). Status: implemented | Google Cloud |
 
 Processors and regions: Google Workspace / Drive API (reads the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy and Praneat's Google agreement), Google Cloud (Cloud Run, Vertex Gemini in asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US UNVERIFIED; no Asia endpoint found). Per provider: Vertex Gemini asia-southeast1 (no Thailand region, so outside Thailand); Drive region UNVERIFIED; Chirp 3 asia-southeast1 UNVERIFIED (`us`/`eu` documented); Deepgram EU (or US, UNVERIFIED).
 
@@ -55,7 +55,7 @@ Audit log (planned, BE-97, not built): session start/end, email hash, error code
 
 ## 5. Proof needed before sending (not yet verified)
 
-- D11 enforcement (no content in logs): BE-85 (#8) merged; BE-96 retention test (#14) in review.
+- D11 enforcement (no content in logs): BE-85 (#8) and BE-96 retention test + log allowlist (#14) merged; content-removal via onEnd for transcript / pack / cue still needs BE-89, BE-108, BE-94.
 - D21 cache deleted on `session.end`: BE-94 (#17) draft, not merged.
 - Deepgram `mip_opt_out` / Chirp no-logging config: STT adapters BE-89 not built.
 - Google written answers on abuse logging and explicit-cache ZDR.
