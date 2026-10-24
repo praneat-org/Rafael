@@ -35,7 +35,10 @@ beforeEach(() => {
 afterEach(async () => {
   vi.restoreAllMocks();
   vi.useRealTimers();
-  Object.assign(process.env, saved);
+  for (const [k, v] of Object.entries(saved)) {
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
   rmSync(tmp, { recursive: true, force: true });
   const a = app;
   if (!a) return;

@@ -1,5 +1,5 @@
 // Structured JSON to stdout. D11: allowlist of fields. Anything else (text, token, audio...) is
-// a compile error for literals and is dropped at runtime (only its key name is logged).
+// a compile error for literals and is dropped at runtime (only a count is logged: key names can leak too).
 const ALLOWED = [
   'sessionId',
   'emailHash',
@@ -25,10 +25,10 @@ export const log = (
   fields: Partial<Record<Allowed, string | number | boolean>> = {},
 ) => {
   const kept: Record<string, unknown> = {};
-  const dropped: string[] = [];
+  let droppedCount = 0;
   for (const [k, v] of Object.entries(fields)) {
     if (allowed.has(k) && ['string', 'number', 'boolean'].includes(typeof v)) kept[k] = v;
-    else dropped.push(k);
+    else droppedCount++;
   }
-  console.log(JSON.stringify({ msg, ...kept, ...(dropped.length ? { dropped } : {}) }));
+  console.log(JSON.stringify({ msg, ...kept, ...(droppedCount ? { droppedCount } : {}) }));
 };
