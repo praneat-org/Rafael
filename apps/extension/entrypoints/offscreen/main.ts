@@ -1,9 +1,11 @@
 import type { Browser } from 'wxt/browser';
+import { SERVER_URL } from '../../src/config';
 import { type OffscreenToPanel, type PanelToOffscreen, PORT_NAME } from '../../src/messages';
 import { parseWav, playMockAudio } from '../../src/mock-audio';
 import { MockTransport } from '../../src/mock-transport';
 import { type Action, initialState, reduce } from '../../src/session';
 import type { Transport } from '../../src/transport';
+import { toWsUrl, WsTransport } from '../../src/ws-transport';
 
 // This document outlives the side panel (and the service worker): it owns the session
 // state and the Transport. State is memory only (D11).
@@ -26,17 +28,20 @@ function teardown() {
 }
 
 function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
-  // ponytail: only the mock transport exists until FE-35 (WsTransport)
-  if (!cmd.mock || state.phase === 'live') return;
+  if (state.phase === 'live') return;
+  // ponytail: no token source until FE-39 (chrome.identity): real mode is dev-only against DEV_FAKE_AUTH
+  if (!cmd.mock && !import.meta.env.DEV) return;
   teardown();
   dispatch({ k: 'start' });
-  const t = new MockTransport(cmd.latencyMs);
+  const t: Transport = cmd.mock
+    ? new MockTransport(cmd.latencyMs)
+    : new WsTransport({ url: toWsUrl(SERVER_URL), getToken: async () => 'dev-fake-token' });
   transport = t;
   t.onStatus((status) => dispatch({ k: 'status', status }));
   t.onMessage((msg) => dispatch({ k: 'server', msg }));
   t.connect();
-  t.send({ v: 1, t: 'hello', accessToken: 'mock-token' }); // D19: hello is always first
-  t.send({ v: 1, t: 'session.start', packId: 'mock-pack' });
+  if (cmd.mock) t.send({ v: 1, t: 'hello', accessToken: 'mock-token' }); // WsTransport sends hello itself
+  t.send({ v: 1, t: 'session.start', packId: cmd.mock ? 'mock-pack' : 'dev-pack' });
   if (cmd.wavBase64) {
     const bin = atob(cmd.wavBase64);
     const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
