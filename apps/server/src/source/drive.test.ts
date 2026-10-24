@@ -239,3 +239,24 @@ test('pdf.js document is destroyed on success, parse error, and too-many-pages',
   expect(pdfSpy.destroys).toHaveLength(3);
   for (const d of pdfSpy.destroys) expect(d).toHaveBeenCalledTimes(1);
 });
+
+test('Docs / Sheets / Slides bodies are capped too (no size in Drive listing)', async () => {
+  const big = 'x'.repeat(200);
+  const { fn } = fakeFetch({
+    '/export': () => new Response(big),
+    '/spreadsheets/f1': () => j({ sheets: [{ properties: { title: big, sheetType: 'GRID' } }] }),
+    '/presentations/f1': () =>
+      j({
+        slides: [
+          {
+            pageElements: [{ shape: { text: { textElements: [{ textRun: { content: big } }] } } }],
+          },
+        ],
+      }),
+  });
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 100 });
+  for (const m of ['document', 'spreadsheet', 'presentation'])
+    expect(await p.readFile(file(`application/vnd.google-apps.${m}`))).toEqual({
+      unreadable: 'too large',
+    });
+});

@@ -99,7 +99,15 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
     if (!res.ok) throw new Error(`google api ${res.status}`);
     return res;
   }
-  const json = async <T>(url: string) => (await get(url)).json() as Promise<T>;
+  // every body is read through the byte cap (Docs/Sheets/Slides have no `size` to pre-check)
+  const read = async (url: string, max: number) => {
+    const b = await readCapped(await get(url), max);
+    if (!b) throw new Error('too large');
+    return b;
+  };
+  const text = async (url: string, max = maxBytes) =>
+    new TextDecoder().decode(await read(url, max));
+  const json = async <T>(url: string, max = maxBytes) => JSON.parse(await text(url, max)) as T;
 
   async function listFolder(folderIdOrUrl: string): Promise<DriveFile[]> {
     const id = parseFolderId(folderIdOrUrl);
@@ -138,8 +146,8 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       case M.doc: {
         const p = new URLSearchParams({ mimeType: 'text/markdown', supportsAllDrives: 'true' });
         // ponytail: Docs have no pages — one chunk; split by heading when packs need finer anchors
-        const text = await (await get(`${DRIVE}/files/${id}/export?${p}`)).text();
-        return text.trim() ? { chunks: [{ locator: 'เอกสาร', text }] } : { unreadable: 'empty' };
+        const md = await text(`${DRIVE}/files/${id}/export?${p}`);
+        return md.trim() ? { chunks: [{ locator: 'เอกสาร', text: md }] } : { unreadable: 'empty' };
       }
       case M.sheet: {
         const meta = await json<{
@@ -172,11 +180,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       }
       case M.pdf: {
         if (file.size !== undefined && file.size > maxBytes) return { unreadable: 'too large' };
-        const buf = await readCapped(
-          await get(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`),
-          maxBytes,
-        );
-        if (!buf) return { unreadable: 'too large' };
+        const buf = await read(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`, maxBytes);
         const doc = await getDocumentProxy(buf);
         let text: string[];
         try {
@@ -203,7 +207,9 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       // message is our own `google api <status>` or a parser error — never file text
       res = {
         unreadable:
-          e instanceof Error && e.message.startsWith('google api') ? e.message : 'read failed',
+          e instanceof Error && (e.message.startsWith('google api') || e.message === 'too large')
+            ? e.message
+            : 'read failed',
       };
     }
     log('source.read', {
