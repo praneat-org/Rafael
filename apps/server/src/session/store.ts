@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import { log } from '../log.js';
 
 export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // from last activity (D11: deleted after 24h)
 export const RESUME_GRACE_MS = 5 * 60 * 1000; // socket gone -> session kept this long
@@ -32,6 +33,13 @@ type Entry = { session: Session; ttl?: NodeJS.Timeout; grace?: NodeJS.Timeout };
 export class MemorySessionStore implements SessionStore {
   private byId = new Map<string, Entry>();
   private byToken = new Map<string, string>();
+  private endHooks: ((s: Session) => void | Promise<void>)[] = [];
+
+  /** Cleanup hook run on every end (session.end, grace, 24 h TTL). Transcript / pack / Gemini
+   * CachedContent owners (BE-89/91/94) register here so nothing outlives the session (D11, D21). */
+  onEnd(fn: (s: Session) => void | Promise<void>) {
+    this.endHooks.push(fn);
+  }
 
   constructor(
     private ttlMs = SESSION_TTL_MS,
@@ -95,6 +103,16 @@ export class MemorySessionStore implements SessionStore {
     clearTimeout(e.grace);
     this.byId.delete(id);
     this.byToken.delete(e.session.resumeToken);
+    for (const fn of this.endHooks) {
+      // one failing cleanup (sync throw or async rejection) must not block the others or the
+      // socket close; log the code only, errors from providers may carry content (D11)
+      const failed = () => log('end.hook.failed', { sessionId: e.session.id, code: 'HOOK_FAILED' });
+      try {
+        Promise.resolve(fn(e.session)).catch(failed);
+      } catch {
+        failed();
+      }
+    }
     e.session.socket?.close(1000, 'session ended');
   }
 }
