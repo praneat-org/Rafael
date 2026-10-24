@@ -274,14 +274,23 @@ test('reads are capped at `concurrency` in flight', async () => {
 test('PACK_TOO_LARGE still thrown when a per-file count would fail (per-file uses the estimate)', async () => {
   const states: string[] = [];
   const reads = { '1': doc('x'), '2': doc('y') };
+  const counted: string[] = [];
   const err = await buildPack(provider([F('1', 'A'), F('2', 'B')], reads), 'x', {
     maxTokens: 10,
     // only the full-pack call succeeds; any per-file call rejects
-    countTokens: (t) =>
-      t.includes('[A ') && t.includes('[B ') ? 1000 : Promise.reject(new Error('count failed')),
+    countTokens: (t) => {
+      counted.push(t);
+      return t.includes('[A ') && t.includes('[B ')
+        ? 1000
+        : Promise.reject(new Error('count failed'));
+    },
     onStatus: (m) => states.push(m.state),
   }).catch((e) => e);
   expect(err).toBeInstanceOf(PackTooLargeError);
+  expect(err.files.map((f: { file: string }) => f.file)).toEqual(['A', 'B']);
+  expect(counted).toHaveLength(1); // counter only sees the whole pack
+  expect(counted[0]).toContain('[A ');
+  expect(counted[0]).toContain('[B ');
   expect(states.at(-1)).toBe('error');
 });
 
@@ -304,4 +313,7 @@ test('pack.too_large and pack.built log only numbers (no file names), incl. unre
   expect(lines.join('\n')).not.toMatch(/SecretName|HiddenScan|secretbody/);
   const built = JSON.parse(lines.find((l) => l.includes('pack.built'))!);
   expect(built.unreadable).toBe(1);
+  // 2 listed, 1 unreadable -> files counts only the readable one
+  const tooLarge = JSON.parse(lines.find((l) => l.includes('pack.too_large'))!);
+  expect(tooLarge).toMatchObject({ tokens: expect.any(Number), max: 1, files: 1 });
 });
