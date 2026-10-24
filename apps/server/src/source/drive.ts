@@ -24,6 +24,7 @@ export interface DriveOptions {
   accessToken: string; // user's drive.readonly token from the session (D13)
   fetch?: typeof fetch; // injectable for tests
   maxFileBytes?: number; // cap on every response body (list, export, API JSON, PDF); larger => unreadable
+  requestTimeoutMs?: number; // deadline per request, covering fetch + body read (default 30s)
   maxPdfPages?: number; // bounds pdf.js parse work; more pages => unreadable
 }
 
@@ -92,16 +93,22 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
   const f = opts.fetch ?? fetch;
   const maxBytes = opts.maxFileBytes ?? 20 * 1024 * 1024;
   const maxPages = opts.maxPdfPages ?? 500;
+  const timeoutMs = opts.requestTimeoutMs ?? 30_000;
 
   // errors carry only the status — never the response body (may echo content / token)
-  async function get(url: string): Promise<Response> {
-    const res = await f(url, { headers: { Authorization: `Bearer ${opts.accessToken}` } });
+  async function get(url: string, signal: AbortSignal): Promise<Response> {
+    const res = await f(url, { headers: { Authorization: `Bearer ${opts.accessToken}` }, signal });
     if (!res.ok) throw new Error(`google api ${res.status}`);
     return res;
   }
   // every body is read through the byte cap (Docs/Sheets/Slides have no `size` to pre-check)
+  // and under one deadline: the race also fires for a fetch / stream that ignores the signal
   const read = async (url: string, max: number) => {
-    const b = await readCapped(await get(url), max);
+    const signal = AbortSignal.timeout(timeoutMs);
+    const timedOut = new Promise<never>((_, rej) =>
+      signal.addEventListener('abort', () => rej(new Error('timeout')), { once: true }),
+    );
+    const b = await Promise.race([get(url, signal).then((r) => readCapped(r, max)), timedOut]);
     if (!b) throw new Error('too large');
     return b;
   };
@@ -195,7 +202,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         return chunks.length ? { chunks } : { unreadable: 'no text layer (scanned?)' };
       }
       default:
-        return { unreadable: `unsupported mime ${file.mimeType}` };
+        return { unreadable: 'unsupported mime' };
     }
   }
 
@@ -207,7 +214,10 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       // message is our own `google api <status>` or a parser error — never file text
       res = {
         unreadable:
-          e instanceof Error && (e.message.startsWith('google api') || e.message === 'too large')
+          e instanceof Error &&
+          (e.message.startsWith('google api') ||
+            e.message === 'too large' ||
+            e.message === 'timeout')
             ? e.message
             : 'read failed',
       };

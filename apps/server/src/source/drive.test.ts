@@ -211,7 +211,7 @@ test('too large, unsupported mime, http error, corrupt pdf -> unreadable with re
   });
   const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 50 });
   expect(await p.readFile(file('application/pdf', 51))).toEqual({ unreadable: 'too large' });
-  expect(await p.readFile(file('image/png'))).toEqual({ unreadable: 'unsupported mime image/png' });
+  expect(await p.readFile(file('image/png'))).toEqual({ unreadable: 'unsupported mime' });
   expect(await p.readFile(file('application/vnd.google-apps.document'))).toEqual({
     unreadable: 'google api 403',
   });
@@ -259,4 +259,20 @@ test('Docs / Sheets / Slides bodies are capped too (no size in Drive listing)', 
     expect(await p.readFile(file(`application/vnd.google-apps.${m}`))).toEqual({
       unreadable: 'too large',
     });
+});
+
+test('stalled request: file -> unreadable timeout, list throws', async () => {
+  const never = (() => new Promise(() => {})) as unknown as typeof fetch; // ignores the signal too
+  const p = createDriveProvider({ accessToken: 't', fetch: never, requestTimeoutMs: 20 });
+  expect(await p.readFile(file('application/pdf'))).toEqual({ unreadable: 'timeout' });
+  await expect(p.listFolder('F1')).rejects.toThrow('timeout');
+});
+
+test('stalled body read hits the same deadline', async () => {
+  const stall = (async () =>
+    new Response(new ReadableStream({ start() {} }))) as unknown as typeof fetch;
+  const p = createDriveProvider({ accessToken: 't', fetch: stall, requestTimeoutMs: 20 });
+  expect(await p.readFile(file('application/vnd.google-apps.document'))).toEqual({
+    unreadable: 'timeout',
+  });
 });
