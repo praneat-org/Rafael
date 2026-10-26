@@ -13,12 +13,20 @@ export type PackServiceOptions = {
 export type RefreshResult = 'ready' | 'superseded' | 'too-large' | 'error';
 
 const NAME_MAX = 200; // = audit schema cap
-// BE-111: best-effort; any failure (or an unparseable id) => '' and the build carries on
+const NAME_TIMEOUT_MS = 2000; // the audit line must not hold refresh() for the provider's 30 s deadline
+// BE-111: best-effort; any failure, timeout or unparseable id => '' and the build carries on
 async function folderNameOf(p: SourceProvider, packId: string): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    return ((await p.folderName?.(packId)) ?? '').slice(0, NAME_MAX);
+    const slow = new Promise<string>((res) => {
+      timer = setTimeout(() => res(''), NAME_TIMEOUT_MS);
+    });
+    const n = await Promise.race([Promise.resolve(p.folderName?.(packId)), slow]);
+    return (n ?? '').slice(0, NAME_MAX);
   } catch {
     return '';
+  } finally {
+    clearTimeout(timer);
   }
 }
 
