@@ -10,9 +10,9 @@ export function pushRecent(list: readonly string[], id: string): string[] {
 
 /** Stored value is untrusted: keep only folder-id-shaped strings. */
 export function normalizeRecent(v: unknown): string[] {
-  return Array.isArray(v)
-    ? v.filter((x): x is string => typeof x === 'string' && ID.test(x)).slice(0, MAX)
-    : [];
+  if (!Array.isArray(v)) return [];
+  const ids = v.filter((x): x is string => typeof x === 'string' && ID.test(x));
+  return [...new Set(ids)].slice(0, MAX); // dedupe first so repeats don't eat the quota
 }
 
 export async function loadRecent(): Promise<string[]> {

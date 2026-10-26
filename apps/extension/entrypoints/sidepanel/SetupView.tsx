@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CaptureOpts } from '../../src/audio/capture';
 import { getAuthToken, isAuthConfigured } from '../../src/auth';
 import { parseFolderId } from '../../src/folder-url';
@@ -25,12 +25,18 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
   const [signInFailed, setSignInFailed] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
+  const recentWritten = useRef(false); // a stale loadRecent() must not clobber a newer save
   const [inputs, setInputs] = useState<CaptureOpts>({ tab: false, mic: true });
   const configured = isAuthConfigured(import.meta.env.WXT_OAUTH_CLIENT_ID);
   const folderId = parseFolderId(folderUrl);
   useEffect(() => {
     loadSettings().then(setS, () => {});
-    loadRecent().then(setRecent, () => {});
+    loadRecent().then(
+      (loaded) => {
+        if (!recentWritten.current) setRecent(loaded);
+      },
+      () => {},
+    );
     // default input: this tab when it is Meet, else mic
     browser.tabs.query({ active: true, lastFocusedWindow: true }).then(
       ([t]) => setInputs(defaultInputs(t?.url)),
@@ -48,7 +54,12 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
   };
   const block = startBlock({ mock: s.mock, signedIn, folderId, ...inputs });
   const start = async () => {
-    if (!s.mock && folderId) saveRecent(pushRecent(recent, folderId)).catch(() => {});
+    if (!s.mock && folderId) {
+      const next = pushRecent(recent, folderId);
+      recentWritten.current = true;
+      setRecent(next);
+      saveRecent(next).catch(() => {});
+    }
     const wavBase64 = wav ? await readBase64(wav) : undefined;
     send({
       k: 'start',
