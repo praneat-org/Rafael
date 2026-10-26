@@ -194,7 +194,10 @@ export function attachWs(http: Server, opts: WsOptions) {
           const r = pipeline?.ask(session, m.text, (c) => {
             if (sock.readyState === sock.OPEN) send(c);
           });
-          if (r !== 'ok') fail(r === 'busy' ? 'BAD_MESSAGE' : 'PACK_NOT_READY');
+          if (r === undefined)
+            fail('LLM_UNAVAILABLE'); // no brain configured
+          else if (r === 'busy') fail('BAD_MESSAGE');
+          else if (r === 'no-pack') fail('PACK_NOT_READY');
           return;
         }
         default: // pause / resume: stubs for BE-89

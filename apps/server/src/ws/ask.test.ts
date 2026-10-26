@@ -187,3 +187,24 @@ test('logs: latency per stage per cue, no question / answer / pack text (D11)', 
     expect(all).not.toContain(secret);
   }
 });
+
+test('ask with no brain configured -> LLM_UNAVAILABLE (not PACK_NOT_READY)', async () => {
+  app = createApp({
+    store: new MemorySessionStore(),
+    verifier: async () => ({ email: 'a@praneat.com' }),
+    allowedOrigins: [ORIGIN],
+  });
+  app.listen(0);
+  const port = (app.address() as AddressInfo).port;
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: ORIGIN });
+  const msgs: ServerMessage[] = [];
+  ws.on('message', (d) => msgs.push(JSON.parse(d.toString())));
+  const send = (m: object) => ws.send(JSON.stringify({ v: 1, ...m }));
+  await new Promise((res) => ws.once('open', res));
+  send({ t: 'hello', accessToken: 'tok' });
+  send({ t: 'session.start', packId: 'folder-1' });
+  await vi.waitFor(() => expect(msgs.some((m) => m.t === 'session.ready')).toBe(true));
+  send({ t: 'ask', text: QUESTION });
+  await vi.waitFor(() => expect(msgs.some((m) => m.t === 'error')).toBe(true));
+  expect(msgs.find((m) => m.t === 'error')).toMatchObject({ code: 'LLM_UNAVAILABLE' });
+});
