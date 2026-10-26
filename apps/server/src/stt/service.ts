@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import { PROTOCOL_VERSION, type ServerMessage } from '@rafael/protocol';
 import { log } from '../log.js';
 import type { Session, SessionStore } from '../session/store.js';
@@ -10,19 +11,35 @@ export type SttOptions = {
   overlapMs?: number;
   /** phrase hints from the Session Pack; read when the stream opens (first audio frame) */
   getHints?: (s: Session) => readonly string[];
-  /** every final segment, for the Brain (BE-99) */
+  /**
+   * Every final segment, for the Brain (BE-99). `sttFinalMs` = last voiced frame -> final
+   * (undefined if no voiced frame was seen). Approximation: endpointing + provider latency.
+   */
   onFinal?: (
     s: Session,
     seg: { text: string; speaker?: string },
     send: (m: ServerMessage) => void,
+    meta: { sttFinalMs?: number },
   ) => void;
+  /** test seam: is this frame speech? default = peak amplitude above VOICED_PEAK */
+  voiced?: (pcm: Int16Array) => boolean;
+  now?: () => number;
 };
 
-type Entry = { rolling: ReturnType<typeof createRollingStt>; send: (m: ServerMessage) => void };
+const VOICED_PEAK = 800; // ponytail: peak threshold, not a VAD. Quiet speakers / loud rooms skew sttFinalMs only (a metric).
+const peakVoiced = (pcm: Int16Array) => pcm.some((x) => x > VOICED_PEAK || x < -VOICED_PEAK);
+
+type Entry = {
+  rolling: ReturnType<typeof createRollingStt>;
+  send: (m: ServerMessage) => void;
+  lastVoicedAt?: number;
+};
 
 /** One rolling STT stream per session. Disposed with the session (store.onEnd), D11. */
 export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'onEnd' | 'get'>) {
   const entries = new Map<string, Entry>();
+  const now = opts.now ?? (() => performance.now());
+  const voiced = opts.voiced ?? peakVoiced;
 
   store.onEnd(async (s) => {
     const e = entries.get(s.id);
@@ -41,7 +58,11 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
       onPartial: (m) => out({ v: PROTOCOL_VERSION, t: 'transcript', final: false, ...m }),
       onFinal: (m) => {
         out({ v: PROTOCOL_VERSION, t: 'transcript', final: true, ...m });
-        opts.onFinal?.(s, { text: m.text, speaker: m.speaker }, out);
+        const sttFinalMs =
+          e.lastVoicedAt === undefined
+            ? undefined
+            : Math.max(0, Math.round(now() - e.lastVoicedAt));
+        opts.onFinal?.(s, { text: m.text, speaker: m.speaker }, out, { sttFinalMs });
       },
       onError: (gaveUp) => {
         log('stt.error', {
@@ -66,6 +87,7 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
         e = create(s, send);
       }
       e.send = send;
+      if (voiced(pcm)) e.lastVoicedAt = now();
       e.rolling.push(pcm);
     },
   };

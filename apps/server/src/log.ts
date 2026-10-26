@@ -25,6 +25,9 @@ const ALLOWED = [
   'bullets',
   'outcome',
   'cached',
+  'sttFinalMs',
+  'detectorMs',
+  'serverTotalMs',
   // pack builder (BE-91): counts / ms only, never content
   'tokens',
   'max',

@@ -62,7 +62,21 @@ export function attachWs(http: Server, opts: WsOptions) {
       { ...opts.brain, getPack: opts.brain.getPack ?? ((s) => packs?.get(s.id)?.chunks) },
       store,
     );
-  const stt = opts.stt && createSttService(opts.stt, store);
+  // `pause`: no audio, no new cues. Keyed by Session so it survives a reconnect/resume.
+  const paused = new WeakSet<Session>();
+  const stt =
+    opts.stt &&
+    createSttService(
+      {
+        ...opts.stt,
+        onFinal: (s, seg, send, meta) => {
+          opts.stt?.onFinal?.(s, seg, send, meta);
+          // a final that was already in the provider when pause arrived must not start a cue
+          if (!paused.has(s)) void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs);
+        },
+      },
+      store,
+    );
   packs =
     opts.pack && createPackService(opts.pack, store, (s, p) => pipeline?.packReady(s, p.chunks));
 
@@ -120,7 +134,7 @@ export function attachWs(http: Server, opts: WsOptions) {
       if (session && session.socket !== ws) return;
       if (isBinary) {
         // audio is only accepted inside a session (and so after hello)
-        if (!session) return;
+        if (!session || paused.has(session)) return;
         const frame = decodeAudioFrame(data as Buffer);
         if (!frame) return fail('BAD_MESSAGE');
         session.audioFrames++;
@@ -206,8 +220,14 @@ export function attachWs(http: Server, opts: WsOptions) {
           if (r !== 'ok') fail(r === 'busy' ? 'BAD_MESSAGE' : 'LLM_UNAVAILABLE');
           return;
         }
-        default: // pause / resume: stubs for BE-89
+        case 'pause':
           if (!session) return fail('SESSION_NOT_FOUND');
+          paused.add(session);
+          return;
+        case 'resume':
+          if (!session) return fail('SESSION_NOT_FOUND');
+          paused.delete(session);
+          return;
       }
     }
 
