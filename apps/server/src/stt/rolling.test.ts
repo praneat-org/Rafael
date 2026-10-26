@@ -100,3 +100,49 @@ test('provider stays down -> gives up after maxRetries, never throws', async () 
     vi.useRealTimers();
   }
 });
+
+test('provider errors while close() is flushing -> no retry timer, no stream reopened after end', async () => {
+  vi.useFakeTimers();
+  try {
+    let starts = 0;
+    const provider = {
+      start(_hints: readonly string[], h: { onError(): void; onFinal(t: string): void }) {
+        starts++;
+        return {
+          push() {},
+          close: async () => {
+            h.onFinal('last words');
+            h.onError(); // dies while flushing
+          },
+        };
+      },
+    };
+    const { r, errors, finals } = run(provider as never, { retryDelayMs: 10 });
+    r.push(frame(1));
+    await r.close();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(starts).toBe(1);
+    expect(errors).toEqual([]); // nothing to report: the session is over
+    expect(finals.map((f) => f.text)).toEqual(['last words']);
+    expect(vi.getTimerCount()).toBe(0);
+    r.push(frame(2)); // closed: ignored
+    expect(starts).toBe(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('error just before close with a retry pending -> close cancels the retry', async () => {
+  vi.useFakeTimers();
+  try {
+    const p = new FakeSttProvider();
+    const { r } = run(p, { retryDelayMs: 10 });
+    r.push(frame(1));
+    p.failLast(); // retry armed
+    await r.close();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(p.starts.length).toBe(1);
+  } finally {
+    vi.useRealTimers();
+  }
+});

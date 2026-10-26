@@ -41,11 +41,13 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
   const now = opts.now ?? (() => performance.now());
   const voiced = opts.voiced ?? peakVoiced;
 
-  store.onEnd(async (s) => {
+  /** flush the stream (last finals go out through `send`), then drop it. Idempotent. */
+  async function end(s: Session) {
     const e = entries.get(s.id);
     entries.delete(s.id);
     await e?.rolling.close();
-  });
+  }
+  store.onEnd(end);
 
   function create(s: Session, send: Entry['send']): Entry {
     const e: Entry = { send, rolling: undefined as unknown as Entry['rolling'] };
@@ -79,6 +81,7 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
   }
 
   return {
+    end,
     /** One audio frame of a live session. Frames for an ended session are dropped. */
     push(s: Session, pcm: Int16Array, send: Entry['send']) {
       let e = entries.get(s.id);
