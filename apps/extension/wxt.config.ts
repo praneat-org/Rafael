@@ -9,7 +9,9 @@ export default defineConfig({
     key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqXMvFrH1GZ9Ci8L/GACJI21JjYkkzQ9d8GQmJvSBpaPWPMtzz+Ssh8zMUIgLWj12xNaqpFk/t00hr4v35GRcR7OtXC0qRTt9ymCj3XzDmB3JmgIbcuPmiqHydWZRaEKQD0cRby3gzFJQG2QauEPtljR7Byo6C5jtCA2JxcQhG/KAgohTasz+ZgoiAIlw98h0D/wrE9sM4fjbc3TlnaFgFwZt6PoYFS/qY6w94agMpYydJaCm/OMJkxVdYQPnGKNLLqdwT6k87fW56ZPExRbji36cpaLhstUuYpRK9TF8/UXj2d05RSddUqYB6+dvi9LP9474/Q+PAJVTp7QmQ0fXdQIDAQAB',
     action: { default_title: 'Rafael' },
     // storage = settings only (D11); tabCapture = tab audio (FE-36); identity = sign-in (FE-39)
-    permissions: ['sidePanel', 'offscreen', 'storage', 'tabCapture', 'identity'],
+    permissions: ['sidePanel', 'offscreen', 'storage', 'tabCapture', 'identity', 'contextMenus'],
+    // shortcut = action click without the mouse: also grants activeTab for the current tab (FE-47)
+    commands: { _execute_action: { suggested_key: { default: 'Alt+Shift+R' } } },
     // read the Meet tab url for the default input (narrower than `tabs`)
     host_permissions: ['https://meet.google.com/*'],
     // D13. client id from build env; placeholder until BE-71 (UI shows "not configured")

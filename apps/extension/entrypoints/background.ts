@@ -1,4 +1,5 @@
 import { getAuthToken, refreshAuthToken } from '../src/auth';
+import { onMenuClick, registerMenu } from '../src/grant-menu';
 import {
   type AuthTokenReply,
   type AuthTokenReq,
@@ -20,6 +21,8 @@ async function ensureOffscreen() {
   });
 }
 
+// getMediaStreamId needs a per-tab activeTab grant, only an invocation gives one (see src/grant-menu.ts)
+
 // The tab being captured = the active tab of the window where the user clicked the Rafael icon
 // (that click grants activeTab, which getMediaStreamId needs). No id is kept here.
 async function tabStreamId(): Promise<TabStreamIdReply> {
@@ -30,6 +33,23 @@ async function tabStreamId(): Promise<TabStreamIdReply> {
 
 export default defineBackground(() => {
   browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+
+  browser.runtime.onInstalled.addListener(() =>
+    registerMenu({
+      removeAll: () => browser.contextMenus.removeAll(),
+      create: (p) => browser.contextMenus.create(p as never),
+    }),
+  );
+  browser.contextMenus.onClicked.addListener((info, tab) =>
+    onMenuClick(
+      {
+        openPanel: (o) => browser.sidePanel.open(o),
+        send: (m) => browser.runtime.sendMessage(m),
+      },
+      info,
+      tab,
+    ),
+  );
 
   browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.k === GET_AUTH_TOKEN) {
