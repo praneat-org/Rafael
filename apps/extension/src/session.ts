@@ -21,7 +21,11 @@ export type PackInfo = {
   files: { file: string; fileId: string }[];
   unreadable: { file: string; fileId: string }[];
   tokens: number;
+  /** files read so far / found (optional in protocol v1, BE-110) */
+  read?: number;
+  total?: number;
 };
+const PACK_ERRORS: SessionState['error'][] = ['PACK_TOO_LARGE', 'PACK_NOT_READY'];
 export type PackState = 'loading' | 'ready' | 'error';
 
 export type SessionState = {
@@ -32,6 +36,8 @@ export type SessionState = {
   pack: PackState | null;
   /** file names only, no content (D11) */
   packInfo: PackInfo | null;
+  /** PACK_TOO_LARGE: largest first, names + approx tokens only (D11) */
+  tooLarge: { name: string; tokens: number }[] | null;
   error: ErrorCode | 'CONNECTION_CLOSED' | null; // CONNECTION_CLOSED is client-only (transport closed for good)
   /** audio is not being sent (Pause) */
   paused: boolean;
@@ -46,6 +52,7 @@ export const initialState: SessionState = {
   cues: [],
   pack: null,
   packInfo: null,
+  tooLarge: null,
   error: null,
   paused: false,
   unanswered: [],
@@ -117,12 +124,31 @@ export function reduce(s: SessionState, a: Action): SessionState {
           return {
             ...s,
             pack: m.state,
-            packInfo: { files: m.files, unreadable: m.unreadable, tokens: m.tokens },
+            packInfo: {
+              files: m.files,
+              unreadable: m.unreadable,
+              tokens: m.tokens,
+              read: m.read,
+              total: m.total,
+            },
+            // a good rebuild clears the old over-limit error
+            // a new build (loading) or a good one (ready) drops the old over-limit list;
+            // ready also clears pack errors only, never STT_/LLM_UNAVAILABLE
+            ...(m.state !== 'error' ? { tooLarge: null } : {}),
+            ...(m.state === 'ready' && s.error && PACK_ERRORS.includes(s.error)
+              ? { error: null }
+              : {}),
           };
         case 'error':
+          // PACK_NOT_READY after a too-large build must not hide the file list (defence in depth)
+          if (m.code === 'PACK_NOT_READY' && s.tooLarge) return s;
           // resume failed (server restarted): the session is gone, back to Setup with the reason
           if (m.code === 'SESSION_NOT_FOUND') return { ...initialState, error: m.code };
-          return { ...s, error: m.code };
+          return {
+            ...s,
+            error: m.code,
+            tooLarge: m.code === 'PACK_TOO_LARGE' ? (m.files ?? []) : s.tooLarge,
+          };
         default:
           return s; // session.ready: resumeToken is kept by WsTransport (FE-35), not in UI state
       }
