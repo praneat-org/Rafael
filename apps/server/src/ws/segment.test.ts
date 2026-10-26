@@ -28,7 +28,7 @@ const frame = (id: number) =>
 function fakeLlm() {
   const calls = { detector: 0, answerer: 0 };
   // tests park the Detector / Answerer here to land `pause` mid-flight
-  const gates: { detector?: Promise<void>; answerer?: Promise<void> } = {};
+  const gates: { detector?: Promise<void>; answerer?: Promise<void>; distinct?: boolean } = {};
   const llm: LlmClient = {
     async complete(req) {
       if (req.model !== 'det') return { text: '' }; // Answerer cache warm-up
@@ -38,7 +38,7 @@ function fakeLlm() {
       return {
         text: JSON.stringify({
           isQuestion: isQ,
-          question: isQ ? SECRET_Q : '',
+          question: isQ ? (gates.distinct ? `${SECRET_Q} ${calls.detector}` : SECRET_Q) : '',
           fromCustomer: true,
         }),
         inputTokens: 5,
@@ -152,22 +152,24 @@ test('ask skips the Detector', async () => {
   expect(t.calls).toEqual({ detector: 0, answerer: 1 });
 });
 
-test('pause: audio ignored, a late final makes no cue; resume works again', async () => {
+test('pause: stream closed, audio ignored, no cue; resume reopens the stream', async () => {
   const t = await setup();
   t.ws.send(frame(2)); // opens the stream
   await vi.waitFor(() => expect(t.finals()).toHaveLength(1));
   t.send({ t: 'pause' });
-  await settle();
+  await vi.waitFor(() => expect(t.provider.closes).toBe(1)); // an idle stream would be cut by the provider
   t.ws.send(frame(1));
-  t.provider.handlers[0]?.onFinal(SECRET_Q); // provider still delivers a final after pause
   await settle();
-  expect(t.finals()).toHaveLength(2); // transcript still shown...
-  expect(t.calls.detector).toBe(1); // ...but only the pre-pause frame reached the Detector
+  expect(t.finals()).toHaveLength(1);
+  expect(t.calls.detector).toBe(1);
   expect(t.cues()).toHaveLength(0);
   t.send({ t: 'resume' });
   await settle();
   t.ws.send(frame(1));
   await vi.waitFor(() => expect(t.cues().some((c) => !c.partial)).toBe(true));
+  expect(t.provider.starts.length).toBe(2);
+  const ids = t.finals().map((m) => (m as { segId: string }).segId);
+  expect(new Set(ids).size).toBe(ids.length); // segIds stay unique across the reopen
 });
 
 test('no pack -> Detector is not called', async () => {
@@ -279,5 +281,45 @@ test('over-budget stages log budget.exceeded (stt, answerer first token, total) 
     .map((l) => JSON.parse(l).stage)
     .sort();
   expect(stages).toEqual(['answerer', 'stt', 'total']);
+  expect(out.join('\n')).not.toMatch(/SECRET/);
+});
+
+test('more than 2 questions in flight -> the extra one is dropped and logged (busy)', async () => {
+  const t = await setup();
+  const g = gate();
+  t.gates.answerer = g.p;
+  t.gates.distinct = true;
+  for (let i = 0; i < 3; i++) t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.calls.detector).toBe(3));
+  await vi.waitFor(() =>
+    expect(out.some((l) => l.includes('"cue.dropped"') && l.includes('"busy"'))).toBe(true),
+  );
+  g.open();
+  await vi.waitFor(() => expect(t.cues().filter((c) => !c.partial)).toHaveLength(2));
+  expect(out.join('\n')).not.toMatch(/SECRET/);
+});
+
+test('slow Detector -> budget.exceeded stage=detector', async () => {
+  const tight = { ...config, detector: { ...config.detector, budgetMs: -1 } };
+  const t = await setup(() => pack, { config: tight });
+  t.ws.send(frame(2));
+  await vi.waitFor(() =>
+    expect(
+      out.some((l) => l.includes('"budget.exceeded"') && l.includes('"stage":"detector"')),
+    ).toBe(true),
+  );
+  expect(out.join('\n')).not.toMatch(/SECRET/);
+});
+
+test('a final arriving after session.end is ignored: no Detector call, no cue, no text in logs', async () => {
+  const t = await setup();
+  t.ws.send(frame(2));
+  await vi.waitFor(() => expect(t.finals()).toHaveLength(1));
+  t.send({ t: 'session.end' });
+  await vi.waitFor(() => expect(t.ws.readyState).toBe(WebSocket.CLOSED));
+  t.provider.handlers[0]?.onFinal(SECRET_Q); // late delivery from the provider
+  await settle();
+  expect(t.calls).toEqual({ detector: 1, answerer: 0 });
+  expect(t.cues()).toHaveLength(0);
   expect(out.join('\n')).not.toMatch(/SECRET/);
 });

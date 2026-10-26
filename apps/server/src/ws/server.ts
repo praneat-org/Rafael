@@ -124,7 +124,10 @@ export function attachWs(http: Server, opts: WsOptions) {
     ws.on('close', () => {
       clearTimeout(helloTimer);
       if (session) {
-        if (session.socket === ws) packs?.setSender(session.id, undefined);
+        if (session.socket === ws) {
+          packs?.setSender(session.id, undefined);
+          void stt?.end(session); // idle provider stream; a resumed socket opens a new one
+        }
         store.detach(session.id, ws);
       }
     });
@@ -228,6 +231,7 @@ export function attachWs(http: Server, opts: WsOptions) {
         case 'pause':
           if (!session) return fail('SESSION_NOT_FOUND');
           paused.add(session);
+          await stt?.pause(session).catch(() => {});
           return;
         case 'resume':
           if (!session) return fail('SESSION_NOT_FOUND');

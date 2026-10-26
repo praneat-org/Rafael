@@ -1,0 +1,42 @@
+import { expect, test } from 'vitest';
+import type { Session } from '../session/store.js';
+import { FakeSttProvider } from './fake.js';
+import { createSttService } from './service.js';
+
+const frame = (id: number) => {
+  const f = new Int16Array(1600);
+  f[0] = id;
+  return f;
+};
+
+test('sttFinalMs is measured from the end of the speech run the final belongs to', () => {
+  let clock = 0;
+  const p = new FakeSttProvider({ finalEvery: 99 });
+  const metas: (number | undefined)[] = [];
+  const s = { id: 's1' } as Session;
+  const svc = createSttService(
+    {
+      provider: p,
+      voiced: (f) => f[0] !== 0,
+      now: () => clock,
+      onFinal: (_s, _g, _send, m) => void metas.push(m.sttFinalMs),
+    },
+    { onEnd() {}, get: () => s },
+  );
+  const push = (t: number, id: number) => {
+    clock = t;
+    svc.push(s, frame(id), () => {});
+  };
+  push(0, 1);
+  push(100, 1); // utterance 1 ends here (last voiced frame at 100)
+  push(200, 0);
+  push(300, 0);
+  push(400, 0); // 300 ms of silence: run 1 is over
+  push(500, 2); // utterance 2 keeps going while the provider is still finalizing utterance 1
+  clock = 700;
+  p.handlers[0]?.onFinal('first');
+  clock = 900;
+  p.handlers[0]?.onFinal('second');
+  // 'first': 700 - 100 = 600 (not 200 from the newer speech) · 'second': no finished run left -> last voiced frame 500
+  expect(metas).toEqual([600, 400]);
+});

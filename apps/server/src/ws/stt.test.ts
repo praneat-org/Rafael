@@ -38,7 +38,7 @@ async function setup(
     store,
     verifier: async () => ({ email: 'a@praneat.com' }),
     allowedOrigins: [ORIGIN],
-    stt: { provider, ...stt },
+    stt: { provider, voiced: (p) => p[0] !== 0, ...stt },
   });
   app.listen(0);
   const port = (app.address() as AddressInfo).port;
