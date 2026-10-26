@@ -15,7 +15,7 @@ export function buildMockScript(): ServerMessage[] {
   if (!ready || !pack || seg?.t !== 'transcript' || !cue || !notFoundCue) return [];
   return [
     ready,
-    pack,
+    { ...pack, unreadable: [{ file: 'scan-only.pdf', fileId: 'file-unreadable' }] }, // exercises the unreadable UI
     { ...seg, text: seg.text.slice(0, 7), final: false },
     seg,
     { ...cue, partial: true, bullets: cue.bullets.map((b) => b.slice(0, 10)) },

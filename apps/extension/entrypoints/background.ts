@@ -1,5 +1,9 @@
+import { getAuthToken, refreshAuthToken } from '../src/auth';
 import {
+  type AuthTokenReply,
+  type AuthTokenReq,
   ENSURE_OFFSCREEN,
+  GET_AUTH_TOKEN,
   GET_TAB_STREAM_ID,
   OPEN_PERMISSION_PAGE,
   type TabStreamIdReply,
@@ -28,6 +32,13 @@ export default defineBackground(() => {
   browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
   browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.k === GET_AUTH_TOKEN) {
+      const fresh = (msg as AuthTokenReq).fresh;
+      (fresh ? refreshAuthToken() : getAuthToken(false)).then((token) =>
+        sendResponse({ token } satisfies AuthTokenReply),
+      );
+      return true;
+    }
     if (msg === GET_TAB_STREAM_ID) {
       tabStreamId().then(sendResponse, () =>
         sendResponse({ error: true } satisfies TabStreamIdReply),

@@ -17,6 +17,11 @@ export type Cue = {
 };
 /** End screen: a customer question the pack could not answer (D10). Memory only (D11). */
 export type Unanswered = { at: number; question: string };
+export type PackInfo = {
+  files: { file: string; fileId: string }[];
+  unreadable: { file: string; fileId: string }[];
+  tokens: number;
+};
 export type PackState = 'loading' | 'ready' | 'error';
 
 export type SessionState = {
@@ -25,6 +30,8 @@ export type SessionState = {
   segments: Segment[];
   cues: Cue[];
   pack: PackState | null;
+  /** file names only, no content (D11) */
+  packInfo: PackInfo | null;
   error: ErrorCode | 'CONNECTION_CLOSED' | null; // CONNECTION_CLOSED is client-only (transport closed for good)
   /** audio is not being sent (Pause) */
   paused: boolean;
@@ -38,6 +45,7 @@ export const initialState: SessionState = {
   segments: [],
   cues: [],
   pack: null,
+  packInfo: null,
   error: null,
   paused: false,
   unanswered: [],
@@ -106,7 +114,11 @@ export function reduce(s: SessionState, a: Action): SessionState {
           return { ...s, cues: upsert(s.cues, cue, (x) => x.cueId === m.cueId) };
         }
         case 'pack.status':
-          return { ...s, pack: m.state };
+          return {
+            ...s,
+            pack: m.state,
+            packInfo: { files: m.files, unreadable: m.unreadable, tokens: m.tokens },
+          };
         case 'error':
           // resume failed (server restarted): the session is gone, back to Setup with the reason
           if (m.code === 'SESSION_NOT_FOUND') return { ...initialState, error: m.code };
