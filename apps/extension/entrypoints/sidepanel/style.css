@@ -213,3 +213,13 @@ html {
 .err {
   color: #b00020;
 }
+
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.meter {
+  flex: 1;
+  height: 10px;
+}
