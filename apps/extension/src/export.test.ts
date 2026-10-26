@@ -44,3 +44,10 @@ test('delete (reset) clears everything', () => {
   const ended = run([{ k: 'start' }, cue('b', 'q', true), { k: 'end' }]);
   expect(reduce(ended, { k: 'reset' })).toEqual(initialState);
 });
+
+test('repeated end keeps the list; newline in a question stays one export line', () => {
+  const live = run([{ k: 'start' }, cue('c1', 'a\nb\r\nc', true)]);
+  const ended = reduce(live, { k: 'end' });
+  expect(reduce(ended, { k: 'end' })).toEqual(ended);
+  expect(formatUnanswered(ended.unanswered).split('\n')).toHaveLength(1);
+});

@@ -63,6 +63,7 @@ export function reduce(s: SessionState, a: Action): SessionState {
     case 'start':
       return { ...initialState, phase: 'live', status: 'connecting' };
     case 'end':
+      if (s.phase === 'end') return s; // repeated end must not wipe the list
       // D11: drop transcript / cues when the session ends; keep only the unanswered questions
       // for the End screen until the user deletes the session (`reset`)
       return {
