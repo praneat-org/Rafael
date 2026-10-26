@@ -14,10 +14,10 @@ substitutions:
 steps:
   - id: build
     name: gcr.io/cloud-builders/docker
-    args: ['build', '-f', 'apps/server/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/server:$COMMIT_SHA', '.']
+    args: ['build', '-f', 'apps/server/Dockerfile', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA', '.']
   - id: push
     name: gcr.io/cloud-builders/docker
-    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/server:$COMMIT_SHA']
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA']
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: gcloud
@@ -25,7 +25,7 @@ steps:
       - run
       - deploy
       - ${_SERVICE}
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/server:$COMMIT_SHA
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA
       - --region=${_REGION}
       - --port=8080
       - --timeout=3600 # WS is cut at 60 min, client reconnects + resumes

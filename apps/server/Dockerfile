@@ -7,8 +7,7 @@ COPY . .
 RUN pnpm install --frozen-lockfile --filter server...
 RUN pnpm --filter server build
 # only server's prod deps (ws etc.); the bundle in dist/ already inlines @rafael/protocol
-RUN pnpm --filter server deploy --legacy --prod /out \
- && cp -r apps/server/dist /out/dist
+RUN pnpm --filter server deploy --legacy --prod /out
 
 FROM node:22-alpine
 ENV NODE_ENV=production PORT=8080
