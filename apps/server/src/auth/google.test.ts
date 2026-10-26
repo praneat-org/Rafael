@@ -36,6 +36,12 @@ test('email not verified -> null', async () => {
   }
 });
 
+test('azp matching our client but aud of another app -> null', async () => {
+  expect(
+    await setup(() => json({ ...good, aud: 'other-app', azp: CLIENT })).verify('t'),
+  ).toBeNull();
+});
+
 test('wrong aud (token of another app) -> null', async () => {
   expect(await setup(() => json({ ...good, aud: 'other-app' })).verify('t')).toBeNull();
 });

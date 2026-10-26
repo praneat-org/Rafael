@@ -9,7 +9,7 @@ import { MemorySessionStore } from '../session/store.js';
 const ORIGIN = 'chrome-extension://testid';
 // fake verifier: token "good-<name>" -> <name>@praneat.com, anything else rejected
 const verifier: TokenVerifier = async (t) =>
-  t.startsWith('good-') ? { email: `${t.slice(5)}@praneat.com` } : null;
+  t.startsWith('good-') ? { email: `${t.slice(5).split('#')[0]}@praneat.com` } : null; // `#n` = another token, same user
 
 let servers: ReturnType<typeof createApp>[] = [];
 afterEach(async () => {
@@ -63,10 +63,10 @@ function connect(port: number, origin: string | undefined = ORIGIN, autoPong = t
 const open = (c: Client) => new Promise<void>((res) => c.ws.once('open', () => res()));
 const send = (c: Client, m: object) => c.ws.send(JSON.stringify({ v: 1, ...m }));
 
-async function login(port: number, who = 'alice') {
+async function login(port: number, who = 'alice', token = `good-${who}`) {
   const c = connect(port);
   await open(c);
-  send(c, { t: 'hello', accessToken: `good-${who}` });
+  send(c, { t: 'hello', accessToken: token });
   return c;
 }
 
@@ -287,10 +287,10 @@ test('hello token is kept on the session (memory) and refreshed on resume', asyn
   expect(store.get(ready.sessionId)?.accessToken).toBe('good-alice');
   a.ws.terminate();
   await a.closed;
-  const b = await login(port); // same user, same token string; resume path must also set it
+  const b = await login(port, 'alice', 'good-alice#2'); // same user, fresh token
   send(b, { t: 'session.start', packId: 'x', resumeToken: ready.resumeToken });
-  await b.next();
-  expect(store.get(ready.sessionId)?.accessToken).toBe('good-alice');
+  expect((await b.next()).t).toBe('session.ready');
+  expect(store.get(ready.sessionId)?.accessToken).toBe('good-alice#2');
   b.ws.close();
 });
 

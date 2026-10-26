@@ -48,7 +48,7 @@ export function createGoogleVerifier(o: GoogleVerifierOptions): TokenVerifier {
     const email = typeof info.email === 'string' ? info.email.toLowerCase() : '';
     const ttl = Number(info.expires_in);
     if (
-      (info.aud !== o.clientId && info.azp !== o.clientId) ||
+      info.aud !== o.clientId || // aud only: azp may name our client while aud is another resource
       // tokeninfo returns email_verified as the string "true"
       !(info.email_verified === true || info.email_verified === 'true') ||
       !email.endsWith(suffix) ||
