@@ -75,6 +75,7 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
       <header className="bar">
         {/* connection problems win over paused: the rep must see a dropped link even while paused */}
         <span
+          role="status"
           className={`status ${state.paused && state.status === 'live' ? 'paused' : state.status}`}
         >
           {state.paused
