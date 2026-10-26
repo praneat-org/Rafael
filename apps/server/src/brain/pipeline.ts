@@ -53,6 +53,8 @@ export function createPipeline(
         llm: opts.llm,
         config: opts.config,
         pack,
+        warn: (w) =>
+          log('budget.exceeded', { sessionId: s.id, stage: w.stage, ms: w.firstTokenMs }),
         log: (a) =>
           log('answerer', {
             sessionId: s.id,
@@ -79,7 +81,13 @@ export function createPipeline(
     question: string,
     send: (m: ServerMessage) => void,
     receivedAt = perf(),
-    ctx: { stage: 'ask' | 'segment'; sttFinalMs?: number; detectorMs?: number } = { stage: 'ask' },
+    ctx: {
+      stage: 'ask' | 'segment';
+      sttFinalMs?: number;
+      detectorMs?: number;
+      /** segment path: `pause` arrived, so no cue may start or be emitted */
+      isPaused?: () => boolean;
+    } = { stage: 'ask' },
   ): AskResult {
     const e = entryFor(s);
     if (!e) return 'no-pack';
@@ -88,9 +96,19 @@ export function createPipeline(
     const cueId = randomUUID();
     // answers run in order, the older one is never cancelled
     e.chain = e.chain.then(async () => {
+      if (ctx.isPaused?.()) {
+        e.inFlight--; // queued behind another answer, paused before it started
+        log('cue.dropped', { sessionId: s.id, reason: 'paused' });
+        return;
+      }
       const startedAt = perf();
       let firstCueMs: number | undefined;
+      let dropped = false;
       const emit = (c: CueOut) => {
+        if (ctx.isPaused?.()) {
+          dropped = true;
+          return;
+        }
         firstCueMs ??= Math.round(perf() - receivedAt);
         send({ v: PROTOCOL_VERSION, t: 'cue', ...c });
       };
@@ -99,6 +117,12 @@ export function createPipeline(
         final = await e.answerer.answer(cueId, question, emit);
       } finally {
         e.inFlight--;
+      }
+      if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
+      if (ctx.stage === 'segment' && firstCueMs !== undefined) {
+        const total = firstCueMs + (ctx.sttFinalMs ?? 0);
+        if (total > opts.config.pipeline.firstCueBudgetMs)
+          log('budget.exceeded', { sessionId: s.id, stage: 'total', ms: total });
       }
       // D11: codes and ms only, never text
       log('cue.latency', {
@@ -115,7 +139,7 @@ export function createPipeline(
           serverTotalMs: Math.round(perf() - receivedAt) + (ctx.sttFinalMs ?? 0),
         }),
         bullets: final.bullets.length,
-        outcome: final.notFound ? 'notFound' : 'answered',
+        outcome: dropped ? 'paused' : final.notFound ? 'notFound' : 'answered',
       });
     });
     return 'ok';
@@ -141,8 +165,11 @@ export function createPipeline(
       seg: Segment,
       send: (m: ServerMessage) => void,
       sttFinalMs?: number,
+      isPaused: () => boolean = () => false,
     ): Promise<unknown> {
       const receivedAt = perf();
+      if (sttFinalMs !== undefined && sttFinalMs > opts.config.pipeline.sttFinalBudgetMs)
+        log('budget.exceeded', { sessionId: s.id, stage: 'stt', ms: sttFinalMs });
       // no pack -> an answer is impossible, do not pay for a Detector call
       if (!entryFor(s)) return Promise.resolve('no-pack');
       let e = detectors.get(s.id);
@@ -169,14 +196,18 @@ export function createPipeline(
       const det = e;
       det.chain = det.chain
         .then(async () => {
+          // queued behind slower segments: pause may have arrived, do not even pay for the Detector
+          if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
           const t0 = perf();
           const r = await det.d.onFinalSegment(seg);
           if (r.kind !== 'question') return;
+          if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
           const detectorMs = Math.round(perf() - t0);
           const res = answerQuestion(s, r.question, send, receivedAt, {
             stage: 'segment',
             sttFinalMs,
             detectorMs,
+            isPaused,
           });
           if (res !== 'ok') log('cue.dropped', { sessionId: s.id, reason: res });
         })

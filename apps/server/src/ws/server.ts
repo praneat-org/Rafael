@@ -72,7 +72,8 @@ export function attachWs(http: Server, opts: WsOptions) {
         onFinal: (s, seg, send, meta) => {
           opts.stt?.onFinal?.(s, seg, send, meta);
           // a final that was already in the provider when pause arrived must not start a cue
-          if (!paused.has(s)) void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs);
+          if (!paused.has(s))
+            void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs, () => paused.has(s));
         },
       },
       store,
@@ -214,6 +215,8 @@ export function attachWs(http: Server, opts: WsOptions) {
           return;
         case 'ask': {
           if (!session) return fail('SESSION_NOT_FOUND');
+          // BE-99 AC: pause = no new cue. No protocol change: BAD_MESSAGE (same as a refused busy ask)
+          if (paused.has(session)) return fail('BAD_MESSAGE');
           const sock = ws;
           // BE-108: no pack yet -> no guessing, tell the client
           const r = pipeline?.ask(session, m.text, (c) => {

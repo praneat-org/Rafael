@@ -27,10 +27,13 @@ const frame = (id: number) =>
 
 function fakeLlm() {
   const calls = { detector: 0, answerer: 0 };
+  // tests park the Detector / Answerer here to land `pause` mid-flight
+  const gates: { detector?: Promise<void>; answerer?: Promise<void> } = {};
   const llm: LlmClient = {
     async complete(req) {
       if (req.model !== 'det') return { text: '' }; // Answerer cache warm-up
       calls.detector++;
+      await gates.detector;
       const isQ = req.user.split('\n').at(-1)?.includes('QUESTION') ?? false;
       return {
         text: JSON.stringify({
@@ -44,6 +47,7 @@ function fakeLlm() {
     },
     async stream(_req, onText) {
       calls.answerer++;
+      await gates.answerer;
       onText(`- SECRET-ANSWER ${A1}`);
       return {
         text: `- SECRET-ANSWER ${A1}`,
@@ -58,7 +62,7 @@ function fakeLlm() {
     async renewCache() {},
     async deleteCache() {},
   };
-  return { llm, calls };
+  return { llm, calls, gates };
 }
 
 let out: string[];
@@ -75,15 +79,18 @@ afterEach(async () => {
   await new Promise((res) => app?.close(res));
 });
 
-async function setup(getPack: () => PackIndex | undefined = () => pack) {
+async function setup(
+  getPack: () => PackIndex | undefined = () => pack,
+  o: { config?: typeof config; now?: () => number } = {},
+) {
   const f = fakeLlm();
   const provider = new FakeSttProvider({ finalEvery: 1, word: (id) => WORDS[id] });
   app = createApp({
     store: new MemorySessionStore(),
     verifier: async () => ({ email: 'a@praneat.com' }),
     allowedOrigins: [ORIGIN],
-    brain: { llm: f.llm, config, getPack },
-    stt: { provider, voiced: () => true },
+    brain: { llm: f.llm, config: o.config ?? config, getPack },
+    stt: { provider, voiced: () => true, now: o.now },
   });
   app.listen(0);
   const ws = new WebSocket(`ws://127.0.0.1:${(app.address() as AddressInfo).port}/ws`, {
@@ -184,5 +191,93 @@ test('latency log per cue: sttFinalMs / detectorMs / serverTotalMs, no text (D11
   expect(out.some((l) => l.includes('"detector"') && l.includes('"outcome":"question"'))).toBe(
     true,
   );
+  expect(out.join('\n')).not.toMatch(/SECRET/);
+});
+
+function gate() {
+  let open!: () => void;
+  const p = new Promise<void>((r) => {
+    open = r;
+  });
+  return { p, open };
+}
+const dropped = () => out.filter((l) => l.includes('"cue.dropped"') && l.includes('"paused"'));
+
+test('pause while the Detector is still running -> no Answerer call, no cue', async () => {
+  const t = await setup();
+  const g = gate();
+  t.gates.detector = g.p;
+  t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.calls.detector).toBe(1));
+  t.send({ t: 'pause' });
+  await settle();
+  g.open();
+  await vi.waitFor(() => expect(dropped()).toHaveLength(1));
+  expect(t.calls.answerer).toBe(0);
+  expect(t.cues()).toHaveLength(0);
+});
+
+test('3 finals queued behind a slow Detector, then pause -> none of them cue, queued ones skip the Detector', async () => {
+  const t = await setup();
+  const g = gate();
+  t.gates.detector = g.p;
+  t.ws.send(frame(1));
+  t.ws.send(frame(1));
+  t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.finals()).toHaveLength(3));
+  await vi.waitFor(() => expect(t.calls.detector).toBe(1));
+  t.send({ t: 'pause' });
+  await settle();
+  g.open();
+  await vi.waitFor(() => expect(dropped()).toHaveLength(3));
+  expect(t.calls).toEqual({ detector: 1, answerer: 0 });
+  expect(t.cues()).toHaveLength(0);
+});
+
+test('pause while the Answerer is generating -> the cue is not emitted', async () => {
+  const t = await setup();
+  const g = gate();
+  t.gates.answerer = g.p;
+  t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.calls.answerer).toBe(1));
+  t.send({ t: 'pause' });
+  await settle();
+  g.open();
+  await vi.waitFor(() => expect(dropped().length).toBeGreaterThan(0));
+  await settle();
+  expect(t.cues()).toHaveLength(0);
+});
+
+test('ask while paused -> BAD_MESSAGE, no cue; after resume it works', async () => {
+  const t = await setup();
+  t.send({ t: 'pause' });
+  await settle();
+  t.send({ t: 'ask', text: 'manual question' });
+  await vi.waitFor(() =>
+    expect(t.msgs().find((m) => m.t === 'error')).toMatchObject({ code: 'BAD_MESSAGE' }),
+  );
+  expect(t.calls.answerer).toBe(0);
+  t.send({ t: 'resume' });
+  await settle();
+  t.send({ t: 'ask', text: 'manual question' });
+  await vi.waitFor(() => expect(t.cues().some((c) => !c.partial)).toBe(true));
+});
+
+test('over-budget stages log budget.exceeded (stt, answerer first token, total) without text', async () => {
+  let clock = 0;
+  const tight = {
+    ...config,
+    answerer: { ...config.answerer, firstTokenBudgetMs: -1 },
+    pipeline: { sttFinalBudgetMs: 800, firstCueBudgetMs: 0 },
+  };
+  const t = await setup(() => pack, { config: tight, now: () => (clock += 1000) });
+  t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.cues().some((c) => !c.partial)).toBe(true));
+  await vi.waitFor(() => expect(out.some((l) => l.includes('"cue.latency"'))).toBe(true));
+  const stages = out
+    .filter((l) => l.includes('"budget.exceeded"'))
+    .map((l) => JSON.parse(l).stage)
+    .sort();
+  expect(stages).toEqual(['answerer', 'stt', 'total']);
   expect(out.join('\n')).not.toMatch(/SECRET/);
 });
