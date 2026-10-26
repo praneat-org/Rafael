@@ -30,7 +30,7 @@ export type WsOptions = {
   allowLocalhost?: boolean;
   helloTimeoutMs?: number;
   heartbeatMs?: number;
-  /** ask path (BE-99). Without it, `ask` answers LLM_UNAVAILABLE. */
+  /** ask path (BE-99). Without it, `ask` answers LLM_UNAVAILABLE; with it but no pack yet, PACK_NOT_READY. */
   brain?: BrainOptions;
   /** pack wiring (BE-108): build on session.start from the user's Drive folder (packId) */
   pack?: PackServiceOptions;
@@ -229,7 +229,16 @@ export function attachWs(http: Server, opts: WsOptions) {
           const r = pipeline?.ask(session, m.text, (c) => {
             if (sock.readyState === sock.OPEN) send(c);
           });
-          if (r !== 'ok') fail(r === 'busy' ? 'BAD_MESSAGE' : 'LLM_UNAVAILABLE');
+          if (r === undefined)
+            fail('LLM_UNAVAILABLE'); // no brain configured
+          else if (r === 'busy') fail('BAD_MESSAGE');
+          else if (r === 'no-pack') {
+            // last build failed as too-large: that pack never becomes ready, say why (files: D11-safe)
+            // other failure / still building: PACK_NOT_READY (pack.status 'error' already told the client; refresh may fix it)
+            const files = packs?.tooLargeFiles(session.id);
+            if (files) send({ v: PROTOCOL_VERSION, t: 'error', code: 'PACK_TOO_LARGE', files });
+            else fail('PACK_NOT_READY');
+          }
           return;
         }
         case 'pause':

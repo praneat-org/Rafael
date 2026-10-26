@@ -8,7 +8,7 @@ import type { BrainConfig } from './config.js';
 import { createDetector, type Segment } from './detector.js';
 import type { LlmClient } from './llm.js';
 
-/** BE-108 will supply the real pack; until then no provider -> ask answers LLM_UNAVAILABLE. */
+/** No pack yet (undefined) -> ask answers PACK_NOT_READY. */
 export type PackProvider = (s: Session) => PackIndex | undefined;
 export type BrainOptions = { llm: LlmClient; config: BrainConfig; getPack?: PackProvider };
 export type AskResult = 'ok' | 'no-pack' | 'busy';

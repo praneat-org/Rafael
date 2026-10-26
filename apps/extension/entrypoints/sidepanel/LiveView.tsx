@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Cue, SessionState } from '../../src/session';
-import { PackStatus } from './PackStatus';
+import { PackStatus, PackTooLarge } from './PackStatus';
 
 type Send = (cmd: PanelToOffscreen) => void;
 
@@ -102,7 +102,13 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
         </span>
       </header>
       <PackStatus state={state.pack} info={state.packInfo} />
-      {state.error && <p className="note">ผิดพลาด: {state.error}</p>}
+      {state.error === 'PACK_TOO_LARGE' && state.tooLarge && state.tooLarge.length > 0 ? (
+        <PackTooLarge files={state.tooLarge} />
+      ) : state.error === 'PACK_NOT_READY' && state.pack === 'loading' ? (
+        <p className="note">กำลังเตรียมเอกสาร — รอสักครู่แล้วถามใหม่</p>
+      ) : (
+        state.error && <p className="note">ผิดพลาด: {state.error}</p>
+      )}
       {/* fixed-height slot: any cue (partial or final) fits without moving the rest */}
       <section className={`latest${latest?.partial ? ' partial' : ''}`} aria-live="polite">
         {latest ? <CueBody cue={latest} big /> : <p className="note">รอคำถามจากลูกค้า…</p>}

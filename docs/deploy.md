@@ -10,8 +10,8 @@ Config only: nothing here has run against GCP yet. Files: `apps/server/Dockerfil
    - `DEEPGRAM_API_KEY`: only if BE-79 picks Deepgram. Chirp 3 uses the service account, no key; then set `_SECRETS=''` on the trigger (the deploy step then passes `--clear-secrets`).
    - No `ANTHROPIC_API_KEY` (BE-71 lists it, D20 replaced it with Vertex AI).
 4. Cloud Build service account roles: Cloud Run Admin, Service Account User (on the Cloud Run runtime SA), Artifact Registry Writer, Logs Writer (`roles/logging.logWriter`, needed for `CLOUD_LOGGING_ONLY`). Runtime SA: Secret Manager Secret Accessor on the secrets above, Vertex AI User, Speech client role if Chirp 3. No Storage roles (D11).
-5. Trigger dev: GitHub repo praneat-org/Rafael, push to `^develop$`, config `cloudbuild.deploy.yaml`, substitutions `_EXTENSION_IDS=<dev extension id>`, `_RUNTIME_SA=<runtime SA email>`.
-6. Trigger prod: push to `^main$`, same config, **require approval**, substitutions `_SERVICE=rafael`, `_EXTENSION_IDS=<prod id>`, `_RUNTIME_SA=<runtime SA email>`.
+5. Trigger dev: GitHub repo praneat-org/Rafael, push to `^develop$`, config `cloudbuild.deploy.yaml`, substitutions `_ALLOWED_EXTENSION_IDS=<dev extension id>`, `_RUNTIME_SA=<runtime SA email>`.
+6. Trigger prod: push to `^main$`, same config, **require approval**, substitutions `_SERVICE=rafael`, `_ALLOWED_EXTENSION_IDS=<prod id>`, `_RUNTIME_SA=<runtime SA email>`.
 7. OAuth consent screen: **Internal** (workspace praneat.com). Scopes exactly `openid email profile` + `https://www.googleapis.com/auth/drive.readonly` (D13), nothing else.
 8. OAuth client, type **Chrome Extension**, with the fixed extension ID derived from the `key` in the extension manifest (FE-34, or generate the key first).
 9. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
@@ -29,7 +29,7 @@ Config only: nothing here has run against GCP yet. Files: `apps/server/Dockerfil
 
 - `--timeout=3600`, `--session-affinity`, `/api/health` startup + liveness probe (D18, no token).
 - `_MIN=1 _MAX=1`: **proposal for Q2, not decided.** Override on the trigger if Q2 closes differently.
-- Env var is `EXTENSION_IDS` (what `apps/server/src/index.ts` reads; the BE-88 ticket says `ALLOWED_EXTENSION_IDS`, the code name wins).
+- Env var is `ALLOWED_EXTENSION_IDS` (per the BE-88 card; read by `apps/server/src/index.ts`).
 - `--allow-unauthenticated` is required so the extension can reach `/ws`; auth happens in the WS `hello`. Until BE-87 installs the token verifier, the server denies every `hello` on Cloud Run, so only `/api/health` is testable; test WS after BE-87.
 
 ## Check on first real deploy

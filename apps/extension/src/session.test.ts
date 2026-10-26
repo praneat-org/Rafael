@@ -81,3 +81,66 @@ test('pack.status keeps unreadable files for the UI (names only)', () => {
   expect(s.packInfo?.unreadable).toEqual([{ file: 'b.pdf', fileId: '2' }]);
   expect(s.packInfo?.tokens).toBe(10);
 });
+
+test('pack.status keeps read/total; PACK_TOO_LARGE keeps files until a ready rebuild', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, {
+    k: 'server',
+    msg: {
+      v: 1,
+      t: 'pack.status',
+      state: 'loading',
+      files: [],
+      tokens: 0,
+      unreadable: [],
+      read: 2,
+      total: 5,
+    },
+  });
+  expect(s.packInfo).toMatchObject({ read: 2, total: 5 });
+  s = reduce(s, {
+    k: 'server',
+    msg: { v: 1, t: 'error', code: 'PACK_TOO_LARGE', files: [{ name: 'big.pdf', tokens: 900 }] },
+  });
+  expect(s.tooLarge).toEqual([{ name: 'big.pdf', tokens: 900 }]);
+  s = reduce(s, {
+    k: 'server',
+    msg: { v: 1, t: 'pack.status', state: 'ready', files: [], tokens: 1, unreadable: [] },
+  });
+  expect(s.tooLarge).toBeNull();
+  expect(s.error).toBeNull();
+});
+
+const ps = (state: 'loading' | 'ready' | 'error'): Action => ({
+  k: 'server',
+  msg: { v: 1, t: 'pack.status', state, files: [], tokens: 0, unreadable: [] },
+});
+const err = (
+  code: 'PACK_NOT_READY' | 'PACK_TOO_LARGE' | 'STT_UNAVAILABLE',
+  files?: { name: string; tokens: number }[],
+): Action => ({ k: 'server', msg: { v: 1, t: 'error', code, files } });
+
+test('PACK_NOT_READY is ignored while the too-large list is shown', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, err('PACK_TOO_LARGE', [{ name: 'big.pdf', tokens: 9 }]));
+  s = reduce(s, err('PACK_NOT_READY'));
+  expect(s.tooLarge).toHaveLength(1);
+  expect(s.error).toBe('PACK_TOO_LARGE');
+});
+
+test('pack ready clears pack errors only', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, err('STT_UNAVAILABLE'));
+  expect(reduce(s, ps('ready')).error).toBe('STT_UNAVAILABLE');
+  s = reduce(reduce(initialState, { k: 'start' }), err('PACK_NOT_READY'));
+  expect(reduce(s, ps('ready')).error).toBeNull();
+});
+
+test('pack loading clears the old too-large list', () => {
+  let s = reduce(
+    reduce(initialState, { k: 'start' }),
+    err('PACK_TOO_LARGE', [{ name: 'a', tokens: 1 }]),
+  );
+  s = reduce(s, ps('loading'));
+  expect(s.tooLarge).toBeNull();
+});

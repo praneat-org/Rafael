@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
-import { getAuthToken, isAuthConfigured } from '../../src/auth';
+import { getAuthToken, isAuthConfigured, refreshAuthToken } from '../../src/auth';
+import { loadNames, shortId } from '../../src/folder-names';
 import { parseFolderId } from '../../src/folder-url';
-import type { PanelToOffscreen } from '../../src/messages';
+import { type PanelToOffscreen, TAB_GRANTED } from '../../src/messages';
 import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
 import { defaultSettings, loadSettings, type Settings, saveSettings } from '../../src/settings';
 import { defaultInputs, startBlock } from '../../src/setup-state';
@@ -29,12 +30,15 @@ export function SetupView({
   audio: AudioState | null;
 }) {
   const [testing, setTesting] = useState(false);
+  const [grants, setGrants] = useState(0); // bumps when the context menu grants the tab: re-run the preview
   const [s, setS] = useState<Settings>(defaultSettings);
   const [wav, setWav] = useState<File | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [signInFailed, setSignInFailed] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({}); // memory only, never stored (D11)
+  const tried = useRef(new Set<string>());
   const recentWritten = useRef(false); // a stale loadRecent() must not clobber a newer save
   const [inputs, setInputs] = useState<CaptureOpts>({ tab: false, mic: true });
   const configured = isAuthConfigured(import.meta.env.WXT_OAUTH_CLIENT_ID);
@@ -53,6 +57,27 @@ export function SetupView({
       () => {},
     );
   }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: signedIn re-runs the silent token fetch after sign-in
+  useEffect(() => {
+    if (s.mock || !configured) return;
+    let cancelled = false;
+    loadNames({
+      ids: recent,
+      tried: tried.current,
+      getToken: () => getAuthToken(false),
+      refresh: refreshAuthToken,
+      cancelled: () => cancelled,
+      onName: (id, name) => setNames((n) => ({ ...n, [id]: name })),
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [recent, s.mock, configured, signedIn]);
+  useEffect(() => {
+    const on = (m: unknown) => m === TAB_GRANTED && setGrants((g) => g + 1);
+    browser.runtime.onMessage.addListener(on);
+    return () => browser.runtime.onMessage.removeListener(on);
+  }, []);
   const update = (next: Settings) => {
     setS(next);
     saveSettings(next).catch(() => {});
@@ -62,6 +87,7 @@ export function SetupView({
     setSignedIn(ok);
     setSignInFailed(!ok);
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `grants` is a retrigger counter
   useEffect(() => {
     if (!testing) return;
     let cancelled = false; // a slow wav read must not send a stale preview after cleanup
@@ -74,7 +100,7 @@ export function SetupView({
       cancelled = true;
       send({ k: 'preview-stop' });
     };
-  }, [testing, s.mock, wav, inputs, send]);
+  }, [testing, s.mock, wav, inputs, grants, send]);
   const level = Math.min(1, Math.sqrt(audio?.level ?? 0) * 1.5); // RMS is small for speech: sqrt for a readable bar
   const block = startBlock({ mock: s.mock, signedIn, folderId, ...inputs });
   const start = async () => {
@@ -158,7 +184,7 @@ export function SetupView({
               <option value="">โฟลเดอร์ล่าสุด…</option>
               {recent.map((id) => (
                 <option key={id} value={id}>
-                  …{id.slice(-8)}
+                  {names[id] ?? shortId(id)}
                 </option>
               ))}
             </select>
@@ -210,7 +236,7 @@ export function SetupView({
       {testing && audio?.error && (
         <p className="note err">
           {audio.error === 'tab-capture'
-            ? 'จับเสียงแท็บไม่ได้ — กดไอคอน extension บนแท็บที่ต้องการก่อน แล้วลองใหม่'
+            ? 'จับเสียงแท็บไม่ได้ — กดไอคอน extension (หรือ Alt+Shift+R / คลิกขวาในหน้า Meet › Rafael: จับเสียงแท็บนี้) บนแท็บ Meet ก่อน แล้วลองใหม่'
             : `เปิดเสียงไม่ได้ (${audio.error})`}
         </p>
       )}
