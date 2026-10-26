@@ -197,7 +197,13 @@ export function attachWs(http: Server, opts: WsOptions) {
           if (r === undefined)
             fail('LLM_UNAVAILABLE'); // no brain configured
           else if (r === 'busy') fail('BAD_MESSAGE');
-          else if (r === 'no-pack') fail('PACK_NOT_READY');
+          else if (r === 'no-pack') {
+            // last build failed as too-large: that pack never becomes ready, say why (files: D11-safe)
+            // other failure / still building: PACK_NOT_READY (pack.status 'error' already told the client; refresh may fix it)
+            const files = packs?.tooLargeFiles(session.id);
+            if (files) send({ v: PROTOCOL_VERSION, t: 'error', code: 'PACK_TOO_LARGE', files });
+            else fail('PACK_NOT_READY');
+          }
           return;
         }
         default: // pause / resume: stubs for BE-89

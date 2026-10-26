@@ -11,6 +11,9 @@ export type PackServiceOptions = {
   build?: BuildOptions;
 };
 export type RefreshResult = 'ready' | 'superseded' | 'too-large' | 'error';
+export type TooLargeFile = { name: string; tokens: number };
+/** `files` only with 'too-large': this build's own list, never a shared / stale one */
+export type RefreshOutcome = { result: RefreshResult; files?: TooLargeFile[] };
 
 /** Session <-> pack glue (BE-108): build on start, refresh on demand, clear on end (D11). */
 export function createPackService(
@@ -21,7 +24,7 @@ export function createPackService(
   const packs = new PackStore();
   const senders = new Map<string, (m: ServerMessage) => void>();
   const running = new Set<string>();
-  const tooLarge = new Map<string, { name: string; tokens: number }[]>(); // last PACK_TOO_LARGE list per session
+  const tooLarge = new Map<string, TooLargeFile[]>(); // set only while the latest build's failure is PACK_TOO_LARGE (ask answers it)
   const gen = new Map<string, number>(); // latest build per session: older builds stay silent
   store.onEnd((s) => {
     packs.clear(s.id); // also cancels an in-flight build
@@ -49,12 +52,13 @@ export function createPackService(
     s: Session,
     accessToken = s.accessToken,
     event: 'pack.build' | 'pack.refresh' = 'pack.build',
-  ): Promise<RefreshResult> {
-    if (!accessToken) return 'error';
+  ): Promise<RefreshOutcome> {
+    if (!accessToken) return { result: 'error' };
     running.add(s.id);
     const my = (gen.get(s.id) ?? 0) + 1;
     gen.set(s.id, my);
     const current = () => gen.get(s.id) === my;
+    tooLarge.delete(s.id); // a new build is pending: ask answers PACK_NOT_READY until it ends
     status(s, 'loading');
     try {
       const pack = await packs.refresh(s.id, () =>
@@ -63,7 +67,7 @@ export function createPackService(
           onStatus: (m) => current() && senders.get(s.id)?.(m),
         }),
       );
-      if (!pack || store.get(s.id) !== s) return 'superseded';
+      if (!pack || store.get(s.id) !== s) return { result: 'superseded' };
       onPack(s, pack);
       try {
         // BE-97 AC5: who read which folder. ponytail: SourceProvider has no folder-name call, so
@@ -78,14 +82,17 @@ export function createPackService(
           tokens: pack.tokens,
         });
       } catch {} // an unparseable folder id: build already succeeded, audit line is just dropped
-      return 'ready';
+      tooLarge.delete(s.id);
+      return { result: 'ready' };
     } catch (e) {
+      if (!current()) return { result: 'superseded' }; // a newer build / session end owns the outcome
       // codes only: provider errors may carry content (D11). buildPack already emitted status for too-large
       const big = e instanceof PackTooLargeError;
-      if (!big && current()) status(s, 'error');
-      if (big && current()) {
+      if (!big) status(s, 'error');
+      let files: TooLargeFile[] | undefined;
+      if (big) {
         // names + token counts only (D11); the pack.status error was already emitted by buildPack
-        const files = e.files.map((f) => ({ name: f.file, tokens: f.tokens }));
+        files = e.files.map((f) => ({ name: f.file, tokens: f.tokens }));
         tooLarge.set(s.id, files);
         senders.get(s.id)?.({ v: PROTOCOL_VERSION, t: 'error', code: 'PACK_TOO_LARGE', files });
       }
@@ -93,7 +100,7 @@ export function createPackService(
         sessionId: s.id,
         code: big ? 'PACK_TOO_LARGE' : 'PACK_BUILD_FAILED',
       });
-      return big ? 'too-large' : 'error';
+      return { result: big ? 'too-large' : 'error', files };
     } finally {
       if (current()) running.delete(s.id);
     }
@@ -101,7 +108,7 @@ export function createPackService(
 
   return {
     get: (id: string) => packs.get(id),
-    /** files of the last PACK_TOO_LARGE for this session (HTTP refresh body) */
+    /** files of the latest build when it failed as PACK_TOO_LARGE; undefined while pending / after success or other failure */
     tooLargeFiles: (id: string) => tooLarge.get(id),
     refresh,
     /** socket attached: route pack.status to it (undefined on detach) */
@@ -110,7 +117,7 @@ export function createPackService(
       else senders.delete(id);
     },
     /** session.start / resume: build once; a resumed session with a pack just re-announces it */
-    async start(s: Session): Promise<RefreshResult | undefined> {
+    async start(s: Session): Promise<RefreshOutcome | undefined> {
       const have = packs.get(s.id);
       if (have) return void status(s, 'ready', have);
       if (running.has(s.id)) return undefined;
