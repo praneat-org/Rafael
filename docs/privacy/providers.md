@@ -49,6 +49,8 @@ Status: partly implemented. The Drive reader is merged (BE-90 #16) but not wired
 
 - Data: our server sends the user's access token and file requests; Drive returns the pack file content. Whether Drive reads fall under the Google Cloud Data Processing Addendum (formerly the Workspace "Data Processing Amendment") is **UNVERIFIED** (the covered-services appendix was not read); if it does, Google is processor with deletion within max 180 days after term end [11]. Drive region: **UNVERIFIED**. Drive's own retention of the files is a Praneat Workspace admin setting: **not found / not researched** (not Rafael-controlled).
 - Our app is bound by the Google API Services User Data Policy: Limited Use (use only for user-facing features, no transfer except listed exceptions, human reading only in narrow cases, data secured in transit and at rest). The page does not mention AI model training and sets no retention period. [12] Open question for DPO / legal: whether sending pack content to Gemini is a permitted transfer.
+- Provider logging / zero-retention controls for Drive: **not found / UNVERIFIED**; [12] does not specify Drive logging or a zero-retention control.
+- Google Drive MCP: **not researched**. Our server calls Drive API v3 directly (BE-90); no MCP is used in code. Data sent, region, retention, training use, logging / zero-retention and DPA for an MCP path are all **UNVERIFIED**, with no dated source. Research before any MCP use; otherwise record an explicit out-of-scope decision.
 - Token handling: in memory only, per session (D11). Proof card: BE-85 (#8, merged) for in-memory session state; the Drive reader card was not checked here.
 
 ## Q1: direct API vs Vertex (settled by D20)

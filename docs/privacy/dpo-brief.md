@@ -6,9 +6,11 @@ DRAFT for human / DPO review. Facts come from `docs/privacy/providers.md` (BE-93
 
 **DRAFT, do not send to customers yet.** The "no recording or transcript after the meeting" claim is not yet backed by merged code: current develop keeps session state in memory (BE-85) and the server writes no content to disk or logs (metadata such as ids/counts is logged) (BE-96 #14), but cleanup of transcript, pack and cue on session end is pending BE-89, BE-94 and BE-108, the extension side is pending FE-37, plus DPO approval.
 
-TH: "ในการประชุมนี้ ทีมของเรามีระบบช่วยฟังเพื่อค้นหาข้อมูลจากเอกสารของเราเอง ระบบของเราไม่เก็บไฟล์เสียงหรือข้อความการสนทนาไว้หลังจบการประชุม โดยเสียงและข้อความจะถูกประมวลผลโดยผู้ให้บริการภายนอกตามเงื่อนไขของผู้ให้บริการ หากไม่สะดวก แจ้งได้เลยครับ/ค่ะ เราจะปิดระบบทันที"
+TH: "ในการประชุมนี้ ทีมของเรามีระบบช่วยฟังเพื่อค้นหาข้อมูลจากเอกสารของเราเอง ระบบของเราไม่เก็บไฟล์เสียงหรือข้อความการสนทนาไว้หลังจบการประชุม โดยเสียงและข้อความจะถูกประมวลผลโดยผู้ให้บริการภายนอกตามเงื่อนไขของผู้ให้บริการ หากไม่สะดวก แจ้งได้เลยครับ/ค่ะ ทีมงานของเราจะปิดระบบให้"
 
-EN: "Our team is using an assistant in this meeting to look up answers from our own documents. Our system keeps no recording or transcript after the meeting; audio and text are processed by external service providers under their terms. If you would rather we did not, just say so and we will switch it off."
+EN: "Our team is using an assistant in this meeting to look up answers from our own documents. Our system keeps no recording or transcript after the meeting; audio and text are processed by external service providers under their terms. If you would rather we did not, tell us and our team will switch it off."
+
+Switch-off is manual: the code has no automatic handling of objections; the rep ends the session (`session.end`). The wording above promises only that our team will do so.
 
 Scope: every claim is limited to our own system and says providers process under their own terms (Google keeps flagged prompts up to 90 days unless a Master Agreement applies, see section 3). DPO to finalize wording. The "after the meeting" claim stays DRAFT until BE-89, BE-94, BE-108, FE-37 are merged and the DPO approves (see status column).
 
@@ -18,7 +20,7 @@ Scope: every claim is limited to our own system and says providers process under
 - Government / public-sector confidential meetings.
 - Sensitive personal data is expected (health, religion, biometrics, criminal records, etc.).
 - Contract or NDA forbids AI tools or third-party processing.
-- Customer requires data to stay in Thailand (no Thailand region exists; LLM in Singapore at best, STT possibly US/EU).
+- Customer requires data to stay in Thailand (UNVERIFIED: no Thailand region is confirmed for the selected providers. Vertex AI lists `asia-southeast1` (Singapore) but regional endpoints do not guarantee in-region ML processing; Chirp 3 region support conflicts between `us`/`eu` and `asia-southeast1`; the STT provider is undecided. Do not use until providers and regions are confirmed).
 - The notice has not been given first (for example, the rep joined late).
 
 ## 3. Data flow (for DPO)
@@ -39,13 +41,13 @@ Rep mic + tab audio -> Chrome extension -> WSS -> Cloud Run asia-southeast1 (con
 | Cue | Extension | Server side: cues are not generated or stored yet (brain not merged); the log allowlist (BE-96 #14, merged) drops content fields. UNVERIFIED: the extension side panel (FE-37 #11, not merged). Status: not implemented | n/a |
 | Server logs | Cloud Logging | Metadata only: log allowlist drops any other field and logs only a dropped count (BE-96 #14, merged; `apps/server/src/log.ts`, `log.test.ts`). Status: implemented | Google Cloud. Retention UNVERIFIED: our project's `_Default` log bucket retention not checked (Google's documented default is 30 days; `_Required` audit bucket 400 days, not configurable) |
 
-Processors and regions: Google Workspace / Drive API (reader merged in BE-90 #16 but not yet wired into the session flow, so no pack is read on develop today; it will read the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy and Praneat's Google agreement), Google Cloud (Cloud Run; Vertex Gemini planned, not called by develop yet, asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US UNVERIFIED; no Asia endpoint found). Per provider: Vertex Gemini asia-southeast1 (no Thailand region, so outside Thailand); Drive region UNVERIFIED; Chirp 3 asia-southeast1 UNVERIFIED (`us`/`eu` documented); Deepgram EU (or US, UNVERIFIED).
+Processors and regions: Google Workspace / Drive API (reader merged in BE-90 #16 but not yet wired into the session flow, so no pack is read on develop today; it will read the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy; whether Praneat's Google agreement/DPA covers Drive is UNVERIFIED, see Q0), Google Cloud (Cloud Run; Vertex Gemini planned, not called by develop yet, asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US UNVERIFIED; no Asia endpoint found). Per provider: Vertex Gemini asia-southeast1 (no Thailand region, so outside Thailand); Drive region UNVERIFIED; Chirp 3 asia-southeast1 UNVERIFIED (`us`/`eu` documented); Deepgram EU (or US, UNVERIFIED).
 
 Audit log (planned, BE-97, not built): session start/end, email hash, error codes, token usage; no audio / transcript / cue content by design. Retention: not decided (UNVERIFIED).
 
 ## 4. Questions for the DPO
 
-0. Does Praneat have a Google Cloud Master Agreement (default exemption from abuse-monitoring prompt logging)? If we choose a Frontier model (e.g. Gemini 4 Argon), prompts + responses are logged up to 30 days: acceptable?
+0. Does Praneat have a Google Cloud Master Agreement (default exemption from abuse-monitoring prompt logging), and does that agreement / the Cloud DPA cover Drive reads? If we choose a Frontier model (e.g. Gemini 4 Argon), prompts + responses are logged up to 30 days: acceptable?
 
 1. Is Singapore / US / EU processing acceptable under PDPA cross-border rules with a DPA, or must processing stay in an ASEAN-only region?
 2. Is "does not record" wording acceptable given external STT and Google abuse-monitoring logs? Do we need to request an exception from Google?
@@ -61,3 +63,4 @@ Audit log (planned, BE-97, not built): session start/end, email hash, error code
 - Deepgram `mip_opt_out` / Chirp no-logging config: STT adapters BE-89 not built.
 - Cloud Logging retention: check the project's `_Default` bucket setting and pick the BE-97 audit log retention.
 - Google written answers on abuse logging and explicit-cache ZDR.
+- Praneat's Google agreement / DPA: confirm which one exists and that it covers Drive (UNVERIFIED).
