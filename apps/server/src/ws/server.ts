@@ -194,6 +194,8 @@ export function attachWs(http: Server, opts: WsOptions) {
         case 'session.end':
           if (!session) return fail('SESSION_NOT_FOUND');
           log('session.ended', { sessionId: session.id, audioFrames: session.audioFrames });
+          // store.end closes the socket: flush the STT first so the last final reaches the client
+          await stt?.end(session).catch(() => {});
           store.end(session.id); // also closes the socket
           return;
         case 'ask': {

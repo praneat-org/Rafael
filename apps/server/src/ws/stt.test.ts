@@ -143,3 +143,16 @@ test('audio before session.start is ignored', async () => {
   expect(t.provider.starts.length).toBe(0);
   ws2.close();
 });
+
+test('session.end flushes the pending final to the client before the socket closes', async () => {
+  const t = await setup();
+  t.audio(1, 2); // finalEvery=3: two words still pending
+  await vi.waitFor(() => expect(transcripts(t.msgs()).length).toBe(2)); // 2 partials
+  t.send({ t: 'session.end' });
+  await vi.waitFor(() => expect(t.ws.readyState).toBe(WebSocket.CLOSED));
+  expect(
+    transcripts(t.msgs())
+      .filter((m) => m.final)
+      .map((m) => m.text),
+  ).toEqual(['SECRET-WORD-1 SECRET-WORD-2']);
+});

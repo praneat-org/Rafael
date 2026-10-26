@@ -41,6 +41,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
   let seg = 0;
   let cur: Gen | undefined;
   let attempts = 0;
+  let closing = false; // close() started: no reopen, no new timers
   let closed = false;
   let rolloverP: Promise<unknown> = Promise.resolve();
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -105,7 +106,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
         else if (g === cur || g.retired) emit(g, text, speaker);
       },
       onError: () => {
-        if (closed || g !== cur) return;
+        if (closed || closing || g !== cur) return;
         cur = undefined;
         void g.stream.close().catch(() => {});
         fail();
@@ -119,13 +120,15 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
   }
 
   function fail() {
+    if (closing || closed) return;
     const gaveUp = attempts >= maxRetries;
     o.onError(gaveUp);
-    if (gaveUp || closed) return;
+    if (gaveUp) return;
     attempts++;
     retryTimer = setTimeout(
       () => {
         retryTimer = undefined;
+        if (closing || closed) return;
         try {
           cur = open([...ring], false);
         } catch {
@@ -160,7 +163,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
 
   return {
     push(pcm: Int16Array) {
-      if (closed) return;
+      if (closed || closing) return;
       ring.push(pcm);
       if (ring.length > overlapFrames) ring.shift();
       if (!cur && !retryTimer) {
@@ -185,6 +188,8 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
     },
     /** flush what the stream still holds, then stop. Events after this are dropped. */
     async close() {
+      if (closing) return;
+      closing = true;
       if (retryTimer) clearTimeout(retryTimer);
       await rolloverP;
       const g = cur;
