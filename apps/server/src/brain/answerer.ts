@@ -1,9 +1,9 @@
 import { performance } from 'node:perf_hooks';
+import { type PackChunk, renderPackText } from '../source/pack.js';
 import type { BrainConfig } from './config.js';
 import type { LlmClient, LlmResponse } from './llm.js';
 
-/** One Session Pack chunk. BE-91 (pack builder) will produce these; only the anchor fields + text matter here. */
-export type PackChunk = { file: string; fileId: string; locator: string; text: string };
+/** Session Pack chunks from BE-91 (`Pack.chunks`). */
 export type PackIndex = PackChunk[];
 
 /** Cue payload without the envelope (`v`, `t`) — shape matches protocol `cue`. */
@@ -45,11 +45,9 @@ Output format, plain text, nothing else:
 - if the pack does not contain the answer, output exactly ${NOT_FOUND_MARK} and nothing else
 Each pack chunk starts with its anchor header line "[file › page]".`;
 
-const anchorOf = (c: { file: string; locator: string }) => `[${c.file} › ${c.locator}]`;
-
 /** The cached prefix: rules + pack, deterministic order, identical for every question of the session. */
 export function buildPrefix(pack: PackIndex): string {
-  return `${SYSTEM_PROMPT}\n\n=== SESSION PACK ===\n${pack.map((c) => `${anchorOf(c)}\n${c.text}`).join('\n\n')}`;
+  return `${SYSTEM_PROMPT}\n\n=== SESSION PACK ===\n${renderPackText(pack)}`;
 }
 
 const wordSeg = new Intl.Segmenter('th', { granularity: 'word' });
@@ -73,12 +71,12 @@ export function verifyBullet(
   const text = line.replace(/^\s*[-*•]\s*/, '').trim();
   const m = ANCHOR_TAIL.exec(text);
   if (!m) return undefined;
-  const source = anchors.get(`${m[1]?.trim()} › ${m[2]?.trim()}`);
+  const source = anchors.get(`[${m[1]?.trim()} › ${m[2]?.trim()}]`);
   if (!source) return undefined;
   const body = text.slice(0, m.index).trim();
   // ponytail: drop (not truncate) an over-long bullet: cutting words could change the claim
   if (!body || countWords(body) > maxWords) return undefined;
-  return { bullet: `${body} ${anchorOf(source)}`, source };
+  return { bullet: `${body} ${source.anchor}`, source };
 }
 
 export type AnswererDeps = {
@@ -124,7 +122,7 @@ export function createAnswerer(deps: AnswererDeps) {
   /** Load / refresh the pack: old cache is deleted, new prefix gets a new cache (never reuse the old one). */
   async function load(pack: PackIndex) {
     await dropCache();
-    anchors = new Map(pack.map((c) => [`${c.file} › ${c.locator}`, c]));
+    anchors = new Map(pack.map((c) => [c.anchor, c]));
     prefix = buildPrefix(pack);
     if (disposed) return;
     try {
@@ -184,7 +182,7 @@ export function createAnswerer(deps: AnswererDeps) {
       const v = verifyBullet(l, anchors, cfg.maxWordsPerBullet);
       if (!v) return;
       bullets.push(v.bullet);
-      sources.set(anchorOf(v.source), v.source);
+      sources.set(v.source.anchor, v.source);
       firstCueMs ??= Math.round(perf() - t0);
       emit(cue(true)); // only after the bullet is complete AND its anchor verified
     };

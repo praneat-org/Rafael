@@ -12,8 +12,20 @@ import type { LlmClient, LlmRequest } from './llm.js';
 
 const config = loadBrainConfig({ DETECTOR_MODEL: 'det', ANSWERER_MODEL: 'ans-model' });
 const pack: PackIndex = [
-  { file: 'deck.pdf', fileId: 'f1', locator: 'หน้า 3', text: 'SECRET-PACK-TEXT price 100' },
-  { file: 'faq.docx', fileId: 'f2', locator: 'section SLA', text: 'uptime 99.9' },
+  {
+    anchor: '[deck.pdf › หน้า 3]',
+    file: 'deck.pdf',
+    fileId: 'f1',
+    locator: 'หน้า 3',
+    text: 'SECRET-PACK-TEXT price 100',
+  },
+  {
+    anchor: '[faq.docx › section SLA]',
+    file: 'faq.docx',
+    fileId: 'f2',
+    locator: 'section SLA',
+    text: 'uptime 99.9',
+  },
 ];
 const A1 = '[deck.pdf › หน้า 3]';
 const A2 = '[faq.docx › section SLA]';
