@@ -81,3 +81,32 @@ test('pack.status keeps unreadable files for the UI (names only)', () => {
   expect(s.packInfo?.unreadable).toEqual([{ file: 'b.pdf', fileId: '2' }]);
   expect(s.packInfo?.tokens).toBe(10);
 });
+
+test('pack.status keeps read/total; PACK_TOO_LARGE keeps files until a ready rebuild', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, {
+    k: 'server',
+    msg: {
+      v: 1,
+      t: 'pack.status',
+      state: 'loading',
+      files: [],
+      tokens: 0,
+      unreadable: [],
+      read: 2,
+      total: 5,
+    },
+  });
+  expect(s.packInfo).toMatchObject({ read: 2, total: 5 });
+  s = reduce(s, {
+    k: 'server',
+    msg: { v: 1, t: 'error', code: 'PACK_TOO_LARGE', files: [{ name: 'big.pdf', tokens: 900 }] },
+  });
+  expect(s.tooLarge).toEqual([{ name: 'big.pdf', tokens: 900 }]);
+  s = reduce(s, {
+    k: 'server',
+    msg: { v: 1, t: 'pack.status', state: 'ready', files: [], tokens: 1, unreadable: [] },
+  });
+  expect(s.tooLarge).toBeNull();
+  expect(s.error).toBeNull();
+});

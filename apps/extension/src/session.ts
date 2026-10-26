@@ -21,6 +21,9 @@ export type PackInfo = {
   files: { file: string; fileId: string }[];
   unreadable: { file: string; fileId: string }[];
   tokens: number;
+  /** files read so far / found (optional in protocol v1, BE-110) */
+  read?: number;
+  total?: number;
 };
 export type PackState = 'loading' | 'ready' | 'error';
 
@@ -32,6 +35,8 @@ export type SessionState = {
   pack: PackState | null;
   /** file names only, no content (D11) */
   packInfo: PackInfo | null;
+  /** PACK_TOO_LARGE: largest first, names + approx tokens only (D11) */
+  tooLarge: { name: string; tokens: number }[] | null;
   error: ErrorCode | 'CONNECTION_CLOSED' | null; // CONNECTION_CLOSED is client-only (transport closed for good)
   /** audio is not being sent (Pause) */
   paused: boolean;
@@ -46,6 +51,7 @@ export const initialState: SessionState = {
   cues: [],
   pack: null,
   packInfo: null,
+  tooLarge: null,
   error: null,
   paused: false,
   unanswered: [],
@@ -117,12 +123,24 @@ export function reduce(s: SessionState, a: Action): SessionState {
           return {
             ...s,
             pack: m.state,
-            packInfo: { files: m.files, unreadable: m.unreadable, tokens: m.tokens },
+            packInfo: {
+              files: m.files,
+              unreadable: m.unreadable,
+              tokens: m.tokens,
+              read: m.read,
+              total: m.total,
+            },
+            // a good rebuild clears the old over-limit error
+            ...(m.state === 'ready' ? { tooLarge: null, error: null } : {}),
           };
         case 'error':
           // resume failed (server restarted): the session is gone, back to Setup with the reason
           if (m.code === 'SESSION_NOT_FOUND') return { ...initialState, error: m.code };
-          return { ...s, error: m.code };
+          return {
+            ...s,
+            error: m.code,
+            tooLarge: m.code === 'PACK_TOO_LARGE' ? (m.files ?? []) : s.tooLarge,
+          };
         default:
           return s; // session.ready: resumeToken is kept by WsTransport (FE-35), not in UI state
       }
