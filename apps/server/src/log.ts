@@ -17,6 +17,14 @@ const ALLOWED = [
   'inputTokens',
   'cacheReadTokens',
   'outputTokens',
+  // ask path (BE-99): ids, ms, counts, codes
+  'cueId',
+  'queueMs',
+  'firstTokenMs',
+  'firstCueMs',
+  'bullets',
+  'outcome',
+  'cached',
   // pack builder (BE-91): counts / ms only, never content
   'tokens',
   'max',

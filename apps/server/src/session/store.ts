@@ -27,6 +27,8 @@ export interface SessionStore {
   attach(id: string, socket: SessionSocket): void;
   detach(id: string, socket: SessionSocket): void;
   end(id: string): void;
+  /** cleanup hook run on every end (session.end, grace, TTL) */
+  onEnd(fn: (s: Session) => void | Promise<void>): void;
 }
 
 type Entry = { session: Session; ttl?: NodeJS.Timeout; grace?: NodeJS.Timeout };

@@ -9,6 +9,7 @@ import {
 } from '@rafael/protocol';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
 import type { TokenVerifier } from '../auth/verifier.js';
+import { type BrainOptions, createPipeline } from '../brain/pipeline.js';
 import { log } from '../log.js';
 import type { Session, SessionStore } from '../session/store.js';
 
@@ -26,6 +27,8 @@ export type WsOptions = {
   allowLocalhost?: boolean;
   helloTimeoutMs?: number;
   heartbeatMs?: number;
+  /** ask path (BE-99). Without it, `ask` answers LLM_UNAVAILABLE. */
+  brain?: BrainOptions;
 };
 
 function originAllowed(origin: string | undefined, o: WsOptions): boolean {
@@ -44,6 +47,7 @@ export function attachWs(http: Server, opts: WsOptions) {
   const { store, verifier } = opts;
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
   const alive = new WeakSet<WebSocket>();
+  const pipeline = opts.brain && createPipeline(opts.brain, store);
 
   http.on('upgrade', (req: IncomingMessage, socket: Duplex, head) => {
     const path = (req.url ?? '').split('?')[0];
@@ -149,7 +153,17 @@ export function attachWs(http: Server, opts: WsOptions) {
           log('session.ended', { sessionId: session.id, audioFrames: session.audioFrames });
           store.end(session.id); // also closes the socket
           return;
-        default: // ask / pause / resume: stubs for BE-89 / Brain
+        case 'ask': {
+          if (!session) return fail('SESSION_NOT_FOUND');
+          const sock = ws;
+          // BE-108: no pack yet -> no guessing, tell the client
+          const r = pipeline?.ask(session, m.text, (c) => {
+            if (sock.readyState === sock.OPEN) send(c);
+          });
+          if (r !== 'ok') fail(r === 'busy' ? 'BAD_MESSAGE' : 'LLM_UNAVAILABLE');
+          return;
+        }
+        default: // pause / resume: stubs for BE-89
           if (!session) return fail('SESSION_NOT_FOUND');
       }
     }
