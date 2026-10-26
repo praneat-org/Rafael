@@ -1,7 +1,8 @@
 import { PROTOCOL_VERSION, type ServerMessage } from '@rafael/protocol';
+import { audit } from '../audit.js';
 import { log } from '../log.js';
 import type { Session, SessionStore } from '../session/store.js';
-import type { SourceProvider } from './drive.js';
+import { parseFolderId, type SourceProvider } from './drive.js';
 import { type BuildOptions, buildPack, type Pack, PackStore, PackTooLargeError } from './pack.js';
 
 export type PackServiceOptions = {
@@ -36,7 +37,11 @@ export function createPackService(
       unreadable: pack?.unreadable ?? [],
     });
 
-  async function refresh(s: Session, accessToken = s.accessToken): Promise<RefreshResult> {
+  async function refresh(
+    s: Session,
+    accessToken = s.accessToken,
+    event: 'pack.build' | 'pack.refresh' = 'pack.build',
+  ): Promise<RefreshResult> {
     if (!accessToken) return 'error';
     running.add(s.id);
     status(s, 'loading');
@@ -49,6 +54,19 @@ export function createPackService(
       );
       if (!pack || store.get(s.id) !== s) return 'superseded';
       onPack(s, pack);
+      try {
+        // BE-97 AC5: who read which folder. ponytail: SourceProvider has no folder-name call, so
+        // folderName stays '' until it does (schema caps it at 200)
+        audit({
+          event,
+          email: s.email,
+          sessionId: s.id,
+          folderId: parseFolderId(s.packId),
+          folderName: '',
+          files: pack.files.length,
+          tokens: pack.tokens,
+        });
+      } catch {} // an unparseable folder id: build already succeeded, audit line is just dropped
       return 'ready';
     } catch (e) {
       // codes only: provider errors may carry content (D11). buildPack already emitted status for too-large

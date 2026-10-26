@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { audit } from './audit.js';
 import { denyAll } from './auth/verifier.js';
 import { MemorySessionStore } from './session/store.js';
 import { attachWs, type WsOptions } from './ws/server.js';
@@ -6,6 +7,14 @@ import { attachWs, type WsOptions } from './ws/server.js';
 export function createApp(ws?: Partial<WsOptions>) {
   const verifier = ws?.verifier ?? denyAll;
   const store = ws?.store ?? new MemorySessionStore();
+  // one place for session.end / session.expired, whichever path ended it (explicit, grace, TTL)
+  store.onEnd((s, reason) =>
+    audit({
+      event: reason === 'expired' ? 'session.expired' : 'session.end',
+      email: s.email,
+      sessionId: s.id,
+    }),
+  );
   let wsApi: ReturnType<typeof attachWs> | undefined; // set below, before any request arrives
   const server = createServer(async (req, res) => {
     const path = (req.url ?? '').split('?')[0] ?? '';
@@ -15,6 +24,7 @@ export function createApp(ws?: Partial<WsOptions>) {
       const token = m?.[1];
       const who = token ? await verifier(token).catch(() => null) : null;
       if (!token || !who) {
+        audit({ event: 'auth.denied', source: 'http' });
         res.writeHead(401, { 'content-type': 'application/json' }).end('{"code":"UNAUTHORIZED"}');
         return;
       }
@@ -28,7 +38,7 @@ export function createApp(ws?: Partial<WsOptions>) {
         // another user's session looks the same as a missing one
         if (!s || s.email !== who.email || !wsApi?.packs)
           return json(404, { code: 'SESSION_NOT_FOUND' });
-        const r = await wsApi.packs.refresh(s, token);
+        const r = await wsApi.packs.refresh(s, token, 'pack.refresh');
         // ponytail: protocol v1 has no PACK_NOT_READY / PACK_TOO_LARGE for HTTP yet (BE-110)
         return json(
           r === 'ready' ? 200 : r === 'superseded' ? 409 : r === 'too-large' ? 413 : 502,

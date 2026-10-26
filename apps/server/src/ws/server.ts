@@ -8,6 +8,7 @@ import {
   type ServerMessage,
 } from '@rafael/protocol';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
+import { audit, driveId } from '../audit.js';
 import type { TokenVerifier } from '../auth/verifier.js';
 import { type BrainOptions, createPipeline } from '../brain/pipeline.js';
 import { log } from '../log.js';
@@ -124,12 +125,14 @@ export function attachWs(http: Server, opts: WsOptions) {
       if (!email) {
         // not authenticated yet: only a valid hello is acceptable
         if (!parsed.ok || parsed.data.t !== 'hello') {
+          audit({ event: 'auth.denied', source: 'ws' });
           fail(parsed.ok ? 'UNAUTHORIZED' : parsed.error.code);
           return ws.close(CLOSE_UNAUTHORIZED, 'hello required');
         }
         // helloTimer keeps running while verifying: a hung verifier still gets 4408
         const who = await verifier(parsed.data.accessToken).catch(() => null);
         if (!who) {
+          audit({ event: 'auth.denied', source: 'ws' });
           fail('UNAUTHORIZED');
           return ws.close(CLOSE_UNAUTHORIZED, 'unauthorized');
         }
@@ -155,6 +158,14 @@ export function attachWs(http: Server, opts: WsOptions) {
           s.accessToken = accessToken;
           session = s;
           store.attach(s.id, ws);
+          audit({
+            event: 'session.start',
+            email,
+            sessionId: s.id,
+            resumed: Boolean(m.resumeToken),
+            // packId = Drive folder id (D12) but client-supplied: only a Drive-id-shaped value is logged
+            folderId: driveId.safeParse(s.packId).data,
+          });
           log('session.attached', { sessionId: s.id, resumed: Boolean(m.resumeToken) });
           send({
             v: PROTOCOL_VERSION,

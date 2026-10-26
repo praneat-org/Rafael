@@ -11,7 +11,8 @@ import { MemorySessionStore, RESUME_GRACE_MS, SESSION_TTL_MS } from './session/s
 // D11 retention: a real session over a real socket leaves nothing behind.
 const ORIGIN = 'chrome-extension://testid';
 const TOKEN = 'ya29.SECRET-ACCESS-TOKEN';
-const PACK_ID = 'pack-SECRET-ID';
+// not Drive-id shaped on purpose: the audit log (BE-97) records a Drive folder id, never other client text
+const PACK_ID = 'pack SECRET ID';
 const verifier = async () => ({ email: 'alice@praneat.com' });
 
 let out: string[];
@@ -133,7 +134,7 @@ test('24 h TTL ends an idle session and runs the end hooks', () => {
   vi.advanceTimersByTime(SESSION_TTL_MS);
   expect(store.get(s.id)).toBeUndefined();
   expect(store.resume(s.resumeToken, 'alice@praneat.com')).toBeUndefined();
-  expect(ended).toHaveBeenCalledWith(s);
+  expect(ended).toHaveBeenCalledWith(s, 'expired');
 });
 
 test('grace period (5 min) after disconnect ends the session', () => {

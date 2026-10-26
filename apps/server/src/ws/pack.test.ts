@@ -182,3 +182,39 @@ test('end hook failure does not crash the server (async hook rejects)', async ()
   await vi.waitFor(() => expect(t.live.size).toBe(0));
   await vi.waitFor(() => expect(out.some((l) => l.includes('end.hook.failed'))).toBe(true));
 });
+
+const audits = (lines: string[]) =>
+  lines.flatMap((l) => {
+    try {
+      const j = JSON.parse(l);
+      return j.log === 'rafael-audit' ? [j] : [];
+    } catch {
+      return [];
+    }
+  });
+
+test('audit: pack.build then pack.refresh with folder, files, tokens; no pack text (BE-97)', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(audits(out).some((a) => a.event === 'pack.build')).toBe(true));
+  expect(audits(out).find((a) => a.event === 'pack.build')).toMatchObject({
+    email: 'a@praneat.com',
+    sessionId: t.sessionId,
+    folderId: 'folder-1',
+    files: 1,
+  });
+  expect((await t.refresh('tok-1')).status).toBe(200);
+  const r = audits(out).find((a) => a.event === 'pack.refresh');
+  expect(r).toMatchObject({ sessionId: t.sessionId, folderId: 'folder-1', files: 1 });
+  expect(r.tokens).toBeGreaterThan(0);
+  expect(out.join('\n')).not.toContain(SECRET);
+});
+
+test('audit: failed refresh writes no pack.refresh; 401 on refresh writes auth.denied', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.live.size).toBe(1));
+  t.drive.state.fail = true;
+  expect((await t.refresh('tok-1')).status).toBe(502);
+  expect(audits(out).some((a) => a.event === 'pack.refresh')).toBe(false);
+  expect((await t.refresh('')).status).toBe(401);
+  expect(audits(out).some((a) => a.event === 'auth.denied' && a.source === 'http')).toBe(true);
+});
