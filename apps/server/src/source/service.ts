@@ -1,0 +1,83 @@
+import { PROTOCOL_VERSION, type ServerMessage } from '@rafael/protocol';
+import { log } from '../log.js';
+import type { Session, SessionStore } from '../session/store.js';
+import type { SourceProvider } from './drive.js';
+import { type BuildOptions, buildPack, type Pack, PackStore, PackTooLargeError } from './pack.js';
+
+export type PackServiceOptions = {
+  /** SourceProvider bound to one user's Drive token (D13) */
+  provider: (accessToken: string) => SourceProvider;
+  build?: BuildOptions;
+};
+export type RefreshResult = 'ready' | 'superseded' | 'too-large' | 'error';
+
+/** Session <-> pack glue (BE-108): build on start, refresh on demand, clear on end (D11). */
+export function createPackService(
+  opts: PackServiceOptions,
+  store: Pick<SessionStore, 'onEnd' | 'get'>,
+  onPack: (s: Session, pack: Pack) => void,
+) {
+  const packs = new PackStore();
+  const senders = new Map<string, (m: ServerMessage) => void>();
+  const running = new Set<string>();
+  store.onEnd((s) => {
+    packs.clear(s.id); // also cancels an in-flight build
+    senders.delete(s.id);
+    running.delete(s.id);
+  });
+
+  const status = (s: Session, state: 'loading' | 'ready' | 'error', pack?: Pack) =>
+    senders.get(s.id)?.({
+      v: PROTOCOL_VERSION,
+      t: 'pack.status',
+      state,
+      files: pack?.files ?? [],
+      tokens: pack?.tokens ?? 0,
+      unreadable: pack?.unreadable ?? [],
+    });
+
+  async function refresh(s: Session, accessToken = s.accessToken): Promise<RefreshResult> {
+    if (!accessToken) return 'error';
+    running.add(s.id);
+    status(s, 'loading');
+    try {
+      const pack = await packs.refresh(s.id, () =>
+        buildPack(opts.provider(accessToken), s.packId, {
+          ...opts.build,
+          onStatus: (m) => senders.get(s.id)?.(m),
+        }),
+      );
+      if (!pack || store.get(s.id) !== s) return 'superseded';
+      onPack(s, pack);
+      return 'ready';
+    } catch (e) {
+      // codes only: provider errors may carry content (D11). buildPack already emitted status for too-large
+      const tooLarge = e instanceof PackTooLargeError;
+      if (!tooLarge) status(s, 'error');
+      log('pack.failed', {
+        sessionId: s.id,
+        code: tooLarge ? 'PACK_TOO_LARGE' : 'PACK_BUILD_FAILED',
+      });
+      return tooLarge ? 'too-large' : 'error';
+    } finally {
+      running.delete(s.id);
+    }
+  }
+
+  return {
+    get: (id: string) => packs.get(id),
+    refresh,
+    /** socket attached: route pack.status to it (undefined on detach) */
+    setSender(id: string, send: ((m: ServerMessage) => void) | undefined) {
+      if (send) senders.set(id, send);
+      else senders.delete(id);
+    },
+    /** session.start / resume: build once; a resumed session with a pack just re-announces it */
+    async start(s: Session): Promise<RefreshResult | undefined> {
+      const have = packs.get(s.id);
+      if (have) return void status(s, 'ready', have);
+      if (running.has(s.id)) return undefined;
+      return refresh(s);
+    },
+  };
+}

@@ -12,6 +12,7 @@ import type { TokenVerifier } from '../auth/verifier.js';
 import { type BrainOptions, createPipeline } from '../brain/pipeline.js';
 import { log } from '../log.js';
 import type { Session, SessionStore } from '../session/store.js';
+import { createPackService, type PackServiceOptions } from '../source/service.js';
 
 // close codes (4xxx = app level); 1012 = service restart, client should reconnect
 export const CLOSE_UNAUTHORIZED = 4401;
@@ -29,6 +30,8 @@ export type WsOptions = {
   heartbeatMs?: number;
   /** ask path (BE-99). Without it, `ask` answers LLM_UNAVAILABLE. */
   brain?: BrainOptions;
+  /** pack wiring (BE-108): build on session.start from the user's Drive folder (packId) */
+  pack?: PackServiceOptions;
 };
 
 function originAllowed(origin: string | undefined, o: WsOptions): boolean {
@@ -47,7 +50,16 @@ export function attachWs(http: Server, opts: WsOptions) {
   const { store, verifier } = opts;
   const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
   const alive = new WeakSet<WebSocket>();
-  const pipeline = opts.brain && createPipeline(opts.brain, store);
+  // BE-108: pack of a session lives in PackStore; the Answerer gets pack.chunks (text + anchors)
+  let packs: ReturnType<typeof createPackService> | undefined;
+  const pipeline =
+    opts.brain &&
+    createPipeline(
+      { ...opts.brain, getPack: opts.brain.getPack ?? ((s) => packs?.get(s.id)?.chunks) },
+      store,
+    );
+  packs =
+    opts.pack && createPackService(opts.pack, store, (s, p) => pipeline?.packReady(s, p.chunks));
 
   http.on('upgrade', (req: IncomingMessage, socket: Duplex, head) => {
     const path = (req.url ?? '').split('?')[0];
@@ -91,7 +103,10 @@ export function attachWs(http: Server, opts: WsOptions) {
 
     ws.on('close', () => {
       clearTimeout(helloTimer);
-      if (session) store.detach(session.id, ws);
+      if (session) {
+        if (session.socket === ws) packs?.setSender(session.id, undefined);
+        store.detach(session.id, ws);
+      }
     });
     ws.on('error', () => ws.terminate());
 
@@ -141,12 +156,20 @@ export function attachWs(http: Server, opts: WsOptions) {
           session = s;
           store.attach(s.id, ws);
           log('session.attached', { sessionId: s.id, resumed: Boolean(m.resumeToken) });
-          return send({
+          send({
             v: PROTOCOL_VERSION,
             t: 'session.ready',
             sessionId: s.id,
             resumeToken: s.resumeToken,
           });
+          if (packs) {
+            const sock = ws;
+            packs.setSender(s.id, (msg) => {
+              if (sock.readyState === sock.OPEN) send(msg);
+            });
+            void packs.start(s); // not awaited: a slow Drive must not block this socket's queue
+          }
+          return;
         }
         case 'session.end':
           if (!session) return fail('SESSION_NOT_FOUND');
@@ -177,6 +200,8 @@ export function attachWs(http: Server, opts: WsOptions) {
   }
 
   return {
+    /** present only when `pack` option is set */
+    packs,
     /** SIGTERM: tell every client to reconnect (1012) */
     shutdown() {
       clearInterval(beat);

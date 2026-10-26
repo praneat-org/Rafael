@@ -1,0 +1,173 @@
+import type { AddressInfo } from 'node:net';
+import type { ServerMessage } from '@rafael/protocol';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import WebSocket from 'ws';
+import { createApp } from '../app.js';
+import { loadBrainConfig } from '../brain/config.js';
+import type { LlmClient } from '../brain/llm.js';
+import { MemorySessionStore } from '../session/store.js';
+import type { SourceProvider } from '../source/drive.js';
+
+const ORIGIN = 'chrome-extension://testid';
+const config = loadBrainConfig({ DETECTOR_MODEL: 'det', ANSWERER_MODEL: 'ans' });
+const SECRET = 'SECRET-PACK-BODY';
+
+// fake Drive: one folder, content switchable between "v1" and "v2"
+function fakeDrive() {
+  const state = { v: 'v1', fail: false, gate: undefined as Promise<void> | undefined };
+  const tokens: string[] = [];
+  const provider = (token: string): SourceProvider => {
+    tokens.push(token);
+    return {
+      async listFolder() {
+        if (state.fail) throw new Error(`boom ${SECRET}`);
+        return [{ fileId: 'f1', name: 'deck.pdf', mimeType: 'application/pdf' }];
+      },
+      async readFile() {
+        await state.gate;
+        return { chunks: [{ locator: `หน้า ${state.v}`, text: `${SECRET} ${state.v}` }] };
+      },
+    };
+  };
+  return { state, tokens, provider };
+}
+
+function fakeLlm() {
+  const live = new Set<string>();
+  const prefixes: string[] = [];
+  let n = 0;
+  const llm: LlmClient = {
+    async complete() {
+      return { text: '' };
+    },
+    async stream(_req, onText) {
+      onText('- ตอบ [deck.pdf › หน้า v1]');
+      return { text: '- ตอบ [deck.pdf › หน้า v1]' };
+    },
+    async createCache(req) {
+      prefixes.push(JSON.stringify(req));
+      const h = `cache-${++n}`;
+      live.add(h);
+      return h;
+    },
+    async renewCache() {},
+    async deleteCache(h) {
+      live.delete(h);
+    },
+  };
+  return { llm, live, prefixes };
+}
+
+let out: string[];
+let app: ReturnType<typeof createApp> | undefined;
+beforeEach(() => {
+  out = [];
+  vi.spyOn(console, 'log').mockImplementation((...a) => void out.push(a.join(' ')));
+});
+afterEach(async () => {
+  vi.restoreAllMocks();
+  if (!app) return;
+  app.shutdown();
+  app.closeAllConnections();
+  await new Promise((res) => app?.close(res));
+});
+
+async function setup() {
+  const drive = fakeDrive();
+  const f = fakeLlm();
+  const store = new MemorySessionStore();
+  app = createApp({
+    store,
+    verifier: async (t) => ({ email: t === 'other' ? 'b@praneat.com' : 'a@praneat.com' }),
+    allowedOrigins: [ORIGIN],
+    brain: { llm: f.llm, config },
+    pack: { provider: drive.provider },
+  });
+  app.listen(0);
+  const port = (app.address() as AddressInfo).port;
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin: ORIGIN });
+  const msgs: ServerMessage[] = [];
+  ws.on('message', (d) => msgs.push(JSON.parse(d.toString())));
+  const send = (m: object) => ws.send(JSON.stringify({ v: 1, ...m }));
+  await new Promise((res) => ws.once('open', res));
+  send({ t: 'hello', accessToken: 'tok-1' });
+  send({ t: 'session.start', packId: 'folder-1' });
+  await vi.waitFor(() => expect(msgs.some((m) => m.t === 'session.ready')).toBe(true));
+  const sessionId = (msgs.find((m) => m.t === 'session.ready') as { sessionId: string }).sessionId;
+  const refresh = (token: string, id = sessionId) =>
+    fetch(`http://127.0.0.1:${port}/api/pack/${id}/refresh`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+  const states = () => msgs.flatMap((m) => (m.t === 'pack.status' ? [m.state] : []));
+  return { ...f, drive, store, ws, msgs, send, sessionId, refresh, states };
+}
+
+test('start -> loading -> ready, Answerer gets the pack (cache warmed), End deletes pack + cache', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  expect(t.states()[0]).toBe('loading');
+  expect(t.drive.tokens).toEqual(['tok-1']); // user's own token (D13)
+  await vi.waitFor(() => expect(t.live.size).toBe(1));
+  expect(t.prefixes[0]).toContain(SECRET);
+  t.send({ t: 'session.end' });
+  await vi.waitFor(() => expect(t.live.size).toBe(0));
+  expect(t.store.get(t.sessionId)).toBeUndefined();
+  const all = out.join('\n');
+  expect(all).not.toContain(SECRET);
+});
+
+test('refresh swaps the pack: new cache with new prefix, old cache deleted, ask uses new pack', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.live.size).toBe(1));
+  t.drive.state.v = 'v2';
+  const r = await t.refresh('tok-1');
+  expect(r.status).toBe(200);
+  await vi.waitFor(() => expect(t.prefixes).toHaveLength(2));
+  expect(t.prefixes[1]).toContain('หน้า v2');
+  expect(t.prefixes[1]).not.toContain('หน้า v1');
+  await vi.waitFor(() => expect(t.live.size).toBe(1)); // old one gone
+  expect([...t.live]).toEqual(['cache-2']);
+});
+
+test('refresh: wrong user -> 404, no token -> 401, failed build keeps the old pack', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.live.size).toBe(1));
+  expect((await t.refresh('other')).status).toBe(404);
+  expect((await t.refresh('')).status).toBe(401);
+  t.drive.state.fail = true;
+  const r = await t.refresh('tok-1');
+  expect(r.status).toBe(502);
+  expect(t.states().at(-1)).toBe('error');
+  expect(t.live.size).toBe(1); // old cache + pack still serve
+  const all = out.join('\n');
+  expect(all).not.toContain(SECRET); // provider error text never logged (D11)
+});
+
+test('refresh in flight when the session ends is dropped: no pack, no cache resurrected', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.live.size).toBe(1));
+  let release = () => {};
+  t.drive.state.gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const pending = t.refresh('tok-1');
+  await new Promise((r) => setTimeout(r, 50));
+  t.send({ t: 'session.end' });
+  await vi.waitFor(() => expect(t.live.size).toBe(0));
+  release();
+  expect((await pending).status).toBe(409);
+  await new Promise((r) => setTimeout(r, 50));
+  expect(t.live.size).toBe(0);
+  expect(t.prefixes).toHaveLength(1);
+});
+
+test('end hook failure does not crash the server (async hook rejects)', async () => {
+  const t = await setup();
+  t.store.onEnd(async () => {
+    throw new Error('x');
+  });
+  t.send({ t: 'session.end' });
+  await vi.waitFor(() => expect(t.live.size).toBe(0));
+  expect(out.some((l) => l.includes('end.hook.failed'))).toBe(true);
+});
