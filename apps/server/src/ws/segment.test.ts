@@ -323,3 +323,33 @@ test('a final arriving after session.end is ignored: no Detector call, no cue, n
   expect(t.cues()).toHaveLength(0);
   expect(out.join('\n')).not.toMatch(/SECRET/);
 });
+
+test('pause then quick resume before the Detector answers -> the pre-pause question gives no cue', async () => {
+  const t = await setup();
+  const g = gate();
+  t.gates.detector = g.p;
+  t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.calls.detector).toBe(1));
+  t.send({ t: 'pause' });
+  t.send({ t: 'resume' });
+  await settle();
+  g.open();
+  await vi.waitFor(() => expect(dropped()).toHaveLength(1));
+  expect(t.calls.answerer).toBe(0);
+  expect(t.cues()).toHaveLength(0);
+});
+
+test('pause then quick resume while the Answerer is generating -> that cue is dropped too', async () => {
+  const t = await setup();
+  const g = gate();
+  t.gates.answerer = g.p;
+  t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.calls.answerer).toBe(1));
+  t.send({ t: 'pause' });
+  t.send({ t: 'resume' });
+  await settle();
+  g.open();
+  await vi.waitFor(() => expect(dropped().length).toBeGreaterThan(0));
+  await settle();
+  expect(t.cues()).toHaveLength(0);
+});

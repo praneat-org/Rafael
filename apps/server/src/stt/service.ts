@@ -12,8 +12,8 @@ export type SttOptions = {
   /** phrase hints from the Session Pack; read when the stream opens (first audio frame) */
   getHints?: (s: Session) => readonly string[];
   /**
-   * Every final segment, for the Brain (BE-99). `sttFinalMs` = end of the oldest speech run not yet
-   * matched to a final (a run ends after 300 ms of silence) -> this final; if speech never paused,
+   * Every final segment, for the Brain (BE-99). `sttFinalMs` = end of the newest speech run that ended
+   * before it (a run ends after 300 ms of silence) -> this final; if speech never paused,
    * the last voiced frame. Approximation of endpointing + provider latency; undefined without speech.
    */
   onFinal?: (
@@ -87,7 +87,9 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
           ...m,
           segId: `${e.gen}-${m.segId}`,
         });
-        const from = e.runEnds.shift() ?? e.lastVoicedAt;
+        // one final covers every speech run that ended before it (a sentence has many pauses)
+        const from = e.runEnds.at(-1) ?? e.lastVoicedAt;
+        e.runEnds.length = 0;
         const sttFinalMs = from === undefined ? undefined : Math.max(0, Math.round(now() - from));
         opts.onFinal?.(s, { text: m.text, speaker: m.speaker }, out, { sttFinalMs });
       },

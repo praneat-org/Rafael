@@ -64,6 +64,8 @@ export function attachWs(http: Server, opts: WsOptions) {
     );
   // `pause`: no audio, no new cues. Keyed by Session so it survives a reconnect/resume.
   const paused = new WeakSet<Session>();
+  // bumped on every pause: a pause->resume must not revive a question heard before the pause
+  const pauseEpoch = new WeakMap<Session, number>();
   const stt =
     opts.stt &&
     createSttService(
@@ -72,8 +74,10 @@ export function attachWs(http: Server, opts: WsOptions) {
         onFinal: (s, seg, send, meta) => {
           opts.stt?.onFinal?.(s, seg, send, meta);
           // a final that was already in the provider when pause arrived must not start a cue
-          if (!paused.has(s))
-            void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs, () => paused.has(s));
+          if (paused.has(s)) return;
+          const epoch = pauseEpoch.get(s) ?? 0;
+          const isPaused = () => paused.has(s) || (pauseEpoch.get(s) ?? 0) !== epoch;
+          void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs, isPaused);
         },
       },
       store,
@@ -231,6 +235,7 @@ export function attachWs(http: Server, opts: WsOptions) {
         case 'pause':
           if (!session) return fail('SESSION_NOT_FOUND');
           paused.add(session);
+          pauseEpoch.set(session, (pauseEpoch.get(session) ?? 0) + 1);
           await stt?.pause(session).catch(() => {});
           return;
         case 'resume':

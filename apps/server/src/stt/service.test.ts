@@ -40,3 +40,34 @@ test('sttFinalMs is measured from the end of the speech run the final belongs to
   // 'first': 700 - 100 = 600 (not 200 from the newer speech) · 'second': no finished run left -> last voiced frame 500
   expect(metas).toEqual([600, 400]);
 });
+
+test('speech with pauses inside a sentence: sttFinalMs stays small, no backlog drift', () => {
+  let clock = 0;
+  const p = new FakeSttProvider({ finalEvery: 99 });
+  const metas: number[] = [];
+  const s = { id: 's1' } as Session;
+  const svc = createSttService(
+    {
+      provider: p,
+      voiced: (f) => f[0] !== 0,
+      now: () => clock,
+      onFinal: (_s, _g, _send, m) => void metas.push(m.sttFinalMs ?? -1),
+    },
+    { onEnd() {}, get: () => s },
+  );
+  const push = (id: number) => {
+    svc.push(s, frame(id), () => {});
+    clock += 100;
+  };
+  for (let u = 0; u < 20; u++) {
+    // "word, 300 ms pause, word, 300 ms pause, word", then the provider finalizes at once
+    for (let w = 0; w < 3; w++) {
+      push(1);
+      for (let i = 0; i < 3; i++) push(0);
+    }
+    p.handlers[0]?.onFinal('sentence');
+    for (let i = 0; i < 7; i++) push(0); // rest of a 1 s silence
+  }
+  expect(metas).toHaveLength(20);
+  expect(Math.max(...metas)).toBeLessThan(800);
+});
