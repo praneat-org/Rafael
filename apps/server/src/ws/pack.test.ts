@@ -14,7 +14,12 @@ const SECRET = 'SECRET-PACK-BODY';
 
 // fake Drive: one folder, content switchable between "v1" and "v2"
 function fakeDrive() {
-  const state = { v: 'v1', fail: false, gate: undefined as Promise<void> | undefined };
+  const state = {
+    v: 'v1',
+    fail: false,
+    gate: undefined as Promise<void> | undefined,
+    enter: undefined as (() => void) | undefined,
+  };
   const tokens: string[] = [];
   const provider = (token: string): SourceProvider => {
     tokens.push(token);
@@ -24,6 +29,7 @@ function fakeDrive() {
         return [{ fileId: 'f1', name: 'deck.pdf', mimeType: 'application/pdf' }];
       },
       async readFile() {
+        state.enter?.();
         await state.gate;
         return { chunks: [{ locator: `หน้า ${state.v}`, text: `${SECRET} ${state.v}` }] };
       },
@@ -139,7 +145,8 @@ test('refresh: wrong user -> 404, no token -> 401, failed build keeps the old pa
   const r = await t.refresh('tok-1');
   expect(r.status).toBe(502);
   expect(t.states().at(-1)).toBe('error');
-  expect(t.live.size).toBe(1); // old cache + pack still serve
+  expect([...t.live]).toEqual(['cache-1']); // old handle kept, not swapped
+  expect(t.prefixes).toHaveLength(1); // no new cache built
   const all = out.join('\n');
   expect(all).not.toContain(SECRET); // provider error text never logged (D11)
 });
@@ -151,8 +158,11 @@ test('refresh in flight when the session ends is dropped: no pack, no cache resu
   t.drive.state.gate = new Promise<void>((r) => {
     release = r;
   });
+  const entered = new Promise<void>((r) => {
+    t.drive.state.enter = r;
+  });
   const pending = t.refresh('tok-1');
-  await new Promise((r) => setTimeout(r, 50));
+  await entered; // refresh is inside readFile, session lookup already passed
   t.send({ t: 'session.end' });
   await vi.waitFor(() => expect(t.live.size).toBe(0));
   release();
@@ -164,10 +174,11 @@ test('refresh in flight when the session ends is dropped: no pack, no cache resu
 
 test('end hook failure does not crash the server (async hook rejects)', async () => {
   const t = await setup();
+  await vi.waitFor(() => expect(t.live.size).toBe(1));
   t.store.onEnd(async () => {
     throw new Error('x');
   });
   t.send({ t: 'session.end' });
   await vi.waitFor(() => expect(t.live.size).toBe(0));
-  expect(out.some((l) => l.includes('end.hook.failed'))).toBe(true);
+  await vi.waitFor(() => expect(out.some((l) => l.includes('end.hook.failed'))).toBe(true));
 });
