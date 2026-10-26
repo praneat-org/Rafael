@@ -61,10 +61,6 @@ test('permanent transport close leaves live and returns to setup', () => {
   expect(s.phase).toBe('setup');
   expect(s.error).toBe('CONNECTION_CLOSED');
   // after End the close is expected and ignored
-  expect(
-    reduce(reduce(reduce(initialState, { k: 'start' }), { k: 'end' }), {
-      k: 'status',
-      status: 'closed',
-    }).phase,
-  ).toBe('end');
+  const ended = reduce(reduce(initialState, { k: 'start' }), { k: 'end' });
+  expect(reduce(ended, { k: 'status', status: 'closed' })).toEqual(ended);
 });
