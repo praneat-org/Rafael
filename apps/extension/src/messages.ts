@@ -11,6 +11,8 @@ export const GET_AUTH_TOKEN = 'rafael:auth-token';
 export type AuthTokenReq = { k: typeof GET_AUTH_TOKEN; fresh: boolean };
 export type AuthTokenReply = { token: string | null };
 export const OPEN_PERMISSION_PAGE = 'rafael:open-permission';
+// service worker -> panel: the Meet tab was just invoked via the context menu (activeTab granted, FE-47)
+export const TAB_GRANTED = 'rafael:tab-granted';
 export type TabStreamIdReply = { id: string } | { error: true };
 
 export type PanelToOffscreen =
