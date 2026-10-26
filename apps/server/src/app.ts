@@ -38,7 +38,7 @@ export function createApp(ws?: Partial<WsOptions>) {
         // another user's session looks the same as a missing one
         if (!s || s.email !== who.email || !wsApi?.packs)
           return json(404, { code: 'SESSION_NOT_FOUND' });
-        const r = await wsApi.packs.refresh(s, token, 'pack.refresh');
+        const { result: r, files } = await wsApi.packs.refresh(s, token, 'pack.refresh');
         return json(
           r === 'ready' ? 200 : r === 'superseded' ? 409 : r === 'too-large' ? 413 : 502,
           {
@@ -51,7 +51,7 @@ export function createApp(ws?: Partial<WsOptions>) {
                     ? 'SUPERSEDED'
                     : 'PACK_BUILD_FAILED',
             // same shape as the WS error: names + token counts, largest first (D11)
-            ...(r === 'too-large' && { files: wsApi.packs.tooLargeFiles(s.id) }),
+            ...(r === 'too-large' && { files }),
           },
         );
       }
