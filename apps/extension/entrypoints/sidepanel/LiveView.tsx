@@ -63,6 +63,7 @@ function AskBox({ send }: { send: Send }) {
 }
 
 export function LiveView({ state, send }: { state: SessionState; send: Send }) {
+  const [confirming, setConfirming] = useState(false);
   const latest = state.cues.at(-1);
   const previous = state.cues.slice(0, -1);
   const listEnd = useRef<HTMLLIElement>(null);
@@ -86,8 +87,16 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
           <button type="button" onClick={() => send({ k: state.paused ? 'resume' : 'pause' })}>
             {state.paused ? 'ต่อ' : 'หยุดชั่วคราว'}
           </button>
-          <button type="button" onClick={() => send({ k: 'end' })}>
-            จบ
+          {/* leaving Live needs one confirm; End is the only way out */}
+          <button
+            type="button"
+            onClick={() => {
+              if (!confirming) return setConfirming(true);
+              send({ k: 'end' });
+            }}
+            onBlur={() => setConfirming(false)}
+          >
+            {confirming ? 'กดอีกครั้งเพื่อจบ' : 'จบ'}
           </button>
         </span>
       </header>
