@@ -18,6 +18,8 @@ export function buildReport(
   prices: Prices,
   title = 'Eval run',
 ): string {
+  if (results.length !== keys.length)
+    throw new Error(`eval: ${results.length} results for ${keys.length} keys`);
   const outcomes = keys.map((k, i) => scoreOne(k, results[i]?.cue ?? null, packAnchors));
   const t = tally(outcomes);
   const good = t.correct + t['not-found-correct'];

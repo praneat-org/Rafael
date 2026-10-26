@@ -25,6 +25,7 @@ function parseRows(text: string): string[][] {
       row = [];
     } else cell += c;
   }
+  if (quoted) throw new Error('answer key: unclosed quote');
   row.push(cell);
   if (row.some((x) => x.trim())) rows.push(row);
   return rows;
@@ -41,6 +42,8 @@ export function parseKey(csv: string): KeyRow[] {
   };
   const [q, a, n] = [idx('question'), idx('answer'), idx('anchor')];
   return rows.map((r, i) => {
+    if (r.length !== cols.length)
+      throw new Error(`answer key: row ${i + 2} has ${r.length} cells, expected ${cols.length}`);
     const question = r[q]?.trim() ?? '';
     const anchor = r[n]?.trim() ?? '';
     if (!question) throw new Error(`answer key: row ${i + 2} has empty question`);

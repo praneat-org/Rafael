@@ -24,6 +24,7 @@ export function parsePrices(json: string): Prices {
   const p = JSON.parse(json) as Prices;
   const m = p?.perMillionTokens;
   const nums = [p?.sttPerMinute, m?.input, m?.cacheRead, m?.cacheWrite, m?.output];
-  if (!nums.every((n) => typeof n === 'number' && n >= 0)) throw new Error('invalid prices config');
+  if (!nums.every((n) => typeof n === 'number' && Number.isFinite(n) && n >= 0))
+    throw new Error('invalid prices config');
   return p;
 }

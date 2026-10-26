@@ -12,7 +12,7 @@ export function scoreOne(
   agrees: (cue: Cue, key: KeyRow) => boolean = () => true,
 ): Outcome {
   if (!cue) return 'missed';
-  if (!cue.notFound && cue.sources.some((s) => !packAnchors.has(s))) return 'out-of-source';
+  if (cue.sources.some((s) => !packAnchors.has(s))) return 'out-of-source';
   if (key.anchor === null) return cue.notFound ? 'not-found-correct' : 'wrong';
   if (cue.notFound) return 'wrong';
   return cue.sources.includes(key.anchor) && agrees(cue, key) ? 'correct' : 'wrong';
