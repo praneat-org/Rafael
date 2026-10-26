@@ -55,12 +55,16 @@ export function SetupView({
   };
   useEffect(() => {
     if (!testing) return;
+    let cancelled = false; // a slow wav read must not send a stale preview after cleanup
     // ponytail: restart on input change; wav read is skipped for real capture
     (async () => {
       const wavBase64 = s.mock && wav ? await readBase64(wav) : undefined;
-      send({ k: 'preview', capture: s.mock ? undefined : inputs, wavBase64 });
+      if (!cancelled) send({ k: 'preview', capture: s.mock ? undefined : inputs, wavBase64 });
     })();
-    return () => send({ k: 'preview-stop' });
+    return () => {
+      cancelled = true;
+      send({ k: 'preview-stop' });
+    };
   }, [testing, s.mock, wav, inputs, send]);
   const level = Math.min(1, Math.sqrt(audio?.level ?? 0) * 1.5); // RMS is small for speech: sqrt for a readable bar
   const block = startBlock({ mock: s.mock, signedIn, folderId, ...inputs });
@@ -156,7 +160,11 @@ export function SetupView({
         </label>
       )}
       <div className="meter-row">
-        <button type="button" onClick={() => setTesting(!testing)}>
+        <button
+          type="button"
+          disabled={!testing && s.mock && !wav}
+          onClick={() => setTesting(!testing)}
+        >
           {testing ? 'หยุดทดสอบเสียง' : 'ทดสอบเสียง'}
         </button>
         <meter
@@ -167,7 +175,13 @@ export function SetupView({
           value={testing ? level : 0}
         />
       </div>
-      {testing && audio?.error && <p className="note err">เปิดเสียงไม่ได้ ({audio.error})</p>}
+      {testing && audio?.error && (
+        <p className="note err">
+          {audio.error === 'tab-capture'
+            ? 'จับเสียงแท็บไม่ได้ — กดไอคอน extension บนแท็บที่ต้องการก่อน แล้วลองใหม่'
+            : `เปิดเสียงไม่ได้ (${audio.error})`}
+        </p>
+      )}
       <button
         type="button"
         className="primary"
