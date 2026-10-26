@@ -14,8 +14,6 @@ export type Session = {
   readonly resumeToken: string;
   socket: SessionSocket | undefined;
   audioFrames: number; // count only; audio content is never kept (D11)
-  /** run when the session ends or expires (e.g. delete the Gemini CachedContent, D21) */
-  onEnd?: () => void | Promise<void>;
 };
 
 /** One interface so Memorystore (Q2) can replace the in-memory map later. */
@@ -116,9 +114,5 @@ export class MemorySessionStore implements SessionStore {
       }
     }
     e.session.socket?.close(1000, 'session ended');
-    // never throws: a failed cleanup must not break session teardown
-    Promise.resolve()
-      .then(() => e.session.onEnd?.())
-      .catch(() => {});
   }
 }

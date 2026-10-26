@@ -109,34 +109,52 @@ export function createAnswerer(deps: AnswererDeps) {
 
   const timed = <T>(ms: number, fn: (s: AbortSignal) => Promise<T>) => {
     const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), ms);
-    return fn(ac.signal).finally(() => clearTimeout(t));
+    let t: ReturnType<typeof setTimeout> | undefined;
+    // race: a client that ignores the abort signal must not hang the Answerer (same as Detector)
+    const timeout = new Promise<never>((_, reject) => {
+      t = setTimeout(() => {
+        ac.abort();
+        reject(new Error('answerer timeout'));
+      }, ms);
+    });
+    return Promise.race([fn(ac.signal), timeout]).finally(() => clearTimeout(t));
   };
 
   async function dropCache() {
     const h = cache;
     cache = undefined;
-    if (h) await llm.deleteCache(h).catch(() => {}); // never log the provider error (may echo request)
+    if (h) await timed(cfg.timeoutMs, (s) => llm.deleteCache(h, s)).catch(() => {}); // never log the provider error (may echo request)
   }
 
+  /** Latest requested load; an older load that finishes late drops its result. */
+  let gen = 0;
+
   /** Load / refresh the pack: old cache is deleted, new prefix gets a new cache (never reuse the old one). */
-  async function load(pack: PackIndex) {
+  async function load(pack: PackIndex, g: number) {
+    if (g !== gen) return; // superseded while queued
     await dropCache();
+    if (g !== gen) return;
     anchors = new Map(pack.map((c) => [c.anchor, c]));
     prefix = buildPrefix(pack);
     if (disposed) return;
+    let h: string | undefined;
     try {
-      cache = await timed(cfg.timeoutMs, (signal) =>
+      h = await timed(cfg.timeoutMs, (signal) =>
         llm.createCache({ model, system: prefix, ttlSeconds: cfg.cacheTtlSeconds, signal }),
       );
+      if (disposed || g !== gen) {
+        // dispose / newer refresh won the race: this handle must not stay at the provider
+        await timed(cfg.timeoutMs, (s) => llm.deleteCache(h as string, s)).catch(() => {});
+        return;
+      }
+      cache = h;
       cacheAt = now();
-      if (disposed) return void (await dropCache());
       // warm: one tiny call so the first real question does not pay the cache load
       await timed(cfg.timeoutMs, (signal) =>
         llm.complete({ model, system: prefix, user: 'ping', maxTokens: 1, signal, cache }),
       ).catch(() => {});
     } catch {
-      cache = undefined; // no cache (e.g. pack below provider minimum): fall back to inline prefix
+      if (g === gen && cache === h) cache = undefined; // no cache: fall back to inline prefix
     }
   }
 
@@ -147,7 +165,7 @@ export function createAnswerer(deps: AnswererDeps) {
       await timed(cfg.timeoutMs, (s) => llm.renewCache(h, cfg.cacheTtlSeconds, s));
       cacheAt = now();
     } catch {
-      cache = undefined; // expired / gone: fall back to inline prefix
+      if (cache === h) await dropCache(); // best-effort delete, then fall back to inline prefix
     }
   }
 
@@ -189,11 +207,13 @@ export function createAnswerer(deps: AnswererDeps) {
 
     let res: LlmResponse | undefined;
     let failed = false;
+    let closed = false; // a delta arriving after timeout must not emit after the final cue
     try {
       res = await timed(cfg.timeoutMs, (signal) =>
         llm.stream(
           { model, system: prefix, user: question, maxTokens: cfg.maxTokens, signal, cache },
           (delta) => {
+            if (closed) return;
             firstTokenMs ??= Math.round(perf() - t0);
             buf += delta;
             let i = buf.indexOf('\n');
@@ -210,6 +230,7 @@ export function createAnswerer(deps: AnswererDeps) {
       failed = true; // keep what is already verified; an unfinished line is never used
     }
 
+    closed = true;
     const final = cue(false);
     emit(final);
     if (firstTokenMs !== undefined && firstTokenMs > cfg.firstTokenBudgetMs) {
@@ -235,11 +256,16 @@ export function createAnswerer(deps: AnswererDeps) {
   async function dispose() {
     disposed = true;
     await dropCache();
+    await ready; // an in-flight load deletes its own handle once it sees `disposed`
   }
 
-  let ready = load(deps.pack);
-  /** pack refreshed: new prefix + new cache */
-  const refreshPack = (pack: PackIndex) => (ready = load(pack));
+  let ready = load(deps.pack, ++gen);
+  /** pack refreshed: new prefix + new cache; loads run one at a time, never reject */
+  const refreshPack = (pack: PackIndex) => {
+    const g = ++gen;
+    ready = ready.then(() => load(pack, g));
+    return ready;
+  };
 
   return { answer, refreshPack, dispose, ready: () => ready };
 }

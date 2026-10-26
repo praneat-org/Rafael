@@ -202,17 +202,117 @@ describe('answerer cache (D21) + prompt', () => {
     expect(r.calls).toContain('renew');
   });
 
-  it('refresh pack deletes the old cache and creates a new one', async () => {
-    const r = await run([{ deltas: [] }]);
+  it('refresh pack deletes the old cache, creates a new one and uses the new pack', async () => {
+    const r = await run([{ deltas: [] }, { deltas: [`- a ${A1}\n- b ${A2}`] }]);
     await r.a.refreshPack(pack.slice(0, 1));
     expect([...r.live]).toEqual(['cache-2']);
+    const out = await r.a.answer('c2', 'q', () => {});
+    expect(r.reqs[1]?.system).toBe(buildPrefix(pack.slice(0, 1)));
+    expect(r.reqs[1]?.cache).toBe('cache-2');
+    expect(out.bullets).toEqual([`a ${A1}`]); // A2 is not in the new pack -> dropped (D10)
   });
 
-  it('dispose deletes the cache; store.end triggers it via onEnd', async () => {
+  it('nested refreshPack: loads are serialized, one live handle, latest pack wins', async () => {
+    const f = fake([{ deltas: [`- b ${A2}`] }]);
+    const a = createAnswerer({ llm: f.llm, config, pack });
+    const p1 = a.refreshPack(pack.slice(0, 1));
+    const p2 = a.refreshPack(pack);
+    await Promise.all([p1, p2]);
+    expect(f.live.size).toBe(1);
+    expect(f.calls.filter((c) => c === 'create')).toHaveLength(1); // superseded loads skipped, only the latest creates
+    const out = await a.answer('c', 'q', () => {});
+    expect(f.reqs[0]?.system).toBe(buildPrefix(pack));
+    expect(f.reqs[0]?.cache).toBe([...f.live][0]);
+    expect(out.bullets).toHaveLength(1);
+  });
+
+  it('refreshPack while a load is in flight never runs two createCache at once', async () => {
+    const f = fake([]);
+    const create = f.llm.createCache;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    f.llm.createCache = async (req) => {
+      maxInFlight = Math.max(maxInFlight, ++inFlight);
+      await new Promise((res) => setTimeout(res, 10));
+      inFlight--;
+      return create(req);
+    };
+    const a = createAnswerer({ llm: f.llm, config, pack });
+    await new Promise((res) => setTimeout(res, 0)); // first load is inside createCache
+    await a.refreshPack(pack.slice(0, 1));
+    await a.refreshPack(pack);
+    expect(maxInFlight).toBe(1);
+    expect(f.live.size).toBe(1);
+  });
+
+  it('dispose during load deletes the cache that load creates', async () => {
+    const f = fake([]);
+    const create = f.llm.createCache;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((res) => {
+      release = res;
+    });
+    f.llm.createCache = async (req) => {
+      await gate; // dispose lands while createCache is in flight
+      return create(req);
+    };
+    const a = createAnswerer({ llm: f.llm, config, pack });
+    await new Promise((res) => setTimeout(res, 0));
+    const d = a.dispose();
+    release();
+    await d;
+    expect(f.calls).toContain('create');
+    expect(f.live.size).toBe(0);
+  });
+
+  it('deleteCache that ignores the signal does not hang dispose', async () => {
+    const f = fake([]);
+    const a = createAnswerer({
+      llm: f.llm,
+      config: { ...config, answerer: { ...config.answerer, timeoutMs: 20 } },
+      pack,
+    });
+    await a.ready();
+    f.llm.deleteCache = () => new Promise(() => {});
+    await a.dispose();
+  });
+
+  it('a stream that ignores the abort signal times out; late deltas emit nothing', async () => {
+    const f = fake([]);
+    let late: ((d: string) => void) | undefined;
+    f.llm.stream = (_req, onText) => {
+      late = onText;
+      return new Promise(() => {});
+    };
+    const a = createAnswerer({
+      llm: f.llm,
+      config: { ...config, answerer: { ...config.answerer, timeoutMs: 20 } },
+      pack,
+    });
+    await a.ready();
+    const cues: CueOut[] = [];
+    const out = await a.answer('c', 'q', (c) => cues.push(c));
+    expect(out.notFound).toBe(true);
+    late?.(`- x ${A1}\n`);
+    expect(cues).toHaveLength(1);
+  });
+
+  it('failed renew deletes the old handle before falling back to inline', async () => {
+    const r = await run([{ deltas: [] }, { deltas: [] }]);
+    r.llm.renewCache = async () => {
+      throw new Error('gone');
+    };
+    r.setNow(config.answerer.cacheTtlSeconds * 500 + 1);
+    await r.a.answer('c2', 'q', () => {});
+    expect(r.live.size).toBe(0);
+    expect(r.reqs[1]?.cache).toBeUndefined();
+  });
+
+  it('dispose deletes the cache; store-wide onEnd triggers it', async () => {
     const r = await run([]);
     const store = new MemorySessionStore();
     const s = store.create('a@praneat.com', 'p');
-    s.onEnd = () => r.a.dispose();
+    store.onEnd(() => r.a.dispose());
     expect(r.live.size).toBe(1);
     store.end(s.id);
     await new Promise((res) => setTimeout(res, 0));

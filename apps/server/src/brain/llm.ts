@@ -34,5 +34,5 @@ export interface LlmClient {
     signal: AbortSignal;
   }): Promise<string>;
   renewCache(handle: string, ttlSeconds: number, signal: AbortSignal): Promise<void>;
-  deleteCache(handle: string): Promise<void>;
+  deleteCache(handle: string, signal: AbortSignal): Promise<void>;
 }
