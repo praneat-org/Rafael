@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
-import { getAuthToken, isAuthConfigured } from '../../src/auth';
+import { getAuthToken, isAuthConfigured, refreshAuthToken } from '../../src/auth';
+import { loadNames, shortId } from '../../src/folder-names';
 import { parseFolderId } from '../../src/folder-url';
 import { type PanelToOffscreen, TAB_GRANTED } from '../../src/messages';
 import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
@@ -36,6 +37,8 @@ export function SetupView({
   const [signInFailed, setSignInFailed] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({}); // memory only, never stored (D11)
+  const tried = useRef(new Set<string>());
   const recentWritten = useRef(false); // a stale loadRecent() must not clobber a newer save
   const [inputs, setInputs] = useState<CaptureOpts>({ tab: false, mic: true });
   const configured = isAuthConfigured(import.meta.env.WXT_OAUTH_CLIENT_ID);
@@ -54,6 +57,22 @@ export function SetupView({
       () => {},
     );
   }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: signedIn re-runs the silent token fetch after sign-in
+  useEffect(() => {
+    if (s.mock || !configured) return;
+    let cancelled = false;
+    loadNames({
+      ids: recent,
+      tried: tried.current,
+      getToken: () => getAuthToken(false),
+      refresh: refreshAuthToken,
+      cancelled: () => cancelled,
+      onName: (id, name) => setNames((n) => ({ ...n, [id]: name })),
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [recent, s.mock, configured, signedIn]);
   useEffect(() => {
     const on = (m: unknown) => m === TAB_GRANTED && setGrants((g) => g + 1);
     browser.runtime.onMessage.addListener(on);
@@ -165,7 +184,7 @@ export function SetupView({
               <option value="">โฟลเดอร์ล่าสุด…</option>
               {recent.map((id) => (
                 <option key={id} value={id}>
-                  …{id.slice(-8)}
+                  {names[id] ?? shortId(id)}
                 </option>
               ))}
             </select>
