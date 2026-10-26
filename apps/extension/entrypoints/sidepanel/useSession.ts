@@ -16,7 +16,7 @@ export function useSession() {
       if (!alive) return;
       if (!ok) return setOffline(true);
       const p = browser.runtime.connect({ name: PORT_NAME });
-      p.onMessage.addListener((m: OffscreenToPanel) => setState(m.state));
+      p.onMessage.addListener((m: OffscreenToPanel) => m.k === 'state' && setState(m.state));
       p.onDisconnect.addListener(() => setOffline(true));
       port.current = p;
     });

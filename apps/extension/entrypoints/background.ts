@@ -1,4 +1,9 @@
-import { ENSURE_OFFSCREEN } from '../src/messages';
+import {
+  ENSURE_OFFSCREEN,
+  GET_TAB_STREAM_ID,
+  OPEN_PERMISSION_PAGE,
+  type TabStreamIdReply,
+} from '../src/messages';
 
 // The service worker only coordinates: it can die any time, so it holds no session state.
 async function ensureOffscreen() {
@@ -11,10 +16,28 @@ async function ensureOffscreen() {
   });
 }
 
+// The tab being captured = the active tab of the window where the user clicked the Rafael icon
+// (that click grants activeTab, which getMediaStreamId needs). No id is kept here.
+async function tabStreamId(): Promise<TabStreamIdReply> {
+  const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
+  if (tab?.id === undefined) return { error: true };
+  return { id: await browser.tabCapture.getMediaStreamId({ targetTabId: tab.id }) };
+}
+
 export default defineBackground(() => {
   browser.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 
   browser.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg === GET_TAB_STREAM_ID) {
+      tabStreamId().then(sendResponse, () =>
+        sendResponse({ error: true } satisfies TabStreamIdReply),
+      );
+      return true;
+    }
+    if (msg === OPEN_PERMISSION_PAGE) {
+      browser.tabs.create({ url: browser.runtime.getURL('/permission.html') });
+      return false;
+    }
     if (msg !== ENSURE_OFFSCREEN) return false;
     ensureOffscreen().then(
       () => sendResponse(true),

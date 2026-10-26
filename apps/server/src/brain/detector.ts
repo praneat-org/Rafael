@@ -71,6 +71,9 @@ export function similarity(a: string, b: string): number {
   return (2 * hit) / (a.length + b.length - 2);
 }
 
+/** digit sequence of a question: "100 vs 200 users" must not dedupe */
+const digits = (s: string) => s.replace(/\D+/g, ' ').trim();
+
 export type DetectorDeps = {
   llm: Pick<LlmClient, 'complete'>;
   config: BrainConfig;
@@ -93,15 +96,25 @@ export function createDetector(deps: DetectorDeps) {
 
   async function callOnce(user: string) {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), cfg.timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // race: a client that ignores the abort signal must not hang the Detector
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ac.abort();
+        reject(new Error('detector timeout'));
+      }, cfg.timeoutMs);
+    });
     try {
-      return await llm.complete({
-        model: config.detectorModel,
-        system: SYSTEM_PROMPT,
-        user,
-        maxTokens: cfg.maxTokens,
-        signal: ac.signal,
-      });
+      return await Promise.race([
+        llm.complete({
+          model: config.detectorModel,
+          system: SYSTEM_PROMPT,
+          user,
+          maxTokens: cfg.maxTokens,
+          signal: ac.signal,
+        }),
+        timeout,
+      ]);
     } finally {
       clearTimeout(timer);
     }
@@ -156,7 +169,11 @@ export function createDetector(deps: DetectorDeps) {
     if (!parsed.fromCustomer) return done({ kind: 'none', reason: 'not-customer' });
 
     const norm = normalizeQuestion(question);
-    if (asked.some((a) => similarity(a.norm, norm) >= cfg.dedupeSimilarity)) {
+    if (
+      asked.some(
+        (a) => digits(a.norm) === digits(norm) && similarity(a.norm, norm) >= cfg.dedupeSimilarity,
+      )
+    ) {
       return done({ kind: 'none', reason: 'duplicate' });
     }
     asked.push({ at: t, norm });
