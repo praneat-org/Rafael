@@ -7,7 +7,7 @@ import type { DriveFile, SourceProvider } from './drive.js';
 export type TokenCounter = (text: string) => number | Promise<number>;
 
 // ponytail: conservative over-estimate (ASCII ~3 chars/token, every other char = 1 token, so Thai is
-// never under-counted). Upgrade: inject LlmClient.countTokens (Vertex countTokens, D20) when it exists.
+// never under-counted). Exact count: pass packTokenCounter(client, model) (brain/gemini.ts, countTokens) as buildPack countTokens; this stays the no-client fallback.
 export const estimateTokens = (text: string): number => {
   let ascii = 0;
   let other = 0;
