@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
-import { getAuthToken, isAuthConfigured } from '../../src/auth';
-import { fetchFolderName, shortId } from '../../src/folder-names';
+import { getAuthToken, isAuthConfigured, refreshAuthToken } from '../../src/auth';
+import { loadNames, shortId } from '../../src/folder-names';
 import { parseFolderId } from '../../src/folder-url';
 import type { PanelToOffscreen } from '../../src/messages';
 import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
@@ -57,22 +57,20 @@ export function SetupView({
     );
   }, []);
   useEffect(() => {
-    const missing = recent.filter((id) => !tried.current.has(id));
-    if (s.mock || !configured || missing.length === 0) return;
-    for (const id of missing) tried.current.add(id); // one attempt per id per panel open
+    if (s.mock || !configured) return;
     let cancelled = false;
-    (async () => {
-      const token = await getAuthToken(false); // silent; no token -> short ids stay
-      if (!token) return;
-      for (const id of missing) {
-        const name = await fetchFolderName(id, token);
-        if (!cancelled && name) setNames((n) => ({ ...n, [id]: name }));
-      }
-    })();
+    loadNames({
+      ids: recent,
+      tried: tried.current,
+      getToken: () => getAuthToken(false),
+      refresh: refreshAuthToken,
+      cancelled: () => cancelled,
+      onName: (id, name) => setNames((n) => ({ ...n, [id]: name })),
+    });
     return () => {
       cancelled = true;
     };
-  }, [recent, s.mock, configured]);
+  }, [recent, s.mock, configured, signedIn]);
   const update = (next: Settings) => {
     setS(next);
     saveSettings(next).catch(() => {});
