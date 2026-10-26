@@ -19,7 +19,7 @@ function CueBody({ cue, big }: { cue: Cue; big: boolean }) {
       <p className="question">Q: {cue.question}</p>
       <div className="cuebody">
         {cue.notFound ? (
-          <p className="notfound">ไม่พบใน source — ขอ follow-up</p>
+          <p className="notfound">ไม่พบใน pack</p>
         ) : (
           <ul className={big ? 'bullets big' : 'bullets'}>
             {cue.bullets.map((b) => (
@@ -73,8 +73,13 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
   return (
     <main className="liveview">
       <header className="bar">
-        <span className={`status ${state.paused ? 'paused' : state.status}`}>
-          {state.paused ? 'หยุดชั่วคราว (ไม่ส่งเสียง)' : STATUS_TEXT[state.status]}
+        {/* connection problems win over paused: the rep must see a dropped link even while paused */}
+        <span
+          className={`status ${state.paused && state.status === 'live' ? 'paused' : state.status}`}
+        >
+          {state.paused
+            ? `หยุดชั่วคราว (ไม่ส่งเสียง)${state.status === 'live' ? '' : ` · ${STATUS_TEXT[state.status]}`}`
+            : STATUS_TEXT[state.status]}
         </span>
         <span className="actions">
           <button type="button" onClick={() => send({ k: state.paused ? 'resume' : 'pause' })}>
