@@ -1,17 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { PanelToOffscreen } from '../../src/messages';
-import type { Cue, SessionState } from '../../src/session';
 import { defaultSettings, loadSettings, type Settings, saveSettings } from '../../src/settings';
 
 type Send = (cmd: PanelToOffscreen) => void;
-
-const STATUS_TEXT = {
-  idle: 'ยังไม่เริ่ม',
-  connecting: 'กำลังเชื่อมต่อ',
-  live: 'สด',
-  reconnecting: 'กำลังเชื่อมต่อใหม่',
-  closed: 'ปิดแล้ว',
-} as const;
 
 function readBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -67,59 +58,6 @@ export function SetupView({ send }: { send: Send }) {
       <button type="button" className="primary" disabled={!s.mock} onClick={start}>
         เริ่ม session
       </button>
-    </main>
-  );
-}
-
-function CueCard({ cue }: { cue: Cue }) {
-  return (
-    <li className="cue">
-      <p className="question">{cue.question}</p>
-      {cue.notFound && !cue.partial ? (
-        <p className="bullet">ไม่พบใน pack</p> // D10: no guessing
-      ) : (
-        <ul className="bullets">
-          {cue.bullets.map((b) => (
-            <li key={b} className="bullet">
-              {b}
-            </li>
-          ))}
-        </ul>
-      )}
-      {cue.sources.length > 0 && (
-        <p className="anchors">{cue.sources.map((x) => `[${x.file} › ${x.locator}]`).join(' ')}</p>
-      )}
-      {cue.partial && <p className="note">กำลังสร้าง…</p>}
-    </li>
-  );
-}
-
-export function LiveView({ state, send }: { state: SessionState; send: Send }) {
-  return (
-    <main className="view">
-      <header className="bar">
-        <span className={`status ${state.status}`}>{STATUS_TEXT[state.status]}</span>
-        <button type="button" onClick={() => send({ k: 'end' })}>
-          จบ session
-        </button>
-      </header>
-      {state.error && <p className="note">ผิดพลาด: {state.error}</p>}
-      {/* reserved height: a new cue never pushes the layout (CLS) */}
-      <ul className="cues" aria-live="polite">
-        {state.cues.map((c) => (
-          <CueCard key={c.cueId} cue={c} />
-        ))}
-      </ul>
-      <details>
-        <summary>transcript ({state.segments.length})</summary>
-        <ul className="transcript">
-          {state.segments.map((g) => (
-            <li key={g.segId} className={g.final ? '' : 'partial'}>
-              {g.text}
-            </li>
-          ))}
-        </ul>
-      </details>
     </main>
   );
 }

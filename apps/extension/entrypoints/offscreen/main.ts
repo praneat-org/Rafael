@@ -12,6 +12,7 @@ import {
 } from '../../src/messages';
 import { parseWav, playMockAudio } from '../../src/mock-audio';
 import { MockTransport } from '../../src/mock-transport';
+import { applyPause } from '../../src/pause';
 import { type Action, initialState, reduce } from '../../src/session';
 import type { Transport } from '../../src/transport';
 
@@ -104,16 +105,24 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
 
 function onCommand(cmd: PanelToOffscreen) {
   if (cmd.k === 'start') start(cmd);
-  else if (cmd.k === 'end') {
+  else if (cmd.k === 'pause' || cmd.k === 'resume') {
+    if (state.phase !== 'live') return;
+    applyPause(cmd.k, {
+      capture,
+      audio,
+      stopMockAudio: () => {
+        stopAudio?.();
+        stopAudio = null;
+      },
+      send: (t) => transport?.send({ v: 1, t }),
+      dispatch: (k) => dispatch({ k }),
+    });
+  } else if (cmd.k === 'ask') {
+    if (state.phase === 'live') transport?.send({ v: 1, t: 'ask', text: cmd.text.slice(0, 2000) });
+  } else if (cmd.k === 'end') {
     transport?.send({ v: 1, t: 'session.end' });
     teardown();
     dispatch({ k: 'end' });
-  } else if (cmd.k === 'pause') {
-    capture.pause();
-    audio.patch({ paused: true, level: 0 });
-  } else if (cmd.k === 'resume') {
-    capture.resume();
-    audio.patch({ paused: false });
   } else dispatch({ k: 'reset' });
 }
 

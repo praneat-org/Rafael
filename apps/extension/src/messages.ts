@@ -22,6 +22,9 @@ export type PanelToOffscreen =
   | { k: 'pause' }
   | { k: 'resume' }
   | { k: 'end' }
+  | { k: 'pause' }
+  | { k: 'resume' }
+  | { k: 'ask'; text: string }
   | { k: 'reset' };
 
 export type OffscreenToPanel =
