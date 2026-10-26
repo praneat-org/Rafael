@@ -9,7 +9,7 @@ import { MemorySessionStore } from '../session/store.js';
 const ORIGIN = 'chrome-extension://testid';
 // fake verifier: token "good-<name>" -> <name>@praneat.com, anything else rejected
 const verifier: TokenVerifier = async (t) =>
-  t.startsWith('good-') ? { email: `${t.slice(5)}@praneat.com` } : null;
+  t.startsWith('good-') ? { email: `${t.slice(5).split('#')[0]}@praneat.com` } : null; // `#n` = another token, same user
 
 let servers: ReturnType<typeof createApp>[] = [];
 afterEach(async () => {
@@ -63,10 +63,10 @@ function connect(port: number, origin: string | undefined = ORIGIN, autoPong = t
 const open = (c: Client) => new Promise<void>((res) => c.ws.once('open', () => res()));
 const send = (c: Client, m: object) => c.ws.send(JSON.stringify({ v: 1, ...m }));
 
-async function login(port: number, who = 'alice') {
+async function login(port: number, who = 'alice', token = `good-${who}`) {
   const c = connect(port);
   await open(c);
-  send(c, { t: 'hello', accessToken: `good-${who}` });
+  send(c, { t: 'hello', accessToken: token });
   return c;
 }
 
@@ -276,4 +276,39 @@ test('replaced socket cannot end the session it lost to a resume', async () => {
   expect(b.ws.readyState).toBe(WebSocket.OPEN);
   a.ws.close();
   b.ws.close();
+});
+
+test('hello token is kept on the session (memory) and refreshed on resume', async () => {
+  const { port, store } = start();
+  const a = await login(port);
+  send(a, { t: 'session.start', packId: 'p1' });
+  const ready = await a.next();
+  if (ready.t !== 'session.ready') throw new Error();
+  expect(store.get(ready.sessionId)?.accessToken).toBe('good-alice');
+  a.ws.terminate();
+  await a.closed;
+  const b = await login(port, 'alice', 'good-alice#2'); // same user, fresh token
+  send(b, { t: 'session.start', packId: 'x', resumeToken: ready.resumeToken });
+  expect((await b.next()).t).toBe('session.ready');
+  expect(store.get(ready.sessionId)?.accessToken).toBe('good-alice#2');
+  b.ws.close();
+});
+
+test('/api/*: no/bad token -> 401 UNAUTHORIZED; GET /api/health stays open; POST health with token -> 405', async () => {
+  const { port } = start();
+  const call = (path: string, method = 'GET', auth?: string) =>
+    fetch(`http://127.0.0.1:${port}${path}`, {
+      method,
+      headers: auth ? { authorization: auth } : {},
+    });
+  expect((await call('/api/health')).status).toBe(200);
+  for (const method of ['POST', 'PUT', 'DELETE']) {
+    const r = await call('/api/health', method);
+    expect(r.status).toBe(401);
+    expect(await r.json()).toEqual({ code: 'UNAUTHORIZED' });
+  }
+  expect((await call('/api/other')).status).toBe(401);
+  expect((await call('/api/other', 'GET', 'Bearer nope')).status).toBe(401);
+  expect((await call('/api/other', 'GET', 'Bearer good-alice')).status).toBe(404);
+  expect((await call('/api/health', 'POST', 'Bearer good-alice')).status).toBe(405);
 });

@@ -62,12 +62,11 @@ test('attach cancels the grace timer and closes the replaced socket', () => {
   expect(s.socket).toBe(third);
 });
 
-test('TTL is 24h from last activity (touch extends it)', () => {
+test('TTL is 24h absolute from create: reconnects do not extend it (D11)', () => {
   const store = new MemorySessionStore();
   const s = store.create('a@praneat.com', 'p');
   vi.advanceTimersByTime(SESSION_TTL_MS - 1000);
-  store.touch(s.id);
-  vi.advanceTimersByTime(SESSION_TTL_MS - 1000);
+  store.attach(s.id, { close: vi.fn() });
   expect(store.get(s.id)).toBeDefined();
   vi.advanceTimersByTime(1000);
   expect(store.get(s.id)).toBeUndefined();

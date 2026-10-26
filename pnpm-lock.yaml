@@ -77,6 +77,8 @@ importers:
         specifier: 0.28.2
         version: 0.28.2
 
+  bench/eval: {}
+
   packages/protocol:
     dependencies:
       zod:

@@ -1,5 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { createApp } from './app.js';
+import { createGoogleVerifier } from './auth/google.js';
 import { denyAll, devFake, type TokenVerifier } from './auth/verifier.js';
 import { log } from './log.js';
 
@@ -9,8 +10,14 @@ if (process.env.DEV_FAKE_AUTH !== undefined && !(isDev && process.env.DEV_FAKE_A
   log('fatal', { reason: 'DEV_FAKE_AUTH set outside explicit development env' });
   process.exit(1);
 }
-// real verifier comes with BE-87; until then everything but dev-fake is rejected
-const verifier: TokenVerifier = process.env.DEV_FAKE_AUTH === '1' ? devFake : denyAll;
+// GOOGLE_OAUTH_CLIENT_ID (extension's OAuth client, BE-71) missing -> fail closed
+const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+const verifier: TokenVerifier =
+  process.env.DEV_FAKE_AUTH === '1'
+    ? devFake
+    : clientId
+      ? createGoogleVerifier({ clientId })
+      : denyAll;
 
 const server = createApp({
   verifier,
@@ -22,6 +29,8 @@ const server = createApp({
 }).listen(Number(process.env.PORT ?? 8080), () => {
   const { port } = server.address() as AddressInfo;
   log('listening', { port });
+  if (!clientId && process.env.DEV_FAKE_AUTH !== '1')
+    log('warn', { reason: 'GOOGLE_OAUTH_CLIENT_ID unset, all auth denied' });
 });
 
 // Cloud Run SIGTERM: tell clients to reconnect, exit within 10 s
