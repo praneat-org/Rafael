@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
 import { getAuthToken, isAuthConfigured } from '../../src/auth';
 import { parseFolderId } from '../../src/folder-url';
@@ -17,7 +18,16 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-export function SetupView({ send, error }: { send: Send; error?: string | null }) {
+export function SetupView({
+  send,
+  error,
+  audio,
+}: {
+  send: Send;
+  error?: string | null;
+  audio: AudioState | null;
+}) {
+  const [testing, setTesting] = useState(false);
   const [s, setS] = useState<Settings>(defaultSettings);
   const [wav, setWav] = useState<File | null>(null);
   const [signedIn, setSignedIn] = useState(false);
@@ -43,8 +53,19 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
     setSignedIn(ok);
     setSignInFailed(!ok);
   };
+  useEffect(() => {
+    if (!testing) return;
+    // ponytail: restart on input change; wav read is skipped for real capture
+    (async () => {
+      const wavBase64 = s.mock && wav ? await readBase64(wav) : undefined;
+      send({ k: 'preview', capture: s.mock ? undefined : inputs, wavBase64 });
+    })();
+    return () => send({ k: 'preview-stop' });
+  }, [testing, s.mock, wav, inputs, send]);
+  const level = Math.min(1, Math.sqrt(audio?.level ?? 0) * 1.5); // RMS is small for speech: sqrt for a readable bar
   const block = startBlock({ mock: s.mock, signedIn, folderId, ...inputs });
   const start = async () => {
+    setTesting(false);
     const wavBase64 = wav ? await readBase64(wav) : undefined;
     send({
       k: 'start',
@@ -134,6 +155,19 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
           <input type="file" accept=".wav" onChange={(e) => setWav(e.target.files?.[0] ?? null)} />
         </label>
       )}
+      <div className="meter-row">
+        <button type="button" onClick={() => setTesting(!testing)}>
+          {testing ? 'หยุดทดสอบเสียง' : 'ทดสอบเสียง'}
+        </button>
+        <meter
+          className="meter"
+          aria-label="ระดับเสียง"
+          min={0}
+          max={1}
+          value={testing ? level : 0}
+        />
+      </div>
+      {testing && audio?.error && <p className="note err">เปิดเสียงไม่ได้ ({audio.error})</p>}
       <button
         type="button"
         className="primary"

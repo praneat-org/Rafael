@@ -31,6 +31,9 @@ export type PanelToOffscreen =
   | { k: 'pause' }
   | { k: 'resume' }
   | { k: 'ask'; text: string }
+  /** Setup only: open the inputs to show a level meter before Start; nothing is sent or stored (FE-44, D11) */
+  | { k: 'preview'; capture?: CaptureOpts; wavBase64?: string }
+  | { k: 'preview-stop' }
   | { k: 'reset' };
 
 export type OffscreenToPanel =

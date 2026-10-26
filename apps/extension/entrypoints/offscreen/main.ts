@@ -2,6 +2,7 @@ import type { Browser } from 'wxt/browser';
 import { AudioStatus } from '../../src/audio/audio-state';
 import { CaptureFailed, startCapture } from '../../src/audio/capture';
 import { CaptureSlot } from '../../src/audio/capture-slot';
+import { rmsPcm16 } from '../../src/audio/pcm';
 import { SERVER_URL } from '../../src/config';
 import {
   type AuthTokenReply,
@@ -13,7 +14,7 @@ import {
   PORT_NAME,
   type TabStreamIdReply,
 } from '../../src/messages';
-import { parseWav, playMockAudio } from '../../src/mock-audio';
+import { parseWav, playMockAudio, toFrames } from '../../src/mock-audio';
 import { MockTransport } from '../../src/mock-transport';
 import { applyPause } from '../../src/pause';
 import { type Action, initialState, reduce } from '../../src/session';
@@ -40,7 +41,7 @@ const audio = new AudioStatus((a) => {
 
 type CaptureCmd = NonNullable<Extract<PanelToOffscreen, { k: 'start' }>['capture']>;
 
-function beginCapture(opts: CaptureCmd, t: Transport) {
+function beginCapture(opts: CaptureCmd, t: Transport | null) {
   audio.reset();
   // a start from an old session is stale: isCurrent() is false, nothing it does may reach the panel
   return capture.begin(
@@ -65,7 +66,7 @@ function beginCapture(opts: CaptureCmd, t: Transport) {
       return startCapture(
         opts,
         streamId,
-        capture.guard((f) => t.sendAudio(f)),
+        capture.guard((f) => t?.sendAudio(f)), // preview (no transport): level only, frames dropped
         capture.guard((level) => {
           if (isCurrent()) audio.patch({ level });
         }),
@@ -74,6 +75,31 @@ function beginCapture(opts: CaptureCmd, t: Transport) {
     // reason code only, never content (D11)
     (e) => audio.patch({ error: e instanceof CaptureFailed ? e.reason : 'tab-capture' }),
   );
+}
+
+function stopPreview() {
+  if (state.phase === 'live') return;
+  capture.stop();
+  stopAudio?.();
+  stopAudio = null;
+  audio.reset();
+}
+
+function preview(cmd: Extract<PanelToOffscreen, { k: 'preview' }>) {
+  if (state.phase === 'live') return;
+  stopPreview();
+  if (cmd.capture) void beginCapture(cmd.capture, null);
+  if (cmd.wavBase64) {
+    const pcm = parseWav(Uint8Array.from(atob(cmd.wavBase64), (c) => c.charCodeAt(0)).buffer);
+    if (!pcm) return;
+    const frames = toFrames(pcm);
+    let i = 0;
+    const timer = setInterval(() => {
+      const f = frames[i++ % frames.length];
+      if (f) audio.patch({ level: rmsPcm16(f) });
+    }, 100);
+    stopAudio = () => clearInterval(timer);
+  }
 }
 
 function teardown() {
@@ -137,6 +163,8 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
 
 function onCommand(cmd: PanelToOffscreen) {
   if (cmd.k === 'start') start(cmd);
+  else if (cmd.k === 'preview') preview(cmd);
+  else if (cmd.k === 'preview-stop') stopPreview();
   else if (cmd.k === 'pause' || cmd.k === 'resume') {
     if (state.phase !== 'live') return;
     applyPause(cmd.k, {
@@ -163,7 +191,10 @@ browser.runtime.onConnect.addListener((port) => {
   if (port.name !== PORT_NAME) return;
   ports.add(port);
   port.onMessage.addListener(onCommand);
-  port.onDisconnect.addListener(() => ports.delete(port)); // closing the panel does not stop the session
+  port.onDisconnect.addListener(() => {
+    ports.delete(port); // closing the panel does not stop a live session
+    if (ports.size === 0) stopPreview(); // but a preview must not keep the mic open
+  });
   port.postMessage({ k: 'state', state } satisfies OffscreenToPanel);
   port.postMessage(audio.state);
 });
