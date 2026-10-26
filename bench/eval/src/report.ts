@@ -33,7 +33,7 @@ export function buildReport(
     '## Gates',
     '| gate | value | target | |',
     '| -- | -- | -- | -- |',
-    `| correct (incl. not-found-correct) | ${good}/${keys.length} | >= ${GATES.minCorrect}/20 | ${mark(good >= GATES.minCorrect)} |`,
+    `| correct (incl. not-found-correct) | ${good}/${keys.length} | >= ${GATES.minCorrect}/${keys.length} | ${mark(good >= GATES.minCorrect)} |`,
     `| out-of-source | ${t['out-of-source']} | ${GATES.maxOutOfSource} | ${mark(t['out-of-source'] <= GATES.maxOutOfSource)} |`,
     `| total p50 | ${lat.total.p50} ms | <= ${GATES.p50Ms} ms | ${mark(lat.total.p50 <= GATES.p50Ms)} |`,
     `| total p95 | ${lat.total.p95} ms | <= ${GATES.p95Ms} ms | ${mark(lat.total.p95 <= GATES.p95Ms)} |`,

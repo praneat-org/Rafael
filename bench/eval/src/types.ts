@@ -13,6 +13,9 @@ export interface Cue {
   sources: string[];
 }
 
+/** Protocol `Source` (structural, no dep) -> eval anchor, so BE-99 can feed cues directly. */
+export const sourceAnchor = (s: { file: string; locator: string }) => `[${s.file} › ${s.locator}]`;
+
 export const STAGES = ['stt', 'detector', 'answererFirstToken', 'total'] as const;
 export type Stage = (typeof STAGES)[number];
 

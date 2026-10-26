@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { costPerHour, parsePrices } from './cost.js';
 import { parseKey } from './key.js';
-import { buildReport } from './report.js';
+import { buildReport, GATES } from './report.js';
 import { fakeRunner } from './runner.js';
 import { scoreOne } from './score.js';
 import { percentile } from './stats.js';
-import type { Cue, KeyRow } from './types.js';
+import { type Cue, type KeyRow, type RunResult, sourceAnchor } from './types.js';
 
 const pack = new Set(['[a › 1]', '[b › 2]']);
 const key: KeyRow = { question: 'q', answer: 'a', anchor: '[a › 1]' };
@@ -85,7 +85,78 @@ describe('buildReport', () => {
     )(inputs);
     const md = buildReport(keys, r, anchors, 120, prices);
     expect(md).toContain('| out-of-source | 1 | 0 | FAIL |');
-    expect(md).toContain('FAIL');
     expect(md).toMatch(/total p95 \| 9000 ms .* FAIL/);
+  });
+});
+
+describe('sourceAnchor', () => {
+  it('maps protocol Source to pack anchor', () =>
+    expect(sourceAnchor({ file: 'a', locator: '1' })).toBe('[a › 1]'));
+});
+
+describe('gates one by one (boundaries)', () => {
+  const N = 20;
+  const prices = parsePrices(
+    readFileSync(new URL('../fixtures/prices.json', import.meta.url), 'utf8'),
+  );
+  const keys: KeyRow[] = Array.from({ length: N }, (_, i) => ({
+    question: `q${i}`,
+    answer: 'a',
+    anchor: `[f › ${i}]`,
+  }));
+  const anchors = new Set(keys.map((k) => k.anchor as string));
+  const usage = { inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 };
+  type Opts = { correct?: number; oos?: number; totals?: number[] };
+  const run = ({ correct = N, oos = 0, totals = [] }: Opts): string => {
+    const results: RunResult[] = keys.map((k, i) => {
+      const sources =
+        i < correct ? [k.anchor as string] : i < correct + oos ? ['[zzz › 9]'] : ['[f › 0]'];
+      const total = totals[i] ?? 1000;
+      return {
+        cue: { notFound: false, bullets: ['x'], sources },
+        timings: { stt: 1, detector: 1, answererFirstToken: 1, total },
+        usage,
+      };
+    });
+    return buildReport(keys, results, anchors, 120, prices);
+  };
+  const gate = (md: string, label: string) =>
+    new RegExp(`\\| ${label}[^\\n]*\\| (PASS|FAIL) \\|`).exec(md)?.[1];
+  const correctGate = (o: Opts) => gate(run(o), 'correct');
+  const ooS = (o: Opts) => gate(run(o), 'out-of-source');
+  const p50 = (o: Opts) => gate(run(o), 'total p50');
+  const p95 = (o: Opts) => gate(run(o), 'total p95');
+  const fill = (n: number, v: number, rest = 1000) =>
+    Array.from({ length: N }, (_, i) => (i < n ? v : rest));
+
+  it('thresholds are the spec', () =>
+    expect(GATES).toEqual({ minCorrect: 16, maxOutOfSource: 0, p50Ms: 3000, p95Ms: 5000 }));
+  it('correct: 16/20 PASS, 15/20 FAIL', () => {
+    expect(correctGate({ correct: 16 })).toBe('PASS');
+    expect(correctGate({ correct: 15 })).toBe('FAIL');
+  });
+  it('out-of-source does not count as good', () =>
+    expect(correctGate({ correct: 15, oos: 1 })).toBe('FAIL'));
+  it('report denominator follows key length', () => expect(run({})).toContain(`>= 16/${N} `));
+  it('out-of-source: 0 PASS, 1 FAIL', () => {
+    expect(ooS({ correct: 19, oos: 0 })).toBe('PASS');
+    expect(ooS({ correct: 19, oos: 1 })).toBe('FAIL');
+  });
+  it('p50: 3000 PASS, 3001 FAIL (all other gates untouched)', () => {
+    expect(p50({ totals: fill(N, 3000) })).toBe('PASS');
+    expect(p50({ totals: fill(N, 3001) })).toBe('FAIL');
+  });
+  it('p95: 5000 PASS, 5001 FAIL (two slowest of 20)', () => {
+    expect(p95({ totals: fill(2, 5000) })).toBe('PASS');
+    expect(p95({ totals: fill(2, 5001) })).toBe('FAIL');
+    expect(p50({ totals: fill(2, 5001) })).toBe('PASS');
+  });
+  it('each gate fails alone', () => {
+    const bad = (o: Opts) => [correctGate(o), ooS(o), p50(o), p95(o)];
+    expect(bad({})).toEqual(['PASS', 'PASS', 'PASS', 'PASS']);
+    expect(bad({ correct: 15 })).toEqual(['FAIL', 'PASS', 'PASS', 'PASS']);
+    expect(bad({ correct: 19, oos: 1 })).toEqual(['PASS', 'FAIL', 'PASS', 'PASS']);
+    expect(bad({ totals: fill(N, 3001) })).toEqual(['PASS', 'PASS', 'FAIL', 'PASS']);
+    expect(bad({ totals: fill(2, 5001) })).toEqual(['PASS', 'PASS', 'PASS', 'FAIL']);
   });
 });

@@ -2,7 +2,7 @@ import type { Cue, KeyRow, Outcome } from './types.js';
 
 /**
  * D10: citing an anchor that is not in the pack is "out-of-source" and counted
- * apart from "wrong". `agrees` = optional bullet-vs-answer grader (Claude grader comes later);
+ * apart from "wrong". `agrees` = optional bullet-vs-answer grader (Gemini grader comes later, D20);
  * default trusts the anchor match only.
  */
 export function scoreOne(
