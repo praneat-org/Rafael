@@ -40,6 +40,11 @@ try {
       cacheReadTokens: r.cacheReadTokens,
       outputTokens: r.outputTokens,
     });
+    // BE-109 / D21: the 2nd question must be served from the cache
+    if (i === 2 && !((r.cacheReadTokens ?? 0) > 0)) {
+      process.exitCode = 1;
+      console.error('FAIL: cacheReadTokens on question 2 is not > 0');
+    }
   }
 } finally {
   await client.deleteCache(h, AbortSignal.timeout(10_000));

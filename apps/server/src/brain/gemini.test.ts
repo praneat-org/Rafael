@@ -155,10 +155,12 @@ describe('createGeminiClient / packTokenCounter', () => {
   it('AI Studio: vertexai false passed explicitly', () => {
     expect(createGeminiClient({ GEMINI_API_KEY: KEY })).toBeInstanceOf(GeminiClient);
     expect(lastArgs()).toEqual({ vertexai: false, apiKey: KEY });
-    createGeminiClient({ GEMINI_API_KEY: KEY, GOOGLE_GENAI_USE_VERTEXAI: 'FALSE' });
-    expect(lastArgs().vertexai).toBe(false);
-    createGeminiClient({ GEMINI_API_KEY: KEY, GOOGLE_GENAI_USE_VERTEXAI: '0' });
-    expect(lastArgs().vertexai).toBe(false);
+    for (const f of ['FALSE', '0']) {
+      const n = sdkArgs.length;
+      createGeminiClient({ GEMINI_API_KEY: KEY, GOOGLE_GENAI_USE_VERTEXAI: f });
+      expect(sdkArgs).toHaveLength(n + 1); // this call's own args, not a previous one
+      expect(sdkArgs[n].vertexai).toBe(false);
+    }
   });
   it.each(['true', 'True', 'TRUE', '1'])('Vertex flag %s -> vertexai true', (f) => {
     createGeminiClient({ GOOGLE_GENAI_USE_VERTEXAI: f, ...V });
