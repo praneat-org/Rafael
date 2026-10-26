@@ -155,7 +155,6 @@ export function attachWs(http: Server, opts: WsOptions) {
           return;
         case 'ask': {
           if (!session) return fail('SESSION_NOT_FOUND');
-          store.touch(session.id);
           const sock = ws;
           // BE-108: no pack yet -> no guessing, tell the client
           const r = pipeline?.ask(session, m.text, (c) => {

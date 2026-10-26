@@ -21,7 +21,7 @@ type Entry = {
   inFlight: number;
 };
 
-export function createPipeline(opts: BrainOptions, store: Pick<SessionStore, 'onEnd'>) {
+export function createPipeline(opts: BrainOptions, store: Pick<SessionStore, 'onEnd' | 'get'>) {
   const perf = () => performance.now();
   const entries = new Map<string, Entry>();
   const detectors = new Map<string, ReturnType<typeof createDetector>>();
@@ -37,6 +37,8 @@ export function createPipeline(opts: BrainOptions, store: Pick<SessionStore, 'on
   function entryFor(s: Session): Entry | undefined {
     const have = entries.get(s.id);
     if (have) return have;
+    // ended session: onEnd already ran, a new Answerer would never be disposed (D21)
+    if (store.get(s.id) !== s) return undefined;
     const pack = opts.getPack(s);
     if (!pack) return undefined;
     const e: Entry = {

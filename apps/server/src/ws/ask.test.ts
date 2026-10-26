@@ -18,7 +18,7 @@ const pack: PackIndex = [
   { anchor: A1, file: 'deck.pdf', fileId: 'f1', locator: 'หน้า 3', text: PACK_TEXT },
 ];
 
-function fake(deltas: string[]) {
+function fake(deltas: string[], gate?: Promise<void>) {
   const live = new Set<string>();
   let n = 0;
   const calls = { stream: 0, complete: 0 };
@@ -29,6 +29,7 @@ function fake(deltas: string[]) {
     },
     async stream(_req, onText) {
       calls.stream++;
+      await gate;
       for (const d of deltas) onText(d);
       return { text: deltas.join(''), inputTokens: 10, outputTokens: 5, cacheReadTokens: 8 };
     },
@@ -59,8 +60,12 @@ afterEach(async () => {
   await new Promise((res) => app?.close(res));
 });
 
-async function setup(deltas: string[], getPack: () => PackIndex | undefined = () => pack) {
-  const f = fake(deltas);
+async function setup(
+  deltas: string[],
+  getPack: () => PackIndex | undefined = () => pack,
+  gate?: Promise<void>,
+) {
+  const f = fake(deltas, gate);
   const store = new MemorySessionStore();
   app = createApp({
     store,
@@ -140,6 +145,31 @@ test('session end disposes the answerer: cache deleted at the provider', async (
   expect(t.live.size).toBe(1); // cache exists while the session lives
   t.send({ t: 'session.end' });
   await vi.waitFor(() => expect(t.live.size).toBe(0));
+});
+
+test('ask right after session.end creates no answerer and no cache (D21)', async () => {
+  const t = await setup([`- ${ANSWER} ${A1}`]);
+  t.send({ t: 'session.end' });
+  t.send({ t: 'ask', text: QUESTION });
+  await new Promise((r) => setTimeout(r, 200));
+  expect(t.calls.stream).toBe(0);
+  expect(t.live.size).toBe(0);
+});
+
+test('in-flight cap: 3rd concurrent ask -> BAD_MESSAGE, first two still answer', async () => {
+  let release = () => {};
+  const t = await setup(
+    [`- ${ANSWER} ${A1}`],
+    () => pack,
+    new Promise<void>((r) => {
+      release = r;
+    }),
+  );
+  for (let i = 0; i < 3; i++) t.send({ t: 'ask', text: QUESTION });
+  await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
+  expect(t.msgs.find((m) => m.t === 'error')).toMatchObject({ code: 'BAD_MESSAGE' });
+  release();
+  await vi.waitFor(() => expect(cues(t.msgs).filter((c) => !c.partial)).toHaveLength(2));
 });
 
 test('logs: latency per stage per cue, no question / answer / pack text (D11)', async () => {
