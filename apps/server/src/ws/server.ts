@@ -8,7 +8,7 @@ import {
   type ServerMessage,
 } from '@rafael/protocol';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
-import { audit } from '../audit.js';
+import { audit, driveId } from '../audit.js';
 import type { TokenVerifier } from '../auth/verifier.js';
 import { type BrainOptions, createPipeline } from '../brain/pipeline.js';
 import { log } from '../log.js';
@@ -147,6 +147,8 @@ export function attachWs(http: Server, opts: WsOptions) {
             email,
             sessionId: s.id,
             resumed: Boolean(m.resumeToken),
+            // packId = Drive folder id (D12) but client-supplied: only a Drive-id-shaped value is logged
+            folderId: driveId.safeParse(s.packId).data,
           });
           log('session.attached', { sessionId: s.id, resumed: Boolean(m.resumeToken) });
           return send({

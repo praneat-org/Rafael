@@ -6,10 +6,13 @@ import { AUDIT_LOG_NAME, type AuditEvent, audit } from './audit.js';
 import { MemorySessionStore } from './session/store.js';
 
 const F = { folderId: 'fld1', folderName: 'Acme pitch', files: 3, tokens: 1200 };
-const P = { email: 'a@praneat.com', sessionId: 's1' };
+const P = { email: 'a@praneat.com', sessionId: '11111111-1111-4111-8111-111111111111' };
 // one valid sample per event: every event must carry exactly these fields
 const samples: [AuditEvent, string[]][] = [
-  [{ event: 'session.start', ...P, resumed: false }, ['email', 'sessionId', 'resumed']],
+  [
+    { event: 'session.start', ...P, resumed: false, folderId: 'fld1' },
+    ['email', 'sessionId', 'resumed', 'folderId'],
+  ],
   [
     { event: 'pack.build', ...P, ...F },
     ['email', 'sessionId', 'folderId', 'folderName', 'files', 'tokens'],
@@ -82,7 +85,7 @@ test('real session: start, end, expiry and denied auth are audited, no token in 
   });
   // second session: drop the socket, grace (30 ms) expires it
   await open('good', (ws) => {
-    ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'p' }));
+    ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'ราคา ลูกค้า' }));
     setTimeout(() => ws.close(), 50);
   });
   await vi.waitFor(() => expect(out.join('\n')).toContain('session.expired'));
@@ -97,7 +100,26 @@ test('real session: start, end, expiry and denied auth are audited, no token in 
     'session.start',
     'session.expired',
   ]);
-  expect(out.join('\n')).not.toMatch(/ya29|good|bad/);
+  expect(out.join('\n')).not.toMatch(/ya29|good|bad|ราคา/);
+  // packId = Drive folder id: logged when Drive-id-shaped, omitted (event still fires) otherwise
+  const starts = out.map((l) => JSON.parse(l)).filter((l) => l.event === 'session.start');
+  expect(starts[0].folderId).toBe('p');
+  expect(starts[1]).not.toHaveProperty('folderId');
   app.shutdown();
   await new Promise((r) => app.close(r));
+});
+
+test('free text in email / sessionId / folderId is dropped, not logged (D11)', () => {
+  spy();
+  const ok = { event: 'session.start', ...P, resumed: false } as const;
+  for (const bad of [
+    { ...ok, email: 'ลูกค้าถามราคาเท่าไหร่' },
+    { ...ok, sessionId: 'คำถามของลูกค้า' },
+    { ...ok, folderId: 'ราคา พิเศษ' },
+  ])
+    audit(bad);
+  expect(out.map((l) => JSON.parse(l))).toEqual(
+    Array(3).fill({ msg: 'audit.invalid', code: 'AUDIT_INVALID' }),
+  );
+  expect(out.join('')).not.toMatch(/ลูกค้า|ราคา/);
 });

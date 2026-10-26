@@ -7,9 +7,15 @@ import { log } from './log.js';
 // Only the folder name (AC) is user-supplied text; it is length-capped.
 export const AUDIT_LOG_NAME = 'rafael-audit';
 
-const base = { email: z.string().max(320), sessionId: z.string().max(64) };
+// email / sessionId are format-checked, not just strings: free text (e.g. Thai) cannot ride in them (D11)
+const base = { email: z.email().max(320), sessionId: z.uuid() };
+// Drive ids only (same shape parseFolderId accepts); client-supplied, so never free text
+export const driveId = z
+  .string()
+  .regex(/^[\w-]+$/)
+  .max(128);
 const folder = {
-  folderId: z.string().max(128),
+  folderId: driveId,
   folderName: z.string().max(200),
   files: z.number().int().nonnegative(),
   tokens: z.number().int().nonnegative(),
@@ -18,7 +24,7 @@ const ev = <T extends string, S extends z.ZodRawShape>(event: T, shape: S) =>
   z.strictObject({ event: z.literal(event), ...shape });
 
 export const auditSchema = z.discriminatedUnion('event', [
-  ev('session.start', { ...base, resumed: z.boolean() }),
+  ev('session.start', { ...base, resumed: z.boolean(), folderId: driveId.optional() }),
   ev('pack.build', { ...base, ...folder }),
   ev('pack.refresh', { ...base, ...folder }),
   ev('session.end', base),

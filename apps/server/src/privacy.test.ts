@@ -11,7 +11,8 @@ import { MemorySessionStore, RESUME_GRACE_MS, SESSION_TTL_MS } from './session/s
 // D11 retention: a real session over a real socket leaves nothing behind.
 const ORIGIN = 'chrome-extension://testid';
 const TOKEN = 'ya29.SECRET-ACCESS-TOKEN';
-const PACK_ID = 'pack-SECRET-ID';
+// not Drive-id shaped on purpose: the audit log (BE-97) records a Drive folder id, never other client text
+const PACK_ID = 'pack SECRET ID';
 const verifier = async () => ({ email: 'alice@praneat.com' });
 
 let out: string[];
