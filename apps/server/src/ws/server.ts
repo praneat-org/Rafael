@@ -8,6 +8,7 @@ import {
   type ServerMessage,
 } from '@rafael/protocol';
 import { type RawData, type WebSocket, WebSocketServer } from 'ws';
+import { audit } from '../audit.js';
 import type { TokenVerifier } from '../auth/verifier.js';
 import { type BrainOptions, createPipeline } from '../brain/pipeline.js';
 import { log } from '../log.js';
@@ -115,6 +116,7 @@ export function attachWs(http: Server, opts: WsOptions) {
         // helloTimer keeps running while verifying: a hung verifier still gets 4408
         const who = await verifier(parsed.data.accessToken).catch(() => null);
         if (!who) {
+          audit({ event: 'auth.denied', source: 'ws' });
           fail('UNAUTHORIZED');
           return ws.close(CLOSE_UNAUTHORIZED, 'unauthorized');
         }
@@ -140,6 +142,12 @@ export function attachWs(http: Server, opts: WsOptions) {
           s.accessToken = accessToken;
           session = s;
           store.attach(s.id, ws);
+          audit({
+            event: 'session.start',
+            email,
+            sessionId: s.id,
+            resumed: Boolean(m.resumeToken),
+          });
           log('session.attached', { sessionId: s.id, resumed: Boolean(m.resumeToken) });
           return send({
             v: PROTOCOL_VERSION,

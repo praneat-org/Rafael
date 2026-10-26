@@ -4,6 +4,9 @@ import { log } from '../log.js';
 export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // absolute from create, activity does not extend it (D11: deleted after 24h)
 export const RESUME_GRACE_MS = 5 * 60 * 1000; // socket gone -> session kept this long
 
+/** `expired` = 24 h TTL or resume grace ran out; `ended` = explicit session.end */
+export type EndReason = 'ended' | 'expired';
+
 /** Minimal socket surface so the store does not depend on `ws`. */
 export type SessionSocket = { close(code?: number, reason?: string): void };
 
@@ -26,9 +29,9 @@ export interface SessionStore {
   resume(resumeToken: string, email: string): Session | undefined;
   attach(id: string, socket: SessionSocket): void;
   detach(id: string, socket: SessionSocket): void;
-  end(id: string): void;
+  end(id: string, reason?: EndReason): void;
   /** cleanup hook run on every end (session.end, grace, TTL) */
-  onEnd(fn: (s: Session) => void | Promise<void>): void;
+  onEnd(fn: (s: Session, reason: EndReason) => void | Promise<void>): void;
 }
 
 type Entry = { session: Session; ttl?: NodeJS.Timeout; grace?: NodeJS.Timeout };
@@ -36,11 +39,11 @@ type Entry = { session: Session; ttl?: NodeJS.Timeout; grace?: NodeJS.Timeout };
 export class MemorySessionStore implements SessionStore {
   private byId = new Map<string, Entry>();
   private byToken = new Map<string, string>();
-  private endHooks: ((s: Session) => void | Promise<void>)[] = [];
+  private endHooks: ((s: Session, reason: EndReason) => void | Promise<void>)[] = [];
 
   /** Cleanup hook run on every end (session.end, grace, 24 h TTL). Transcript / pack / Gemini
    * CachedContent owners (BE-89/91/94) register here so nothing outlives the session (D11, D21). */
-  onEnd(fn: (s: Session) => void | Promise<void>) {
+  onEnd(fn: (s: Session, reason: EndReason) => void | Promise<void>) {
     this.endHooks.push(fn);
   }
 
@@ -60,7 +63,7 @@ export class MemorySessionStore implements SessionStore {
     };
     this.byId.set(session.id, {
       session,
-      ttl: setTimeout(() => this.end(session.id), this.ttlMs).unref(),
+      ttl: setTimeout(() => this.end(session.id, 'expired'), this.ttlMs).unref(),
     });
     this.byToken.set(session.resumeToken, session.id);
     return session;
@@ -90,10 +93,10 @@ export class MemorySessionStore implements SessionStore {
     if (!e || e.session.socket !== socket) return; // already replaced by a newer socket
     e.session.socket = undefined;
     clearTimeout(e.grace);
-    e.grace = setTimeout(() => this.end(id), this.graceMs).unref();
+    e.grace = setTimeout(() => this.end(id, 'expired'), this.graceMs).unref();
   }
 
-  end(id: string) {
+  end(id: string, reason: EndReason = 'ended') {
     const e = this.byId.get(id);
     if (!e) return;
     clearTimeout(e.ttl);
@@ -105,7 +108,7 @@ export class MemorySessionStore implements SessionStore {
       // socket close; log the code only, errors from providers may carry content (D11)
       const failed = () => log('end.hook.failed', { sessionId: e.session.id, code: 'HOOK_FAILED' });
       try {
-        Promise.resolve(fn(e.session)).catch(failed);
+        Promise.resolve(fn(e.session, reason)).catch(failed);
       } catch {
         failed();
       }

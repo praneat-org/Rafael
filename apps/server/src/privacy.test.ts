@@ -133,7 +133,7 @@ test('24 h TTL ends an idle session and runs the end hooks', () => {
   vi.advanceTimersByTime(SESSION_TTL_MS);
   expect(store.get(s.id)).toBeUndefined();
   expect(store.resume(s.resumeToken, 'alice@praneat.com')).toBeUndefined();
-  expect(ended).toHaveBeenCalledWith(s);
+  expect(ended).toHaveBeenCalledWith(s, 'expired');
 });
 
 test('grace period (5 min) after disconnect ends the session', () => {
