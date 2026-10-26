@@ -38,7 +38,7 @@ test.each(samples)('%j has exactly its fields', (e, fields) => {
   audit(e, () => new Date('2026-10-26T00:00:00Z'));
   const line = JSON.parse(out[0]!);
   expect(line).toMatchObject({
-    log: AUDIT_LOG_NAME,
+    log: 'rafael-audit',
     severity: 'NOTICE',
     time: '2026-10-26T00:00:00.000Z',
   });
@@ -105,6 +105,23 @@ test('real session: start, end, expiry and denied auth are audited, no token in 
   const starts = out.map((l) => JSON.parse(l)).filter((l) => l.event === 'session.start');
   expect(starts[0].folderId).toBe('p');
   expect(starts[1]).not.toHaveProperty('folderId');
+  app.shutdown();
+  await new Promise((r) => app.close(r));
+});
+
+test('message before hello is audited as auth.denied', async () => {
+  spy();
+  const app = createApp({ allowedOrigins: ['chrome-extension://x'] });
+  app.listen(0);
+  const ws = new WebSocket(`ws://127.0.0.1:${(app.address() as AddressInfo).port}/ws`, {
+    origin: 'chrome-extension://x',
+  });
+  await new Promise((r) => ws.once('open', r));
+  ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'p' }));
+  await new Promise((r) => ws.once('close', r));
+  expect(out.map((l) => JSON.parse(l)).filter((l) => l.log === 'rafael-audit')).toMatchObject([
+    { event: 'auth.denied', source: 'ws' },
+  ]);
   app.shutdown();
   await new Promise((r) => app.close(r));
 });

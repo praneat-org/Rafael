@@ -110,6 +110,7 @@ export function attachWs(http: Server, opts: WsOptions) {
       if (!email) {
         // not authenticated yet: only a valid hello is acceptable
         if (!parsed.ok || parsed.data.t !== 'hello') {
+          audit({ event: 'auth.denied', source: 'ws' });
           fail(parsed.ok ? 'UNAUTHORIZED' : parsed.error.code);
           return ws.close(CLOSE_UNAUTHORIZED, 'hello required');
         }
