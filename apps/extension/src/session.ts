@@ -22,6 +22,8 @@ export type SessionState = {
   cues: Cue[];
   pack: PackState | null;
   error: ErrorCode | null;
+  /** audio is not being sent (Pause) */
+  paused: boolean;
 };
 
 export const initialState: SessionState = {
@@ -31,12 +33,15 @@ export const initialState: SessionState = {
   cues: [],
   pack: null,
   error: null,
+  paused: false,
 };
 
 export type Action =
   | { k: 'start' }
   | { k: 'end' }
   | { k: 'reset' }
+  | { k: 'pause' }
+  | { k: 'resume' }
   | { k: 'status'; status: TransportStatus }
   | { k: 'server'; msg: ServerMessage };
 
@@ -55,6 +60,9 @@ export function reduce(s: SessionState, a: Action): SessionState {
       return { ...initialState, phase: 'end', status: 'closed' };
     case 'reset':
       return initialState;
+    case 'pause':
+    case 'resume':
+      return s.phase === 'live' ? { ...s, paused: a.k === 'pause' } : s;
     case 'status':
       return s.phase === 'live' ? { ...s, status: a.status } : s;
     case 'server': {
@@ -80,6 +88,8 @@ export function reduce(s: SessionState, a: Action): SessionState {
         case 'pack.status':
           return { ...s, pack: m.state };
         case 'error':
+          // resume failed (server restarted): the session is gone, back to Setup with the reason
+          if (m.code === 'SESSION_NOT_FOUND') return { ...initialState, error: m.code };
           return { ...s, error: m.code };
         default:
           return s; // session.ready: resumeToken is kept by WsTransport (FE-35), not in UI state

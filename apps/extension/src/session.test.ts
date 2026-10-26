@@ -36,3 +36,21 @@ test('status only applies while live', () => {
 test('fixtures contain a notFound cue', () => {
   expect(exampleServerMessages.some((m) => m.t === 'cue' && m.notFound)).toBe(true);
 });
+
+test('pause / resume toggle paused only while live; end clears it', () => {
+  expect(reduce(initialState, { k: 'pause' }).paused).toBe(false);
+  const live = run([{ k: 'start' }]);
+  const paused = reduce(live, { k: 'pause' });
+  expect(paused.paused).toBe(true);
+  expect(reduce(paused, { k: 'resume' }).paused).toBe(false);
+  expect(reduce(paused, { k: 'end' }).paused).toBe(false);
+});
+
+test('SESSION_NOT_FOUND (resume failed) returns to setup and keeps the error', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, { k: 'status', status: 'reconnecting' });
+  s = reduce(s, { k: 'server', msg: { v: 1, t: 'error', code: 'SESSION_NOT_FOUND' } });
+  expect(s.phase).toBe('setup');
+  expect(s.error).toBe('SESSION_NOT_FOUND');
+  expect(reduce(s, { k: 'start' }).error).toBeNull();
+});

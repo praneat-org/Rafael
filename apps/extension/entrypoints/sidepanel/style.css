@@ -61,46 +61,135 @@ button:disabled {
 .status.connecting {
   color: #9a6700;
 }
-/* fixed height + internal scroll so cues never shift the page */
-.cues {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  height: 60vh;
-  min-height: 260px;
-  overflow-y: auto;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+/* ---- Live view: one screen, nothing outside the scroll areas can move (CLS = 0) ---- */
+html {
+  line-break: auto;
 }
-.cue {
+:root {
+  --cue: 440px;
+}
+@media (max-width: 420px) {
+  :root {
+    --cue: 600px; /* 360px panel: 3 long bullets incl. inline anchors */
+  }
+}
+.liveview {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100vh;
   padding: 8px 12px;
-  border-bottom: 1px solid #eee;
+  min-width: 320px;
+  overflow-x: hidden;
 }
-.question {
-  margin: 0 0 4px;
+.liveview .bar {
+  flex: none;
+  gap: 8px;
+}
+.actions {
+  display: flex;
+  gap: 6px;
+}
+.status.paused {
+  color: #b42318;
+}
+.latest {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: calc(var(--cue) + 110px); /* slot reserved even before the first cue */
+  padding: 8px 10px;
+  border: 1px solid #1a56db;
+  border-radius: 6px;
+  overflow-wrap: break-word;
+  transition: opacity 150ms;
+}
+.latest.partial {
+  opacity: 0.7;
+}
+.latest .question {
+  flex: none;
+  margin: 0 0 6px;
+  font-size: 14px;
   color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* bullets grow downward inside their own scroll area; the Q line and anchors stay put */
+.latest .cuebody {
+  flex: none;
+  /* reserve the max cue (3 bullets x ~15 words at 24px, 360px wide) so nothing moves or scrolls */
+  min-height: var(--cue);
 }
 .bullets {
   margin: 0;
-  padding: 0;
-  list-style: none;
+  padding: 0 0 0 20px;
 }
-.bullet {
-  margin: 0 0 4px;
+.bullets.big {
   font-size: 24px;
-  line-height: 1.3;
-  min-height: 24px;
-  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.bullets li {
+  margin: 0 0 6px;
+}
+.notfound {
+  margin: 0;
+  font-size: 16px;
+  color: #666;
 }
 .anchors {
-  margin: 0;
+  flex: none;
+  margin: 4px 0 0;
+  min-height: 54px; /* reserve 3 sources up front */
+  font-size: 13px;
+  line-height: 18px;
   color: #1a56db;
-  overflow-wrap: anywhere;
+}
+.anchors span {
+  display: block;
+}
+.previous {
+  flex: 1 1 0;
+  min-height: 60px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  overflow-wrap: break-word;
+}
+.prev {
+  padding: 6px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
+.prev .question {
+  margin: 0;
+  font-weight: 600;
+}
+.prev .bullets,
+.prev .notfound {
+  font-size: 14px;
 }
 .transcript {
+  flex: none;
+  font-size: 12px;
+  color: #555;
+}
+.transcript ul {
+  max-height: 120px;
   margin: 4px 0 0;
   padding-left: 16px;
+  overflow-y: auto;
 }
-.transcript .partial {
-  color: #777;
+.ask {
+  flex: none;
+  display: flex;
+}
+.ask input {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 8px;
+  font: inherit;
 }
