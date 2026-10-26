@@ -119,6 +119,28 @@ describe('detector', () => {
     expect(bad.reqs).toHaveLength(2);
   });
 
+  it('timeout ends the wait even if the client ignores the abort signal', async () => {
+    let calls = 0;
+    const llm: LlmClient = {
+      complete: () => {
+        calls++;
+        return new Promise(() => {}); // never resolves, ignores signal
+      },
+    };
+    const cfg = { ...config, detector: { ...config.detector, timeoutMs: 20 } };
+    const d = createDetector({ llm, config: cfg });
+    expect(await d.onFinalSegment({ text: 'a' })).toEqual({ kind: 'none', reason: 'error' });
+    expect(calls).toBe(2);
+  });
+
+  it('questions differing only in a number are not duplicates', async () => {
+    const a = 'ระบบรองรับผู้ใช้พร้อมกันได้ 100 คนไหมในแพ็กเกจมาตรฐานของคุณ';
+    const s = setup([q(a), q(a.replace('100', '200')), q(a)]);
+    expect((await s.d.onFinalSegment({ text: 'a' })).kind).toBe('question');
+    expect((await s.d.onFinalSegment({ text: 'b' })).kind).toBe('question');
+    expect(await s.d.onFinalSegment({ text: 'c' })).toEqual({ kind: 'none', reason: 'duplicate' });
+  });
+
   it('warns (no text) when a segment exceeds the 600 ms budget', async () => {
     const f = fake([no]);
     let p = 0;
@@ -136,6 +158,7 @@ describe('detector', () => {
   it('log never contains transcript or question text (D11)', async () => {
     const s = setup([q('คำถามลับของลูกค้า')]);
     await s.d.onFinalSegment({ text: 'ข้อความลับ' });
+    expect(s.logs.length).toBeGreaterThan(0);
     const l = JSON.stringify(s.logs);
     expect(l).not.toContain('ลับ');
   });
