@@ -34,7 +34,8 @@ afterEach(async () => {
 });
 
 function setup(token = 'good') {
-  const app = createApp({ store: new MemorySessionStore(), verifier, allowedOrigins: [ORIGIN] });
+  const store = new MemorySessionStore();
+  const app = createApp({ store, verifier, allowedOrigins: [ORIGIN] });
   apps.push(app);
   app.listen(0);
   const url = `ws://127.0.0.1:${(app.address() as AddressInfo).port}/ws`;
@@ -51,20 +52,21 @@ function setup(token = 'good') {
   const statuses: TransportStatus[] = [];
   t.onMessage((m) => msgs.push(m));
   t.onStatus((s) => statuses.push(s));
-  return { app, url, t, msgs, statuses, getToken };
+  return { app, store, url, t, msgs, statuses, getToken };
 }
 
 const ready = (msgs: ServerMessage[]) =>
   msgs.filter((m): m is Extract<ServerMessage, { t: 'session.ready' }> => m.t === 'session.ready');
 
 test('hello first, session.ready, audio accepted', async () => {
-  const { t, msgs, statuses } = setup();
+  const { t, msgs, statuses, store } = setup();
   t.connect();
   t.send({ v: 1, t: 'session.start', packId: 'p1' });
   await vi.waitFor(() => expect(statuses).toContain('live'));
   expect(calls).toEqual(['good']);
   expect(ready(msgs)).toHaveLength(1);
   t.sendAudio(new Uint8Array(AUDIO_FRAME_BYTES));
+  await vi.waitFor(() => expect(store.get(ready(msgs)[0]?.sessionId ?? '')?.audioFrames).toBe(1));
   expect(msgs.some((m) => m.t === 'error')).toBe(false);
 });
 

@@ -93,7 +93,15 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
     ? new MockTransport(cmd.latencyMs)
     : new WsTransport({ url: toWsUrl(SERVER_URL), getToken: async () => 'dev-fake-token' });
   transport = t;
-  t.onStatus((status) => dispatch({ k: 'status', status }));
+  t.onStatus((status) => {
+    dispatch({ k: 'status', status });
+    if (status === 'closed' && transport === t) {
+      // permanent close (4001, 4401, token failure...): stop capture too
+      capture.stop();
+      stopAudio?.();
+      stopAudio = null;
+    }
+  });
   t.onMessage((msg) => {
     dispatch({ k: 'server', msg });
     if (msg.t === 'error' && msg.code === 'SESSION_NOT_FOUND') teardown(); // session is gone: stop capture too

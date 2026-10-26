@@ -86,10 +86,16 @@ describe('handshake', () => {
   test('caller hello is ignored (transport owns it)', async () => {
     const { t } = make();
     t.connect();
+    t.send({ v: 1, t: 'session.start', packId: 'p1' });
     last().open();
     await flushP();
+    last().recv(ready());
     t.send({ v: 1, t: 'hello', accessToken: 'x' });
-    expect(last().texts()).toHaveLength(1);
+    expect(
+      last()
+        .texts()
+        .filter((m) => m.t === 'hello'),
+    ).toHaveLength(1);
   });
 
   test('invalid server message is dropped, not thrown', async () => {
