@@ -117,12 +117,12 @@ test('a bullet with an anchor that is not in the pack is dropped (D10)', async (
   expect(cues(t.msgs).at(-1)).toMatchObject({ notFound: true, sources: [] });
 });
 
-test('ask before the pack is ready -> LLM_UNAVAILABLE, nothing is generated; works once the pack exists', async () => {
+test('ask before the pack is ready -> PACK_NOT_READY, nothing is generated; works once the pack exists', async () => {
   let ready = false;
   const t = await setup([`- ${ANSWER} ${A1}`], () => (ready ? pack : undefined));
   t.send({ t: 'ask', text: QUESTION });
   await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
-  expect(t.msgs.find((m) => m.t === 'error')).toMatchObject({ code: 'LLM_UNAVAILABLE' });
+  expect(t.msgs.find((m) => m.t === 'error')).toMatchObject({ code: 'PACK_NOT_READY' });
   expect(t.calls.stream).toBe(0);
   expect(t.live.size).toBe(0);
   ready = true;

@@ -21,12 +21,14 @@ export function createPackService(
   const packs = new PackStore();
   const senders = new Map<string, (m: ServerMessage) => void>();
   const running = new Set<string>();
+  const tooLarge = new Map<string, { name: string; tokens: number }[]>(); // last PACK_TOO_LARGE list per session
   const gen = new Map<string, number>(); // latest build per session: older builds stay silent
   store.onEnd((s) => {
     packs.clear(s.id); // also cancels an in-flight build
     senders.delete(s.id);
     running.delete(s.id);
     gen.delete(s.id);
+    tooLarge.delete(s.id);
   });
 
   const status = (s: Session, state: 'loading' | 'ready' | 'error', pack?: Pack) =>
@@ -37,6 +39,10 @@ export function createPackService(
       files: pack?.files ?? [],
       tokens: pack?.tokens ?? 0,
       unreadable: pack?.unreadable ?? [],
+      ...(pack && {
+        read: pack.files.length + pack.unreadable.length,
+        total: pack.files.length + pack.unreadable.length,
+      }),
     });
 
   async function refresh(
@@ -75,13 +81,19 @@ export function createPackService(
       return 'ready';
     } catch (e) {
       // codes only: provider errors may carry content (D11). buildPack already emitted status for too-large
-      const tooLarge = e instanceof PackTooLargeError;
-      if (!tooLarge && current()) status(s, 'error');
+      const big = e instanceof PackTooLargeError;
+      if (!big && current()) status(s, 'error');
+      if (big && current()) {
+        // names + token counts only (D11); the pack.status error was already emitted by buildPack
+        const files = e.files.map((f) => ({ name: f.file, tokens: f.tokens }));
+        tooLarge.set(s.id, files);
+        senders.get(s.id)?.({ v: PROTOCOL_VERSION, t: 'error', code: 'PACK_TOO_LARGE', files });
+      }
       log('pack.failed', {
         sessionId: s.id,
-        code: tooLarge ? 'PACK_TOO_LARGE' : 'PACK_BUILD_FAILED',
+        code: big ? 'PACK_TOO_LARGE' : 'PACK_BUILD_FAILED',
       });
-      return tooLarge ? 'too-large' : 'error';
+      return big ? 'too-large' : 'error';
     } finally {
       if (current()) running.delete(s.id);
     }
@@ -89,6 +101,8 @@ export function createPackService(
 
   return {
     get: (id: string) => packs.get(id),
+    /** files of the last PACK_TOO_LARGE for this session (HTTP refresh body) */
+    tooLargeFiles: (id: string) => tooLarge.get(id),
     refresh,
     /** socket attached: route pack.status to it (undefined on detach) */
     setSender(id: string, send: ((m: ServerMessage) => void) | undefined) {

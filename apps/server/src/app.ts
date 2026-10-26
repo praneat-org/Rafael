@@ -39,7 +39,6 @@ export function createApp(ws?: Partial<WsOptions>) {
         if (!s || s.email !== who.email || !wsApi?.packs)
           return json(404, { code: 'SESSION_NOT_FOUND' });
         const r = await wsApi.packs.refresh(s, token, 'pack.refresh');
-        // ponytail: protocol v1 has no PACK_NOT_READY / PACK_TOO_LARGE for HTTP yet (BE-110)
         return json(
           r === 'ready' ? 200 : r === 'superseded' ? 409 : r === 'too-large' ? 413 : 502,
           {
@@ -51,6 +50,8 @@ export function createApp(ws?: Partial<WsOptions>) {
                   : r === 'superseded'
                     ? 'SUPERSEDED'
                     : 'PACK_BUILD_FAILED',
+            // same shape as the WS error: names + token counts, largest first (D11)
+            ...(r === 'too-large' && { files: wsApi.packs.tooLargeFiles(s.id) }),
           },
         );
       }

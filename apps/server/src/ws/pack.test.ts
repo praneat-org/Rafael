@@ -84,7 +84,7 @@ afterEach(async () => {
   await new Promise((res) => app?.close(res));
 });
 
-async function setup() {
+async function setup(build?: { maxTokens: number }) {
   const drive = fakeDrive();
   const f = fakeLlm();
   const store = new MemorySessionStore();
@@ -93,7 +93,7 @@ async function setup() {
     verifier: async (t) => ({ email: t === 'other' ? 'b@praneat.com' : 'a@praneat.com' }),
     allowedOrigins: [ORIGIN],
     brain: { llm: f.llm, config },
-    pack: { provider: drive.provider },
+    pack: { provider: drive.provider, build },
   });
   app.listen(0);
   const port = (app.address() as AddressInfo).port;
@@ -245,4 +245,27 @@ test('a superseded build that fails later sends no pack.status error to the sock
   expect(t.msgs.slice(before)).toEqual([]); // but the socket hears nothing from A
   expect(t.states()).not.toContain('error');
   expect(t.states().at(-1)).toBe('ready');
+});
+
+test('BE-110: too-large build sends error PACK_TOO_LARGE with files (names + tokens, no content); HTTP refresh 413 has the same files', async () => {
+  const t = await setup({ maxTokens: 1 });
+  await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
+  const e = t.msgs.find((m) => m.t === 'error') as Extract<ServerMessage, { t: 'error' }>;
+  expect(e.code).toBe('PACK_TOO_LARGE');
+  expect(e.files).toEqual([{ name: 'deck.pdf', tokens: expect.any(Number) }]);
+  expect(JSON.stringify(e)).not.toContain(SECRET);
+  const r = await t.refresh('tok-1');
+  expect(r.status).toBe(413);
+  expect(await r.json()).toEqual({ code: 'PACK_TOO_LARGE', files: e.files });
+});
+
+test('BE-110: pack.status carries read/total while loading and when ready', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  const st = t.msgs.filter((m) => m.t === 'pack.status') as Extract<
+    ServerMessage,
+    { t: 'pack.status' }
+  >[];
+  expect(st.at(-1)).toMatchObject({ read: 1, total: 1 });
+  expect(st.some((m) => m.state === 'loading' && m.read === 1 && m.total === 1)).toBe(true);
 });

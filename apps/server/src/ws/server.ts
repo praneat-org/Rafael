@@ -29,7 +29,7 @@ export type WsOptions = {
   allowLocalhost?: boolean;
   helloTimeoutMs?: number;
   heartbeatMs?: number;
-  /** ask path (BE-99). Without it, `ask` answers LLM_UNAVAILABLE. */
+  /** ask path (BE-99). Without it, `ask` answers LLM_UNAVAILABLE; with it but no pack yet, PACK_NOT_READY. */
   brain?: BrainOptions;
   /** pack wiring (BE-108): build on session.start from the user's Drive folder (packId) */
   pack?: PackServiceOptions;
@@ -194,7 +194,7 @@ export function attachWs(http: Server, opts: WsOptions) {
           const r = pipeline?.ask(session, m.text, (c) => {
             if (sock.readyState === sock.OPEN) send(c);
           });
-          if (r !== 'ok') fail(r === 'busy' ? 'BAD_MESSAGE' : 'LLM_UNAVAILABLE');
+          if (r !== 'ok') fail(r === 'busy' ? 'BAD_MESSAGE' : 'PACK_NOT_READY');
           return;
         }
         default: // pause / resume: stubs for BE-89

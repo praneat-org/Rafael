@@ -80,6 +80,35 @@ describe('server messages', () => {
     });
   });
 
+  test('BE-110: error.files and pack.status read/total are optional in v1', () => {
+    const files = [
+      { name: 'big.pdf', tokens: 90000 },
+      { name: 'small.pdf', tokens: 10 },
+    ];
+    const tooLarge = { v: 1, t: 'error', code: 'PACK_TOO_LARGE' };
+    expect(parseServerMessage(j(tooLarge)).ok).toBe(true); // without
+    expect(parseServerMessage(j({ ...tooLarge, files }))).toEqual({
+      ok: true,
+      data: { ...tooLarge, files },
+    });
+    expect(parseServerMessage(j({ v: 1, t: 'error', code: 'PACK_NOT_READY' })).ok).toBe(true);
+    expect(parseServerMessage(j({ ...tooLarge, files: [{ name: 'a', tokens: -1 }] })).ok).toBe(
+      false,
+    );
+    const status = {
+      v: 1,
+      t: 'pack.status',
+      state: 'loading',
+      files: [],
+      tokens: 0,
+      unreadable: [],
+    };
+    expect(parseServerMessage(j(status)).ok).toBe(true); // without
+    expect(parseServerMessage(j({ ...status, read: 2, total: 5 })).ok).toBe(true);
+    expect(parseServerMessage(j({ ...status, read: -1, total: 5 })).ok).toBe(false);
+    expect(parseServerMessage(j({ ...status, read: 1.5 })).ok).toBe(false);
+  });
+
   const src = [{ file: 'f', fileId: 'i', locator: 'หน้า 1' }];
   const cue = {
     v: 1,
