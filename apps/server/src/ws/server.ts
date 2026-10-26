@@ -14,6 +14,7 @@ import { type BrainOptions, createPipeline } from '../brain/pipeline.js';
 import { log } from '../log.js';
 import type { Session, SessionStore } from '../session/store.js';
 import { createPackService, type PackServiceOptions } from '../source/service.js';
+import { createSttService, type SttOptions } from '../stt/service.js';
 
 // close codes (4xxx = app level); 1012 = service restart, client should reconnect
 export const CLOSE_UNAUTHORIZED = 4401;
@@ -33,6 +34,8 @@ export type WsOptions = {
   brain?: BrainOptions;
   /** pack wiring (BE-108): build on session.start from the user's Drive folder (packId) */
   pack?: PackServiceOptions;
+  /** STT (BE-89). Without it audio frames are only counted. */
+  stt?: SttOptions;
 };
 
 function originAllowed(origin: string | undefined, o: WsOptions): boolean {
@@ -59,6 +62,7 @@ export function attachWs(http: Server, opts: WsOptions) {
       { ...opts.brain, getPack: opts.brain.getPack ?? ((s) => packs?.get(s.id)?.chunks) },
       store,
     );
+  const stt = opts.stt && createSttService(opts.stt, store);
   packs =
     opts.pack && createPackService(opts.pack, store, (s, p) => pipeline?.packReady(s, p.chunks));
 
@@ -117,8 +121,13 @@ export function attachWs(http: Server, opts: WsOptions) {
       if (isBinary) {
         // audio is only accepted inside a session (and so after hello)
         if (!session) return;
-        if (!decodeAudioFrame(data as Buffer)) return fail('BAD_MESSAGE');
-        session.audioFrames++; // stub for STT (BE-89): count only
+        const frame = decodeAudioFrame(data as Buffer);
+        if (!frame) return fail('BAD_MESSAGE');
+        session.audioFrames++;
+        const sock = ws;
+        stt?.push(session, frame.pcm, (m) => {
+          if (sock.readyState === sock.OPEN) send(m);
+        });
         return;
       }
       const parsed = parseClientMessage(data.toString());
