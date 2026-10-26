@@ -103,7 +103,7 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
     }
   });
   t.onMessage((msg) => {
-    dispatch({ k: 'server', msg });
+    dispatch({ k: 'server', msg, at: Date.now() });
     if (msg.t === 'error' && msg.code === 'SESSION_NOT_FOUND') teardown(); // session is gone: stop capture too
   });
   t.connect();
