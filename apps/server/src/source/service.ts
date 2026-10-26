@@ -15,6 +15,24 @@ export type TooLargeFile = { name: string; tokens: number };
 /** `files` only with 'too-large': this build's own list, never a shared / stale one */
 export type RefreshOutcome = { result: RefreshResult; files?: TooLargeFile[] };
 
+const NAME_MAX = 200; // = audit schema cap
+const NAME_TIMEOUT_MS = 2000; // the audit line must not hold refresh() for the provider's 30 s deadline
+// BE-111: best-effort; any failure, timeout or unparseable id => '' and the build carries on
+async function folderNameOf(p: SourceProvider, packId: string): Promise<string> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const slow = new Promise<string>((res) => {
+      timer = setTimeout(() => res(''), NAME_TIMEOUT_MS);
+    });
+    const n = await Promise.race([Promise.resolve(p.folderName?.(packId)), slow]);
+    return (n ?? '').slice(0, NAME_MAX);
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Session <-> pack glue (BE-108): build on start, refresh on demand, clear on end (D11). */
 export function createPackService(
   opts: PackServiceOptions,
@@ -60,9 +78,11 @@ export function createPackService(
     const current = () => gen.get(s.id) === my;
     tooLarge.delete(s.id); // a new build is pending: ask answers PACK_NOT_READY until it ends
     status(s, 'loading');
+    const drive = opts.provider(accessToken);
+    const name = folderNameOf(drive, s.packId); // one call per build, parallel
     try {
       const pack = await packs.refresh(s.id, () =>
-        buildPack(opts.provider(accessToken), s.packId, {
+        buildPack(drive, s.packId, {
           ...opts.build,
           onStatus: (m) => current() && senders.get(s.id)?.(m),
         }),
@@ -70,14 +90,13 @@ export function createPackService(
       if (!pack || store.get(s.id) !== s) return { result: 'superseded' };
       onPack(s, pack);
       try {
-        // BE-97 AC5: who read which folder. ponytail: SourceProvider has no folder-name call, so
-        // folderName stays '' until it does (schema caps it at 200)
+        // BE-97 AC5: who read which folder
         audit({
           event,
           email: s.email,
           sessionId: s.id,
           folderId: parseFolderId(s.packId),
-          folderName: '',
+          folderName: await name,
           files: pack.files.length,
           tokens: pack.tokens,
         });
