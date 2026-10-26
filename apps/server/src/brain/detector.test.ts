@@ -8,7 +8,7 @@ const config = loadBrainConfig({ DETECTOR_MODEL: 'fake-model' });
 // Fake LLM: replies are scripted per call; records the requests it received.
 function fake(replies: (string | Error)[]) {
   const reqs: LlmRequest[] = [];
-  const llm: LlmClient = {
+  const llm: Pick<LlmClient, 'complete'> = {
     async complete(req) {
       reqs.push(req);
       const r = replies.shift();
@@ -121,7 +121,7 @@ describe('detector', () => {
 
   it('timeout ends the wait even if the client ignores the abort signal', async () => {
     let calls = 0;
-    const llm: LlmClient = {
+    const llm: Pick<LlmClient, 'complete'> = {
       complete: () => {
         calls++;
         return new Promise(() => {}); // never resolves, ignores signal

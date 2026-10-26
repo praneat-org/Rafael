@@ -75,7 +75,7 @@ export function similarity(a: string, b: string): number {
 const digits = (s: string) => s.replace(/\D+/g, ' ').trim();
 
 export type DetectorDeps = {
-  llm: LlmClient;
+  llm: Pick<LlmClient, 'complete'>;
   config: BrainConfig;
   /** injected wall clock (ms) so tests control time */
   now?: () => number;
