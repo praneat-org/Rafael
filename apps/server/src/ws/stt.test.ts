@@ -131,6 +131,7 @@ test('session.end closes the stream; later frames never open a new one; log has 
   t.send({ t: 'session.end' });
   await vi.waitFor(() => expect(t.ws.readyState).toBe(WebSocket.CLOSED));
   expect(t.provider.starts.length).toBe(1);
+  expect(t.provider.closes).toBe(1); // closed, not just forgotten
   expect(out.join('\n')).not.toContain('SECRET-WORD');
 });
 
@@ -158,4 +159,22 @@ test('session.end flushes the pending final to the client before the socket clos
       .filter((m) => m.final)
       .map((m) => m.text),
   ).toEqual(['SECRET-WORD-1 SECRET-WORD-2']);
+});
+
+test('socket lost and grace expires -> the stream is closed, no new one opens', async () => {
+  const t = await setup({}, undefined, new MemorySessionStore(60_000, 50));
+  t.audio(1, 2);
+  await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
+  t.ws.terminate();
+  await vi.waitFor(() => expect(t.provider.closes).toBe(1));
+  await new Promise((r) => setTimeout(r, 100));
+  expect(t.provider.starts.length).toBe(1);
+  expect(t.provider.closes).toBe(1);
+});
+
+test('24 h TTL expiry (shortened) closes the stream', async () => {
+  const t = await setup({}, undefined, new MemorySessionStore(400, 60_000));
+  t.audio(1, 2);
+  await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
+  await vi.waitFor(() => expect(t.provider.closes).toBe(1));
 });
