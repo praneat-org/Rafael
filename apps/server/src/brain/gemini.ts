@@ -143,20 +143,43 @@ export class GeminiClient implements LlmClient {
   }
 }
 
+// The SDK also reads these flags itself (case-insensitive), so we parse the same way and always pass vertexai explicitly.
+function envFlag(name: string, v: string | undefined): boolean | undefined {
+  if (v === undefined || v === '') return undefined;
+  const x = v.trim().toLowerCase();
+  if (x === 'true' || x === '1') return true;
+  if (x === 'false' || x === '0') return false;
+  throw new Error(`${name} must be true/false/1/0`);
+}
+
 /**
- * Backend by env. Vertex: GOOGLE_GENAI_USE_VERTEXAI=true + GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION
- * (ADC, no key). AI Studio: GEMINI_API_KEY, PAID TIER ONLY (docs/llm-provider.md). None set -> undefined.
+ * Backend by env. Vertex: GOOGLE_GENAI_USE_VERTEXAI (or _ENTERPRISE) true + GOOGLE_CLOUD_PROJECT +
+ * GOOGLE_CLOUD_LOCATION (ADC, no key). AI Studio: GEMINI_API_KEY, PAID TIER ONLY (docs/llm-provider.md).
+ * Nothing configured -> undefined, or throws when `required`. Errors never contain a key value.
  */
-export function createGeminiClient(env: Record<string, string | undefined>) {
-  if (env.GOOGLE_GENAI_USE_VERTEXAI === 'true') {
-    const project = env.GOOGLE_CLOUD_PROJECT;
-    const location = env.GOOGLE_CLOUD_LOCATION;
+export function createGeminiClient(
+  env: Record<string, string | undefined>,
+  opts: { required?: boolean } = {},
+) {
+  const a = envFlag('GOOGLE_GENAI_USE_VERTEXAI', env.GOOGLE_GENAI_USE_VERTEXAI);
+  const b = envFlag('GOOGLE_GENAI_USE_ENTERPRISE', env.GOOGLE_GENAI_USE_ENTERPRISE);
+  if (a !== undefined && b !== undefined && a !== b)
+    throw new Error('GOOGLE_GENAI_USE_VERTEXAI and GOOGLE_GENAI_USE_ENTERPRISE conflict');
+  const vertex = a ?? b ?? false;
+  const { GOOGLE_CLOUD_PROJECT: project, GOOGLE_CLOUD_LOCATION: location } = env;
+  const apiKey = env.GEMINI_API_KEY || undefined;
+  if (vertex) {
     if (!project || !location)
-      throw new Error('Vertex needs GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION');
+      throw new Error(
+        apiKey
+          ? 'Vertex flag is set together with GEMINI_API_KEY but without GOOGLE_CLOUD_PROJECT/LOCATION: pick one backend'
+          : 'Vertex needs GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION',
+      );
     return new GeminiClient(new GoogleGenAI({ vertexai: true, project, location }) as GenAiLike);
   }
-  if (env.GEMINI_API_KEY)
-    return new GeminiClient(new GoogleGenAI({ apiKey: env.GEMINI_API_KEY }) as GenAiLike);
+  if (apiKey) return new GeminiClient(new GoogleGenAI({ vertexai: false, apiKey }) as GenAiLike);
+  if (opts.required)
+    throw new Error('No LLM backend: set GEMINI_API_KEY or the Vertex flag + project + location');
   return undefined;
 }
 

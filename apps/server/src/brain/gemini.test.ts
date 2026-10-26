@@ -1,4 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+
+const sdkArgs = vi.hoisted(() => [] as any[]);
+vi.mock('@google/genai', () => ({
+  GoogleGenAI: class {
+    constructor(o: unknown) {
+      sdkArgs.push(o);
+    }
+  },
+}));
+
 import { createGeminiClient, GeminiClient, type GenAiLike, packTokenCounter } from './gemini.js';
 
 const fake = () => {
@@ -104,6 +114,26 @@ describe('GeminiClient', () => {
     });
   });
 
+  it('abortSignal is forwarded into every SDK config', async () => {
+    const { ai, c } = fake();
+    const signal = new AbortController().signal;
+    await c.complete(req({ signal }));
+    await c.stream(req({ signal }), () => {});
+    await c.createCache({ model: 'm', system: 's', ttlSeconds: 60, signal });
+    await c.renewCache('n', 60, signal);
+    await c.deleteCache('n', signal);
+    await c.countTokens('m', 't', signal);
+    const calls = [
+      ai.models.generateContent,
+      ai.models.generateContentStream,
+      ai.caches.create,
+      ai.caches.update,
+      ai.caches.delete,
+      ai.models.countTokens,
+    ].map((f) => f.mock.calls[0]![0].config.abortSignal);
+    for (const s of calls) expect(s).toBe(signal);
+  });
+
   it('SDK errors are sanitized (D11): no request body in message', async () => {
     const { ai, c } = fake();
     ai.models.generateContent.mockRejectedValueOnce(
@@ -119,16 +149,60 @@ describe('createGeminiClient / packTokenCounter', () => {
     expect(createGeminiClient({})).toBeUndefined();
     expect(packTokenCounter(undefined, 'm')).toBeUndefined();
   });
-  it('vertex without project/location throws; api key and vertex build', () => {
-    expect(() => createGeminiClient({ GOOGLE_GENAI_USE_VERTEXAI: 'true' })).toThrow();
-    expect(createGeminiClient({ GEMINI_API_KEY: 'k' })).toBeInstanceOf(GeminiClient);
-    expect(
+  const V = { GOOGLE_CLOUD_PROJECT: 'p', GOOGLE_CLOUD_LOCATION: 'asia-southeast1' };
+  const KEY = 'sk-SECRET-123';
+  const lastArgs = () => sdkArgs[sdkArgs.length - 1];
+  it('AI Studio: vertexai false passed explicitly', () => {
+    expect(createGeminiClient({ GEMINI_API_KEY: KEY })).toBeInstanceOf(GeminiClient);
+    expect(lastArgs()).toEqual({ vertexai: false, apiKey: KEY });
+    createGeminiClient({ GEMINI_API_KEY: KEY, GOOGLE_GENAI_USE_VERTEXAI: 'FALSE' });
+    expect(lastArgs().vertexai).toBe(false);
+    createGeminiClient({ GEMINI_API_KEY: KEY, GOOGLE_GENAI_USE_VERTEXAI: '0' });
+    expect(lastArgs().vertexai).toBe(false);
+  });
+  it.each(['true', 'True', 'TRUE', '1'])('Vertex flag %s -> vertexai true', (f) => {
+    createGeminiClient({ GOOGLE_GENAI_USE_VERTEXAI: f, ...V });
+    expect(lastArgs()).toEqual({ vertexai: true, project: 'p', location: 'asia-southeast1' });
+  });
+  it('enterprise flag counts as Vertex; disagreeing flags throw', () => {
+    createGeminiClient({ GOOGLE_GENAI_USE_ENTERPRISE: 'True', ...V });
+    expect(lastArgs().vertexai).toBe(true);
+    expect(() =>
       createGeminiClient({
         GOOGLE_GENAI_USE_VERTEXAI: 'true',
-        GOOGLE_CLOUD_PROJECT: 'p',
-        GOOGLE_CLOUD_LOCATION: 'asia-southeast1',
+        GOOGLE_GENAI_USE_ENTERPRISE: 'false',
+        ...V,
       }),
-    ).toBeInstanceOf(GeminiClient);
+    ).toThrow(/conflict/);
+  });
+  it('True + key + project/location -> Vertex, key not passed to SDK', () => {
+    createGeminiClient({ GOOGLE_GENAI_USE_VERTEXAI: 'True', GEMINI_API_KEY: KEY, ...V });
+    expect(lastArgs()).toEqual({ vertexai: true, project: 'p', location: 'asia-southeast1' });
+  });
+  it('True + key + no project throws without leaking the key', () => {
+    const e = (() => {
+      try {
+        createGeminiClient({ GOOGLE_GENAI_USE_VERTEXAI: 'True', GEMINI_API_KEY: KEY });
+      } catch (x) {
+        return x as Error;
+      }
+    })();
+    expect(e?.message).toMatch(/pick one backend/);
+    expect(e?.message).not.toContain(KEY);
+  });
+  it('True + no key + no project throws (not silent undefined)', () => {
+    expect(() => createGeminiClient({ GOOGLE_GENAI_USE_VERTEXAI: 'True' })).toThrow(/PROJECT/);
+  });
+  it('unknown flag value throws, even with a key', () => {
+    for (const v of ['yes', 'on', 'truee'])
+      expect(() =>
+        createGeminiClient({ GEMINI_API_KEY: KEY, GOOGLE_GENAI_USE_VERTEXAI: v }),
+      ).toThrow(/true\/false\/1\/0/);
+    expect(() => createGeminiClient({ GOOGLE_GENAI_USE_ENTERPRISE: 'maybe' })).toThrow();
+  });
+  it('nothing configured: undefined, or throws when required', () => {
+    expect(createGeminiClient({ ...V })).toBeUndefined();
+    expect(() => createGeminiClient({ ...V }, { required: true })).toThrow(/No LLM backend/);
   });
   it('counter uses client', async () => {
     const f = packTokenCounter(fake().c, 'm')!;
