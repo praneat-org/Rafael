@@ -13,7 +13,7 @@ function readBase64(file: File): Promise<string> {
   });
 }
 
-export function SetupView({ send }: { send: Send }) {
+export function SetupView({ send, error }: { send: Send; error?: string | null }) {
   const [s, setS] = useState<Settings>(defaultSettings);
   const [wav, setWav] = useState<File | null>(null);
   useEffect(() => {
@@ -30,6 +30,12 @@ export function SetupView({ send }: { send: Send }) {
   return (
     <main className="view">
       <h1>Rafael</h1>
+      {error === 'SESSION_NOT_FOUND' && (
+        <p className="note">session เดิมหายไปแล้ว (server เริ่มใหม่) — กดเริ่มใหม่อีกครั้ง</p>
+      )}
+      {error === 'CONNECTION_CLOSED' && (
+        <p className="note">การเชื่อมต่อถูกปิด (ยืนยันตัวตนไม่ผ่านหรือ server ปฏิเสธ) — กดเริ่มใหม่อีกครั้ง</p>
+      )}
       <label className="row">
         <input
           type="checkbox"
@@ -54,8 +60,15 @@ export function SetupView({ send }: { send: Send }) {
           <input type="file" accept=".wav" onChange={(e) => setWav(e.target.files?.[0] ?? null)} />
         </label>
       )}
-      {!s.mock && <p className="note">เชื่อม server จริงยังไม่พร้อม (รอ FE-35) — เปิดโหมดจำลองก่อน</p>}
-      <button type="button" className="primary" disabled={!s.mock} onClick={start}>
+      {!s.mock && !import.meta.env.DEV && (
+        <p className="note">ล็อกอินจริงยังไม่พร้อม (รอ FE-39) — เปิดโหมดจำลองก่อน</p>
+      )}
+      <button
+        type="button"
+        className="primary"
+        disabled={!s.mock && !import.meta.env.DEV}
+        onClick={start}
+      >
         เริ่ม session
       </button>
     </main>

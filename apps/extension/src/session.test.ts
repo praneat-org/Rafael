@@ -45,3 +45,22 @@ test('pause / resume toggle paused only while live; end clears it', () => {
   expect(reduce(paused, { k: 'resume' }).paused).toBe(false);
   expect(reduce(paused, { k: 'end' }).paused).toBe(false);
 });
+
+test('SESSION_NOT_FOUND (resume failed) returns to setup and keeps the error', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, { k: 'status', status: 'reconnecting' });
+  s = reduce(s, { k: 'server', msg: { v: 1, t: 'error', code: 'SESSION_NOT_FOUND' } });
+  expect(s.phase).toBe('setup');
+  expect(s.error).toBe('SESSION_NOT_FOUND');
+  expect(reduce(s, { k: 'start' }).error).toBeNull();
+});
+
+test('permanent transport close leaves live and returns to setup', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, { k: 'status', status: 'closed' });
+  expect(s.phase).toBe('setup');
+  expect(s.error).toBe('CONNECTION_CLOSED');
+  // after End the close is expected and ignored
+  const ended = reduce(reduce(initialState, { k: 'start' }), { k: 'end' });
+  expect(reduce(ended, { k: 'status', status: 'closed' })).toEqual(ended);
+});
