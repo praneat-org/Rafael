@@ -54,6 +54,9 @@ importers:
       '@rafael/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
+      unpdf:
+        specifier: 1.9.1
+        version: 1.9.1
       ws:
         specifier: 8.22.0
         version: 8.22.0
@@ -1145,6 +1148,15 @@ packages:
       rolldown:
         optional: true
 
+  unpdf@1.9.1:
+    resolution: {integrity: sha512-nO1npM2kNyd4hj1fKzUVU6bvnWjDSxI97eycM/DgzI83dYyW+pNRI9NeMQVEfef8fI3Q06i9lkMeE1HxrQqKoA==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@napi-rs/canvas': ^0.1.69 || ^1.0.0
+    peerDependenciesMeta:
+      '@napi-rs/canvas':
+        optional: true
+
   unplugin-utils@0.3.2:
     resolution: {integrity: sha512-xVToRh2CTmLk2HnEG7ac4rl1MJTT3RFkpS8B++/SnB0kXvuaavD+n3m/vrzyWQOdJNSZQACnbz01pnppbwV5BA==}
     engines: {node: '>=20.19.0'}
@@ -2173,6 +2185,8 @@ snapshots:
       - unloader
       - vite
       - webpack
+
+  unpdf@1.9.1: {}
 
   unplugin-utils@0.3.2:
     dependencies:
