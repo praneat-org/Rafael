@@ -37,11 +37,11 @@ Rep mic + tab audio -> Chrome extension -> WSS -> Cloud Run asia-southeast1 (con
 | Transcript / questions | Gemini prompt | Server side: memory only, TTL 24h max; no content on disk or in logs (BE-85 #8 SessionStore and BE-96 #14 retention test + log allowlist, both merged). UNVERIFIED: removal of transcript content via onEnd (BE-89 / BE-108 not merged); no transcript exists in the server yet. Status: partly implemented | Not used for training without our prior permission or instruction [providers.md 1]. Google logs prompts only if classifiers flag them, up to 90 days, in the selected region; exempt by default if Praneat has a Google Cloud Master Agreement (to check). Frontier models (e.g. Gemini 4 Argon): prompts + responses up to 30 days. Source: providers.md [10] |
 | Session Pack (docs from Drive) | Drive API read (provider merged, BE-90 #16, not yet wired into the session flow), then Gemini explicit CachedContent (D21, planned) | Intended: memory only (BE-85 #8 merged for session memory; Drive reader merged (BE-90 #16) but not wired into the session flow; pack removal via onEnd UNVERIFIED (BE-94 / BE-108)). Cache ttl <= 1h and delete on `session.end`: BE-94 PR #17 draft. Status: not merged | Cache ttl <= 1h; not zero-retention by Google's definition |
 | Cue | Extension | Server side: cues are not generated or stored yet (brain not merged); the log allowlist (BE-96 #14, merged) drops content fields. UNVERIFIED: the extension side panel (FE-37 #11, not merged). Status: not implemented | n/a |
-| Server logs | Cloud Logging | Metadata only: log allowlist drops any other field and logs only a dropped count (BE-96 #14, merged; `apps/server/src/log.ts`, `log.test.ts`). Status: implemented | Google Cloud |
+| Server logs | Cloud Logging | Metadata only: log allowlist drops any other field and logs only a dropped count (BE-96 #14, merged; `apps/server/src/log.ts`, `log.test.ts`). Status: implemented | Google Cloud. Retention UNVERIFIED: our project's `_Default` log bucket retention not checked (Google's documented default is 30 days; `_Required` audit bucket 400 days, not configurable) |
 
 Processors and regions: Google Workspace / Drive API (reader merged in BE-90 #16 but not yet wired into the session flow, so no pack is read on develop today; it will read the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy and Praneat's Google agreement), Google Cloud (Cloud Run; Vertex Gemini planned, not called by develop yet, asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US UNVERIFIED; no Asia endpoint found). Per provider: Vertex Gemini asia-southeast1 (no Thailand region, so outside Thailand); Drive region UNVERIFIED; Chirp 3 asia-southeast1 UNVERIFIED (`us`/`eu` documented); Deepgram EU (or US, UNVERIFIED).
 
-Audit log (planned, BE-97, not built): session start/end, email hash, error codes, token usage; no audio / transcript / cue content by design.
+Audit log (planned, BE-97, not built): session start/end, email hash, error codes, token usage; no audio / transcript / cue content by design. Retention: not decided (UNVERIFIED).
 
 ## 4. Questions for the DPO
 
@@ -59,4 +59,5 @@ Audit log (planned, BE-97, not built): session start/end, email hash, error code
 - D11 enforcement (no content in logs): BE-85 (#8) and BE-96 retention test + log allowlist (#14) merged; content-removal via onEnd for transcript / pack / cue still needs BE-89, BE-108, BE-94.
 - D21 cache deleted on `session.end`: BE-94 (#17) draft, not merged.
 - Deepgram `mip_opt_out` / Chirp no-logging config: STT adapters BE-89 not built.
+- Cloud Logging retention: check the project's `_Default` bucket setting and pick the BE-97 audit log retention.
 - Google written answers on abuse logging and explicit-cache ZDR.
