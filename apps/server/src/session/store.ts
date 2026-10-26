@@ -14,6 +14,8 @@ export type Session = {
   readonly resumeToken: string;
   socket: SessionSocket | undefined;
   audioFrames: number; // count only; audio content is never kept (D11)
+  /** user's Google token for Drive reads (D13): memory only, never logged; refreshed on resume */
+  accessToken?: string;
 };
 
 /** One interface so Memorystore (Q2) can replace the in-memory map later. */

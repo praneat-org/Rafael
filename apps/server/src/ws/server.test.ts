@@ -277,3 +277,38 @@ test('replaced socket cannot end the session it lost to a resume', async () => {
   a.ws.close();
   b.ws.close();
 });
+
+test('hello token is kept on the session (memory) and refreshed on resume', async () => {
+  const { port, store } = start();
+  const a = await login(port);
+  send(a, { t: 'session.start', packId: 'p1' });
+  const ready = await a.next();
+  if (ready.t !== 'session.ready') throw new Error();
+  expect(store.get(ready.sessionId)?.accessToken).toBe('good-alice');
+  a.ws.terminate();
+  await a.closed;
+  const b = await login(port); // same user, same token string; resume path must also set it
+  send(b, { t: 'session.start', packId: 'x', resumeToken: ready.resumeToken });
+  await b.next();
+  expect(store.get(ready.sessionId)?.accessToken).toBe('good-alice');
+  b.ws.close();
+});
+
+test('/api/*: no/bad token -> 401 UNAUTHORIZED; GET /api/health stays open; POST health with token -> 405', async () => {
+  const { port } = start();
+  const call = (path: string, method = 'GET', auth?: string) =>
+    fetch(`http://127.0.0.1:${port}${path}`, {
+      method,
+      headers: auth ? { authorization: auth } : {},
+    });
+  expect((await call('/api/health')).status).toBe(200);
+  for (const method of ['POST', 'PUT', 'DELETE']) {
+    const r = await call('/api/health', method);
+    expect(r.status).toBe(401);
+    expect(await r.json()).toEqual({ code: 'UNAUTHORIZED' });
+  }
+  expect((await call('/api/other')).status).toBe(401);
+  expect((await call('/api/other', 'GET', 'Bearer nope')).status).toBe(401);
+  expect((await call('/api/other', 'GET', 'Bearer good-alice')).status).toBe(404);
+  expect((await call('/api/health', 'POST', 'Bearer good-alice')).status).toBe(405);
+});
