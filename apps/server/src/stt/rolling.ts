@@ -7,6 +7,10 @@ export type RollingOptions = {
   /** audio replayed into the new stream so no word falls between two streams */
   overlapMs: number;
   maxRetries?: number;
+  /** after giving up: wait this long before trying to reopen (default 5 s); no error per frame */
+  cooldownMs?: number;
+  /** is this frame speech? Overlap is only deduped when the replayed audio had speech. Default: any non-zero sample. */
+  voiced?: (pcm: Int16Array) => boolean;
   retryDelayMs?: number;
   onPartial(m: { segId: string; text: string; speaker?: string }): void;
   onFinal(m: { segId: string; text: string; speaker?: string }): void;
@@ -41,6 +45,9 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
   let seg = 0;
   let cur: Gen | undefined;
   let attempts = 0;
+  let reportedGaveUp = false;
+  let cooldownUntil = 0;
+  const voiced = o.voiced ?? ((f: Int16Array) => f.some((x) => x !== 0));
   let closing = false; // close() started: no reopen, no new timers
   let closed = false;
   let rolloverP: Promise<unknown> = Promise.resolve();
@@ -52,6 +59,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
     tail = `${tail} ${out.text}`.slice(-TAIL_CHARS);
     o.onFinal({ segId: `seg-${seg++}`, text: out.text, speaker: out.speaker });
     attempts = 0;
+    reportedGaveUp = false;
   }
 
   /** Drop the part of the new stream's first finals that repeats `tail`; waits until the overlap is covered. */
@@ -91,7 +99,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       stream: undefined as unknown as SttStream,
       frames: 0,
       retired: false,
-      dedupe: replay.length > 0,
+      dedupe: replay.some(voiced), // silent overlap: the new stream's text is all new, a repeat is real
       held: hold ? [] : null,
       buf: null,
     };
@@ -108,6 +116,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       onError: () => {
         if (closed || closing || g !== cur) return;
         cur = undefined;
+        g.retired = true; // keep the finals it flushes on close
         void g.stream.close().catch(() => {});
         fail();
       },
@@ -122,8 +131,14 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
   function fail() {
     if (closing || closed) return;
     const gaveUp = attempts >= maxRetries;
-    o.onError(gaveUp);
-    if (gaveUp) return;
+    if (gaveUp) {
+      // report once per outage, then probe slowly (push() waits for the cooldown)
+      if (!reportedGaveUp) o.onError(true);
+      reportedGaveUp = true;
+      cooldownUntil = Date.now() + (o.cooldownMs ?? 5000);
+      return;
+    }
+    o.onError(false);
     attempts++;
     retryTimer = setTimeout(
       () => {
@@ -166,7 +181,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       if (closed || closing) return;
       ring.push(pcm);
       if (ring.length > overlapFrames) ring.shift();
-      if (!cur && !retryTimer) {
+      if (!cur && !retryTimer && Date.now() >= cooldownUntil) {
         try {
           cur = open([], false);
         } catch {

@@ -146,3 +146,59 @@ test('error just before close with a retry pending -> close cancels the retry', 
     vi.useRealTimers();
   }
 });
+
+test('outage: N frames after giving up -> exactly one error, slow probe only', async () => {
+  vi.useFakeTimers();
+  try {
+    const p = new FakeSttProvider();
+    p.failStarts = 99;
+    const { r, errors } = run(p, { retryDelayMs: 10, maxRetries: 2, cooldownMs: 5000 });
+    r.push(frame(1));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(errors).toEqual([false, false, true]);
+    for (let i = 0; i < 50; i++) r.push(frame(2)); // 5 s of audio, but no time passes in the test
+    expect(errors).toEqual([false, false, true]);
+    expect(p.failStarts).toBe(96); // 3 start() attempts in total, none per frame
+    await vi.advanceTimersByTimeAsync(5000);
+    r.push(frame(3)); // cooldown over: one silent probe
+    expect(p.failStarts).toBe(95);
+    expect(errors).toEqual([false, false, true]);
+    p.failStarts = 0; // provider is back
+    await vi.advanceTimersByTimeAsync(5000);
+    r.push(frame(4));
+    expect(p.starts.length).toBe(1);
+    await r.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('silent overlap: a real repeated word at the rollover boundary survives', async () => {
+  const word = (id: number) => (id === 100 ? 'okay' : id > 0 ? `w${id}` : undefined);
+  const p = new FakeSttProvider({ finalEvery: 3, word });
+  const { r, finals } = run(p);
+  for (let i = 1; i <= 14; i++) r.push(frame(i));
+  r.push(frame(100)); // frame 15: "okay"
+  for (let i = 16; i <= 25; i++) r.push(frame(0)); // silence across the rollover (frame 20) and its overlap
+  r.push(frame(100)); // frame 26: "okay" again
+  for (let i = 27; i <= 30; i++) r.push(frame(i));
+  await r.close();
+  expect(finals.map((f) => f.text).join(' ')).toBe(
+    'w1 w2 w3 w4 w5 w6 w7 w8 w9 w10 w11 w12 w13 w14 okay okay w27 w28 w29 w30',
+  );
+});
+
+test('stream that errors: what it flushes on close is kept', async () => {
+  vi.useFakeTimers();
+  try {
+    const p = new FakeSttProvider({ finalEvery: 5 });
+    const { r, finals } = run(p, { retryDelayMs: 10 });
+    r.push(frame(1));
+    r.push(frame(2)); // pending in the stream, no final yet
+    p.failLast();
+    expect(finals.map((f) => f.text)).toEqual(['w1 w2']);
+    await r.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
