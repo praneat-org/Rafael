@@ -123,12 +123,6 @@ function onCommand(cmd: PanelToOffscreen) {
     transport?.send({ v: 1, t: 'session.end' });
     teardown();
     dispatch({ k: 'end' });
-  } else if (cmd.k === 'pause') {
-    capture.pause();
-    audio.patch({ paused: true, level: 0 });
-  } else if (cmd.k === 'resume') {
-    capture.resume();
-    audio.patch({ paused: false });
   } else dispatch({ k: 'reset' });
 }
 
