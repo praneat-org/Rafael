@@ -138,9 +138,17 @@ export function createAnswerer(deps: AnswererDeps) {
     prefix = buildPrefix(pack);
     if (disposed) return;
     let h: string | undefined;
+    let pending: Promise<string> | undefined;
     try {
-      h = await timed(cfg.timeoutMs, (signal) =>
-        llm.createCache({ model, system: prefix, ttlSeconds: cfg.cacheTtlSeconds, signal }),
+      h = await timed(
+        cfg.timeoutMs,
+        (signal) =>
+          (pending = llm.createCache({
+            model,
+            system: prefix,
+            ttlSeconds: cfg.cacheTtlSeconds,
+            signal,
+          })),
       );
       if (disposed || g !== gen) {
         // dispose / newer refresh won the race: this handle must not stay at the provider
@@ -154,6 +162,12 @@ export function createAnswerer(deps: AnswererDeps) {
         llm.complete({ model, system: prefix, user: 'ping', maxTokens: 1, signal, cache }),
       ).catch(() => {});
     } catch {
+      // timed out but createCache may still resolve later: delete that handle too (D21)
+      if (h === undefined) {
+        pending
+          ?.then((late) => timed(cfg.timeoutMs, (s) => llm.deleteCache(late, s)))
+          .catch(() => {});
+      }
       if (g === gen && cache === h) cache = undefined; // no cache: fall back to inline prefix
     }
   }
@@ -174,6 +188,10 @@ export function createAnswerer(deps: AnswererDeps) {
     const t0 = perf();
     await ready;
     await keepAlive();
+    // pin one pack snapshot for the whole answer: a refreshPack mid-stream must not mix prefix and anchors (D10)
+    const answerAnchors = anchors;
+    const answerPrefix = prefix;
+    const answerCache = cache;
     const bullets: string[] = [];
     const sources = new Map<string, PackChunk>();
     let firstTokenMs: number | undefined;
@@ -197,7 +215,7 @@ export function createAnswerer(deps: AnswererDeps) {
       const l = line.trim();
       if (!l || bullets.length >= cfg.maxBullets) return;
       if (l.startsWith(NOT_FOUND_MARK)) return; // same end as "no verified bullet": notFound
-      const v = verifyBullet(l, anchors, cfg.maxWordsPerBullet);
+      const v = verifyBullet(l, answerAnchors, cfg.maxWordsPerBullet);
       if (!v) return;
       bullets.push(v.bullet);
       sources.set(v.source.anchor, v.source);
@@ -211,7 +229,14 @@ export function createAnswerer(deps: AnswererDeps) {
     try {
       res = await timed(cfg.timeoutMs, (signal) =>
         llm.stream(
-          { model, system: prefix, user: question, maxTokens: cfg.maxTokens, signal, cache },
+          {
+            model,
+            system: answerPrefix,
+            user: question,
+            maxTokens: cfg.maxTokens,
+            signal,
+            cache: answerCache,
+          },
           (delta) => {
             if (closed) return;
             firstTokenMs ??= Math.round(perf() - t0);

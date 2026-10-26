@@ -277,6 +277,40 @@ describe('answerer cache (D21) + prompt', () => {
     await a.dispose();
   });
 
+  it('createCache that ignores the signal and resolves after timeout: late handle is deleted', async () => {
+    const f = fake([]);
+    let resolveLate: ((h: string) => void) | undefined;
+    f.llm.createCache = () => new Promise((r) => (resolveLate = r));
+    const a = createAnswerer({
+      llm: f.llm,
+      config: { ...config, answerer: { ...config.answerer, timeoutMs: 20 } },
+      pack,
+    });
+    await a.ready();
+    f.live.add('late');
+    resolveLate?.('late');
+    await new Promise((r) => setTimeout(r, 5));
+    expect(f.live.has('late')).toBe(false);
+  });
+
+  it('refreshPack mid-stream: bullets are verified against the pack the prefix came from', async () => {
+    const f = fake([]);
+    let emit: ((d: string) => void) | undefined;
+    let finish: (() => void) | undefined;
+    f.llm.stream = (_req, onText) => {
+      emit = onText;
+      return new Promise((r) => (finish = () => r({ text: '' })));
+    };
+    const a = createAnswerer({ llm: f.llm, config, pack });
+    await a.ready();
+    const out = a.answer('c', 'q', () => {});
+    await new Promise((r) => setTimeout(r, 0));
+    await a.refreshPack(pack.slice(0, 1)); // A2 leaves the pack while answering
+    emit?.(`- uptime ${A2}\n`);
+    finish?.();
+    expect((await out).bullets).toEqual([`uptime ${A2}`]);
+  });
+
   it('a stream that ignores the abort signal times out; late deltas emit nothing', async () => {
     const f = fake([]);
     let late: ((d: string) => void) | undefined;
