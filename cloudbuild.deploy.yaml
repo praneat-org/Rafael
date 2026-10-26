@@ -8,7 +8,7 @@ substitutions:
   _REPO: rafael # Artifact Registry repo, same region
   _MIN: '1' # PROPOSAL Q2 (not decided): min = max = 1 for sprint 1, in-memory sessions
   _MAX: '1' # PROPOSAL Q2: >1 breaks resume (session affinity is best effort)
-  _EXTENSION_IDS: '' # chrome-extension ids (not secret), comma separated, set on the trigger
+  _ALLOWED_EXTENSION_IDS: '' # chrome-extension ids (not secret), comma separated, set on the trigger
   _SECRETS: DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest # ENV=SecretName:version, comma separated; set '' on the trigger for Chirp 3
   _RUNTIME_SA: '' # runtime service account email from BE-71 (set on the trigger)
 
@@ -38,7 +38,7 @@ steps:
           --min-instances=${_MIN} \
           --max-instances=${_MAX} \
           --allow-unauthenticated \
-          --set-env-vars='^@^EXTENSION_IDS=${_EXTENSION_IDS}' \
+          --set-env-vars='^@^ALLOWED_EXTENSION_IDS=${_ALLOWED_EXTENSION_IDS}' \
           --startup-probe=httpGet.path=/api/health,httpGet.port=8080 \
           --liveness-probe=httpGet.path=/api/health,httpGet.port=8080 \
           "$${extra[@]}"
