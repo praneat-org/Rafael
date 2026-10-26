@@ -93,7 +93,7 @@ export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswer
       <h1>จบ session แล้ว</h1>
       <h2>คำถามที่ไม่พบใน pack ({unanswered.length})</h2>
       {unanswered.length === 0 ? (
-        <p className="note"></p>
+        <p className="note">ไม่มีคำถามที่ไม่พบใน pack</p>
       ) : (
         <ul aria-label="คำถามที่ไม่พบใน pack">
           {unanswered.map((u) => (

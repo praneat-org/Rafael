@@ -79,8 +79,9 @@ function teardown() {
   audio.reset(); // incl. error: an old session's failure must not leak into the next
   stopAudio?.();
   stopAudio = null;
-  transport?.close();
-  transport = null;
+  const t = transport;
+  transport = null; // first: our own close must not reach onStatus as a "permanent close" (would wipe the End screen)
+  t?.close();
 }
 
 function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
@@ -94,8 +95,9 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
     : new WsTransport({ url: toWsUrl(SERVER_URL), getToken: async () => 'dev-fake-token' });
   transport = t;
   t.onStatus((status) => {
+    if (transport !== t) return; // stale or closed by us
     dispatch({ k: 'status', status });
-    if (status === 'closed' && transport === t) {
+    if (status === 'closed') {
       // permanent close (4001, 4401, token failure...): stop capture too
       capture.stop();
       stopAudio?.();
@@ -136,9 +138,10 @@ function onCommand(cmd: PanelToOffscreen) {
   } else if (cmd.k === 'ask') {
     if (state.phase === 'live') transport?.send({ v: 1, t: 'ask', text: cmd.text.slice(0, 2000) });
   } else if (cmd.k === 'end') {
+    // end first: the transport may close right away on session.end, and a `closed` while live resets to Setup
+    dispatch({ k: 'end' });
     transport?.send({ v: 1, t: 'session.end' });
     teardown();
-    dispatch({ k: 'end' });
   } else dispatch({ k: 'reset' });
 }
 
