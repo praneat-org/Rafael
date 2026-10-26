@@ -10,7 +10,7 @@ import type { LlmClient } from './llm.js';
 
 /** BE-108 will supply the real pack; until then no provider -> ask answers LLM_UNAVAILABLE. */
 export type PackProvider = (s: Session) => PackIndex | undefined;
-export type BrainOptions = { llm: LlmClient; config: BrainConfig; getPack: PackProvider };
+export type BrainOptions = { llm: LlmClient; config: BrainConfig; getPack?: PackProvider };
 export type AskResult = 'ok' | 'no-pack' | 'busy';
 
 const MAX_IN_FLIGHT = 2; // per session (BE-99); extra asks are refused, never queued unbounded
@@ -21,7 +21,10 @@ type Entry = {
   inFlight: number;
 };
 
-export function createPipeline(opts: BrainOptions, store: Pick<SessionStore, 'onEnd' | 'get'>) {
+export function createPipeline(
+  opts: BrainOptions & { getPack: PackProvider },
+  store: Pick<SessionStore, 'onEnd' | 'get'>,
+) {
   const perf = () => performance.now();
   const entries = new Map<string, Entry>();
   const detectors = new Map<string, ReturnType<typeof createDetector>>();
@@ -108,6 +111,12 @@ export function createPipeline(opts: BrainOptions, store: Pick<SessionStore, 'on
   }
 
   return {
+    /** Pack built / refreshed: new Answerer (warms cache), or swap the pack of the existing one. */
+    packReady(s: Session, pack: PackIndex) {
+      const e = entries.get(s.id);
+      if (e) void e.answerer.refreshPack(pack);
+      else entryFor(s);
+    },
     /** WS `ask {text}`: skips the Detector. `text` was already validated by the protocol schema (max 2000). */
     ask: (s: Session, text: string, send: (m: ServerMessage) => void) =>
       answerQuestion(s, text, send),

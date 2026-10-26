@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { createGoogleVerifier } from './auth/google.js';
 import { denyAll, devFake, type TokenVerifier } from './auth/verifier.js';
 import { log } from './log.js';
+import { createDriveProvider } from './source/drive.js';
 
 // fail-closed: dev conveniences only when explicitly NODE_ENV=development and not on Cloud Run
 const isDev = process.env.NODE_ENV === 'development' && !process.env.K_SERVICE;
@@ -26,6 +27,7 @@ const server = createApp({
     .filter(Boolean)
     .map((id) => `chrome-extension://${id.trim()}`),
   allowLocalhost: isDev,
+  pack: { provider: (accessToken) => createDriveProvider({ accessToken }) },
 }).listen(Number(process.env.PORT ?? 8080), () => {
   const { port } = server.address() as AddressInfo;
   log('listening', { port });
