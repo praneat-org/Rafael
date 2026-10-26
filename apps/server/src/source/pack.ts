@@ -48,6 +48,9 @@ export interface Pack {
   buildMs: number;
 }
 
+/** PACK_TOO_LARGE lists at most this many files (largest first): enough to pick what to drop, bounded wire size */
+export const MAX_TOO_LARGE_FILES = 10;
+
 export class PackTooLargeError extends Error {
   readonly code = 'PACK_TOO_LARGE' as const;
   constructor(
@@ -150,6 +153,8 @@ export async function buildPack(
       files: readDone.map(ref),
       tokens,
       unreadable: unreadableDone.map(ref),
+      read: readDone.length,
+      total: order.length,
     });
 
   // bounded-concurrency reads; results land by index so output order never depends on timing
@@ -196,8 +201,8 @@ export async function buildPack(
   const files = order.filter((f) => chunks.some((c) => c.fileId === f.fileId)).map(ref);
 
   if (tokens > max) {
-    // ponytail: per-file ranking uses the sync estimate (ordering only, no extra counter calls that
-    // could fail or fan out); exact per-file numbers if the UI needs them (BE-110)
+    // ponytail: per-file numbers are the sync estimate (no extra counter calls that could fail or
+    // fan out): the UI shows them as approximate; exact per-file counts need a bounded counter pass
     const perFile = files.map((f) => ({
       ...f,
       tokens: estimateTokens(renderPackText(chunks.filter((c) => c.fileId === f.fileId))),
@@ -207,7 +212,9 @@ export async function buildPack(
     throw new PackTooLargeError(
       tokens,
       max,
-      perFile.sort((a, b) => b.tokens - a.tokens || cmp(a.file, b.file)),
+      perFile
+        .sort((a, b) => b.tokens - a.tokens || cmp(a.file, b.file))
+        .slice(0, MAX_TOO_LARGE_FILES),
     );
   }
   if (tokens > max * warnRatio) log('pack.near_limit', { tokens, max });
