@@ -101,6 +101,7 @@ async function getToken(fresh: boolean): Promise<string> {
 function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   if (state.phase === 'live') return;
   if (!cmd.mock && !cmd.packId && !import.meta.env.DEV) return;
+  if (!cmd.mock && !SERVER_URL) return; // prod without an https server url: never send the token
   teardown();
   dispatch({ k: 'start' });
   const t: Transport = cmd.mock

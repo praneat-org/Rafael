@@ -25,3 +25,15 @@ test('rejects files, docs, other hosts, bare ids, junk', () => {
   ])
     expect(parseFolderId(u), u).toBeNull();
 });
+
+test('path is anchored at both ends and the segment is literally "folders"', () => {
+  for (const p of [
+    `/x/drive/folders/${ID}`, // no ^
+    `/drive/folders/${ID}/extra`, // no $
+    `/drive/folders/${ID}x/y`,
+    `/drive/files/${ID}`, // [a-z]+ widening
+    `/drive/shared/${ID}`,
+    `/drive/u/1/files/${ID}`,
+  ])
+    expect(parseFolderId(`https://drive.google.com${p}`), p).toBeNull();
+});
