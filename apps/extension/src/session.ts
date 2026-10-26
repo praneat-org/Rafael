@@ -25,11 +25,7 @@ export type PackInfo = {
   read?: number;
   total?: number;
 };
-const PACK_ERRORS: SessionState['error'][] = [
-  'PACK_TOO_LARGE',
-  'PACK_NOT_READY',
-  'PACK_BUILD_FAILED',
-];
+const PACK_ERRORS: SessionState['error'][] = ['PACK_TOO_LARGE', 'PACK_NOT_READY'];
 export type PackState = 'loading' | 'ready' | 'error';
 
 export type SessionState = {
