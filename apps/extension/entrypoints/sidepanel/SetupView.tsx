@@ -3,6 +3,7 @@ import type { CaptureOpts } from '../../src/audio/capture';
 import { getAuthToken, isAuthConfigured } from '../../src/auth';
 import { parseFolderId } from '../../src/folder-url';
 import type { PanelToOffscreen } from '../../src/messages';
+import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
 import { defaultSettings, loadSettings, type Settings, saveSettings } from '../../src/settings';
 import { defaultInputs, startBlock } from '../../src/setup-state';
 
@@ -23,11 +24,13 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
   const [signedIn, setSignedIn] = useState(false);
   const [signInFailed, setSignInFailed] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
+  const [recent, setRecent] = useState<string[]>([]);
   const [inputs, setInputs] = useState<CaptureOpts>({ tab: false, mic: true });
   const configured = isAuthConfigured(import.meta.env.WXT_OAUTH_CLIENT_ID);
   const folderId = parseFolderId(folderUrl);
   useEffect(() => {
     loadSettings().then(setS, () => {});
+    loadRecent().then(setRecent, () => {});
     // default input: this tab when it is Meet, else mic
     browser.tabs.query({ active: true, lastFocusedWindow: true }).then(
       ([t]) => setInputs(defaultInputs(t?.url)),
@@ -45,6 +48,7 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
   };
   const block = startBlock({ mock: s.mock, signedIn, folderId, ...inputs });
   const start = async () => {
+    if (!s.mock && folderId) saveRecent(pushRecent(recent, folderId)).catch(() => {});
     const wavBase64 = wav ? await readBase64(wav) : undefined;
     send({
       k: 'start',
@@ -106,6 +110,23 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
               onChange={(e) => setFolderUrl(e.target.value)}
             />
           </label>
+          {recent.length > 0 && (
+            <select
+              aria-label="โฟลเดอร์ล่าสุด"
+              value=""
+              onChange={(e) =>
+                e.target.value &&
+                setFolderUrl(`https://drive.google.com/drive/folders/${e.target.value}`)
+              }
+            >
+              <option value="">โฟลเดอร์ล่าสุด…</option>
+              {recent.map((id) => (
+                <option key={id} value={id}>
+                  …{id.slice(-8)}
+                </option>
+              ))}
+            </select>
+          )}
           {folderUrl && !folderId && (
             <p className="note err">ต้องเป็นลิงก์โฟลเดอร์ Drive (…/drive/folders/…) ไม่ใช่ไฟล์</p>
           )}
