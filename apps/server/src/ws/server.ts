@@ -73,6 +73,7 @@ export function attachWs(http: Server, opts: WsOptions) {
     ws.on('pong', () => alive.add(ws));
 
     let email: string | undefined; // set once hello is verified
+    let accessToken: string | undefined; // from hello, memory only (D13)
     let session: Session | undefined;
     const send = (m: ServerMessage) => ws.send(JSON.stringify(m));
     const fail = (code: ErrorCode) => send({ v: PROTOCOL_VERSION, t: 'error', code });
@@ -98,7 +99,6 @@ export function attachWs(http: Server, opts: WsOptions) {
         if (!session) return;
         if (!decodeAudioFrame(data as Buffer)) return fail('BAD_MESSAGE');
         session.audioFrames++; // stub for STT (BE-89): count only
-        store.touch(session.id);
         return;
       }
       const parsed = parseClientMessage(data.toString());
@@ -116,6 +116,7 @@ export function attachWs(http: Server, opts: WsOptions) {
         }
         clearTimeout(helloTimer);
         email = who.email;
+        accessToken = parsed.data.accessToken;
         return;
       }
       if (!parsed.ok) return fail(parsed.error.code);
@@ -132,6 +133,7 @@ export function attachWs(http: Server, opts: WsOptions) {
             ? store.resume(m.resumeToken, email)
             : store.create(email, m.packId);
           if (!s) return fail('SESSION_NOT_FOUND');
+          s.accessToken = accessToken;
           session = s;
           store.attach(s.id, ws);
           log('session.attached', { sessionId: s.id, resumed: Boolean(m.resumeToken) });
@@ -149,7 +151,6 @@ export function attachWs(http: Server, opts: WsOptions) {
           return;
         default: // ask / pause / resume: stubs for BE-89 / Brain
           if (!session) return fail('SESSION_NOT_FOUND');
-          store.touch(session.id);
       }
     }
 

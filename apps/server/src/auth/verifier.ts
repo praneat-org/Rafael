@@ -1,5 +1,4 @@
-// Hook for BE-87 (real Google tokeninfo check: aud + email_verified + @praneat.com).
-// BE-85 only defines the interface and two stand-ins.
+// Real check lives in google.ts (BE-87); this file has the interface and two stand-ins.
 export type TokenVerifier = (accessToken: string) => Promise<{ email: string } | null>;
 
 export const denyAll: TokenVerifier = async () => null;
