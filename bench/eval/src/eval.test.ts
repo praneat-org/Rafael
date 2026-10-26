@@ -193,5 +193,8 @@ describe('optArg', () => {
     expect(optArg(['--out', 'r.md'], 'out', 'd')).toBe('r.md');
     expect(() => optArg(['--out'], 'out', 'd')).toThrow(/needs a value/);
     expect(() => optArg(['--out', '--key', 'k'], 'out', 'd')).toThrow(/needs a value/);
+    expect(optArg(['--out=--report.md'], 'out', 'd')).toBe('--report.md');
+    expect(optArg(['--out=r.md', '--key', 'k'], 'out', 'd')).toBe('r.md');
+    expect(() => optArg(['--out='], 'out', 'd')).toThrow(/needs a value/);
   });
 });
