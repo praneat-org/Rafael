@@ -20,11 +20,18 @@ function fakeDrive() {
     listQueue: [] as { gate: Promise<void>; fail: boolean }[],
     gate: undefined as Promise<void> | undefined,
     enter: undefined as (() => void) | undefined,
+    name: 'Acme pitch' as string | Error,
+    nameCalls: 0,
   };
   const tokens: string[] = [];
   const provider = (token: string): SourceProvider => {
     tokens.push(token);
     return {
+      async folderName() {
+        state.nameCalls++;
+        if (state.name instanceof Error) throw state.name;
+        return state.name;
+      },
       async listFolder() {
         const next = state.listQueue.shift(); // per-call script: wait, then maybe fail
         if (next) {
@@ -84,8 +91,9 @@ afterEach(async () => {
   await new Promise((res) => app?.close(res));
 });
 
-async function setup() {
+async function setup(tweak?: (d: ReturnType<typeof fakeDrive>) => void) {
   const drive = fakeDrive();
+  tweak?.(drive);
   const f = fakeLlm();
   const store = new MemorySessionStore();
   app = createApp({
@@ -213,6 +221,29 @@ test('audit: pack.build then pack.refresh with folder, files, tokens; no pack te
   expect(r).toMatchObject({ sessionId: t.sessionId, folderId: 'folder-1', files: 1 });
   expect(r.tokens).toBeGreaterThan(0);
   expect(out.join('\n')).not.toContain(SECRET);
+});
+
+test('audit: real folderName, once per build (BE-111)', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(audits(out).some((a) => a.event === 'pack.build')).toBe(true));
+  expect(audits(out).find((a) => a.event === 'pack.build').folderName).toBe('Acme pitch');
+  expect(t.drive.state.nameCalls).toBe(1);
+  await t.refresh('tok-1');
+  expect(audits(out).find((a) => a.event === 'pack.refresh').folderName).toBe('Acme pitch');
+  expect(t.drive.state.nameCalls).toBe(2);
+});
+
+test('audit: folderName lookup fails -> "" and the build still succeeds (BE-111)', async () => {
+  const t = await setup((d) => (d.state.name = new Error(`boom ${SECRET}`)));
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  expect(audits(out).find((a) => a.event === 'pack.build').folderName).toBe('');
+  expect(out.join('\n')).not.toContain(SECRET);
+});
+
+test('audit: folderName over 200 chars is cut, audit line still written (BE-111)', async () => {
+  await setup((d) => (d.state.name = 'x'.repeat(500)));
+  await vi.waitFor(() => expect(audits(out).some((a) => a.event === 'pack.build')).toBe(true));
+  expect(audits(out).find((a) => a.event === 'pack.build').folderName).toBe('x'.repeat(200));
 });
 
 test('audit: failed refresh writes no pack.refresh; 401 on refresh writes auth.denied', async () => {

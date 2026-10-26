@@ -12,6 +12,16 @@ export type PackServiceOptions = {
 };
 export type RefreshResult = 'ready' | 'superseded' | 'too-large' | 'error';
 
+const NAME_MAX = 200; // = audit schema cap
+// BE-111: best-effort; any failure (or an unparseable id) => '' and the build carries on
+async function folderNameOf(p: SourceProvider, packId: string): Promise<string> {
+  try {
+    return ((await p.folderName?.(packId)) ?? '').slice(0, NAME_MAX);
+  } catch {
+    return '';
+  }
+}
+
 /** Session <-> pack glue (BE-108): build on start, refresh on demand, clear on end (D11). */
 export function createPackService(
   opts: PackServiceOptions,
@@ -50,9 +60,11 @@ export function createPackService(
     gen.set(s.id, my);
     const current = () => gen.get(s.id) === my;
     status(s, 'loading');
+    const drive = opts.provider(accessToken);
+    const name = folderNameOf(drive, s.packId); // one call per build, parallel
     try {
       const pack = await packs.refresh(s.id, () =>
-        buildPack(opts.provider(accessToken), s.packId, {
+        buildPack(drive, s.packId, {
           ...opts.build,
           onStatus: (m) => current() && senders.get(s.id)?.(m),
         }),
@@ -60,14 +72,13 @@ export function createPackService(
       if (!pack || store.get(s.id) !== s) return 'superseded';
       onPack(s, pack);
       try {
-        // BE-97 AC5: who read which folder. ponytail: SourceProvider has no folder-name call, so
-        // folderName stays '' until it does (schema caps it at 200)
+        // BE-97 AC5: who read which folder
         audit({
           event,
           email: s.email,
           sessionId: s.id,
           folderId: parseFolderId(s.packId),
-          folderName: '',
+          folderName: await name,
           files: pack.files.length,
           tokens: pack.tokens,
         });

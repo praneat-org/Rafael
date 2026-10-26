@@ -105,6 +105,18 @@ test('listFolder paginates, sends Shared Drive params and the user token', async
   expect(headers).toEqual(['Bearer tok', 'Bearer tok']);
 });
 
+test('folderName: files.get name, Shared Drive param, user token', async () => {
+  const { fn, calls, headers } = fakeFetch({
+    '/drive/v3/files/F1': () => j({ name: 'Acme pitch' }),
+  });
+  const p = createDriveProvider({ accessToken: 'tok', fetch: fn });
+  expect(await p.folderName!('https://drive.google.com/drive/folders/F1')).toBe('Acme pitch');
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.searchParams.get('fields')).toBe('name');
+  expect(calls[0]!.searchParams.get('supportsAllDrives')).toBe('true');
+  expect(headers).toEqual(['Bearer tok']);
+});
+
 test('Docs export as markdown', async () => {
   const { fn, calls } = fakeFetch({ '/export': () => new Response('# Title\nbody') });
   const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
