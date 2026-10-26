@@ -7,6 +7,7 @@ import type { SttHandlers, SttProvider, SttStream } from './provider.js';
 export class FakeSttProvider implements SttProvider {
   readonly starts: string[][] = []; // hints of every start(), for assertions
   readonly handlers: SttHandlers[] = [];
+  closes = 0; // close() calls, for leak assertions
   /** the next N start() calls throw (provider down) */
   failStarts = 0;
   constructor(
@@ -35,7 +36,10 @@ export class FakeSttProvider implements SttProvider {
         h.onPartial(pending.join(' '));
         if (pending.length >= every) flush();
       },
-      close: async () => flush(),
+      close: async () => {
+        this.closes++;
+        flush();
+      },
     };
   }
 

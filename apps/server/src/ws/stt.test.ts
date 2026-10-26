@@ -29,8 +29,11 @@ afterEach(async () => {
   await new Promise((res) => app?.close(res));
 });
 
-async function setup(stt?: Partial<SttOptions>, provider = new FakeSttProvider({ word })) {
-  const store = new MemorySessionStore();
+async function setup(
+  stt?: Partial<SttOptions>,
+  provider = new FakeSttProvider({ word }),
+  store = new MemorySessionStore(),
+) {
   app = createApp({
     store,
     verifier: async () => ({ email: 'a@praneat.com' }),
