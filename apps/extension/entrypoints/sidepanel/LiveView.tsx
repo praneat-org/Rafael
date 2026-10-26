@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Cue, SessionState } from '../../src/session';
+import { PackStatus } from './PackStatus';
 
 type Send = (cmd: PanelToOffscreen) => void;
 
@@ -100,6 +101,7 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
           </button>
         </span>
       </header>
+      <PackStatus state={state.pack} info={state.packInfo} />
       {state.error && <p className="note">ผิดพลาด: {state.error}</p>}
       {/* fixed-height slot: any cue (partial or final) fits without moving the rest */}
       <section className={`latest${latest?.partial ? ' partial' : ''}`} aria-live="polite">

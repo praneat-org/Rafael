@@ -64,3 +64,20 @@ test('permanent transport close leaves live and returns to setup', () => {
   const ended = reduce(reduce(initialState, { k: 'start' }), { k: 'end' });
   expect(reduce(ended, { k: 'status', status: 'closed' })).toEqual(ended);
 });
+
+test('pack.status keeps unreadable files for the UI (names only)', () => {
+  const live = reduce(initialState, { k: 'start' });
+  const s = reduce(live, {
+    k: 'server',
+    msg: {
+      v: 1,
+      t: 'pack.status',
+      state: 'ready',
+      files: [{ file: 'a.pdf', fileId: '1' }],
+      tokens: 10,
+      unreadable: [{ file: 'b.pdf', fileId: '2' }],
+    },
+  });
+  expect(s.packInfo?.unreadable).toEqual([{ file: 'b.pdf', fileId: '2' }]);
+  expect(s.packInfo?.tokens).toBe(10);
+});

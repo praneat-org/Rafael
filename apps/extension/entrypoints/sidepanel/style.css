@@ -193,3 +193,23 @@ html {
   padding: 0 8px;
   font: inherit;
 }
+
+.pack {
+  font-size: 0.85rem;
+  padding: 0.25rem 0.75rem;
+}
+.pack summary {
+  cursor: pointer;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.field input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+.err {
+  color: #b00020;
+}

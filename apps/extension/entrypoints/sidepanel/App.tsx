@@ -1,7 +1,8 @@
 import './style.css';
 import { LiveView } from './LiveView';
+import { SetupView } from './SetupView';
 import { useSession } from './useSession';
-import { EndView, SetupView } from './views';
+import { EndView } from './views';
 
 export function App() {
   const { state, offline, send } = useSession();

@@ -4,6 +4,8 @@ import { CaptureFailed, startCapture } from '../../src/audio/capture';
 import { CaptureSlot } from '../../src/audio/capture-slot';
 import { SERVER_URL } from '../../src/config';
 import {
+  type AuthTokenReply,
+  GET_AUTH_TOKEN,
   GET_TAB_STREAM_ID,
   type OffscreenToPanel,
   OPEN_PERMISSION_PAGE,
@@ -84,15 +86,26 @@ function teardown() {
   t?.close();
 }
 
+// real token comes from the service worker (chrome.identity); never stored (D11).
+// Dev build without a configured OAuth client keeps the fake token for the local dev server.
+async function getToken(fresh: boolean): Promise<string> {
+  const r: AuthTokenReply | undefined = await browser.runtime.sendMessage({
+    k: GET_AUTH_TOKEN,
+    fresh,
+  });
+  if (r?.token) return r.token;
+  if (import.meta.env.DEV) return 'dev-fake-token';
+  throw new Error('no token');
+}
+
 function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   if (state.phase === 'live') return;
-  // ponytail: no token source until FE-39 (chrome.identity): real mode is dev-only against DEV_FAKE_AUTH
-  if (!cmd.mock && !import.meta.env.DEV) return;
+  if (!cmd.mock && !cmd.packId && !import.meta.env.DEV) return;
   teardown();
   dispatch({ k: 'start' });
   const t: Transport = cmd.mock
     ? new MockTransport(cmd.latencyMs)
-    : new WsTransport({ url: toWsUrl(SERVER_URL), getToken: async () => 'dev-fake-token' });
+    : new WsTransport({ url: toWsUrl(SERVER_URL), getToken });
   transport = t;
   t.onStatus((status) => {
     if (transport !== t) return; // stale or closed by us
@@ -110,7 +123,7 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   });
   t.connect();
   if (cmd.mock) t.send({ v: 1, t: 'hello', accessToken: 'mock-token' }); // WsTransport sends hello itself
-  t.send({ v: 1, t: 'session.start', packId: cmd.mock ? 'mock-pack' : 'dev-pack' });
+  t.send({ v: 1, t: 'session.start', packId: cmd.mock ? 'mock-pack' : (cmd.packId ?? 'dev-pack') });
   if (cmd.capture) void beginCapture(cmd.capture, t);
   if (cmd.wavBase64) {
     const bin = atob(cmd.wavBase64);
