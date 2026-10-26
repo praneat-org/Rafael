@@ -26,9 +26,11 @@ test('a folderName that never resolves does not hold refresh (2 s cap)', async (
   expect(done).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(2);
   await p;
-  expect(done).toHaveBeenCalledWith('ready');
+  expect(done).toHaveBeenCalledWith({ result: 'ready' });
 });
 
 test.each([403, 404])('a %i from the lookup falls back and the build is ready', async (c) => {
-  expect(await run(() => Promise.reject(new Error(`google api ${c}`)))).toBe('ready');
+  expect(await run(() => Promise.reject(new Error(`google api ${c}`)))).toEqual({
+    result: 'ready',
+  });
 });

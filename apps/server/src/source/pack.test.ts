@@ -1,7 +1,14 @@
 import { ServerMessage } from '@rafael/protocol';
 import { expect, test, vi } from 'vitest';
 import type { DriveFile, ReadResult, SourceProvider } from './drive.js';
-import { buildPack, estimateTokens, PackStore, PackTooLargeError, renderPackText } from './pack.js';
+import {
+  buildPack,
+  estimateTokens,
+  MAX_TOO_LARGE_FILES,
+  PackStore,
+  PackTooLargeError,
+  renderPackText,
+} from './pack.js';
 
 // Synthetic content only — no customer data.
 const F = (fileId: string, name: string): DriveFile => ({ fileId, name, mimeType: 'x' });
@@ -177,12 +184,37 @@ test('over PACK_MAX_TOKENS -> PACK_TOO_LARGE with files largest first, and statu
   expect(err.code).toBe('PACK_TOO_LARGE');
   expect(err.files.map((f) => f.file)).toEqual(['Zzz', 'Aaa']);
   expect(states.at(-1)).toBe('error');
+  expect(
+    ServerMessage.safeParse({
+      v: 1,
+      t: 'error',
+      code: err.code,
+      files: err.files.map((f) => ({ name: f.file, tokens: f.tokens })),
+    }).success,
+  ).toBe(true);
   // exactly at the limit is fine
   const ok = await buildPack(provider([F('1', 'S')], { '1': doc('x') }), 'x', {
     countTokens: () => 100,
     maxTokens: 100,
   });
   expect(ok.tokens).toBe(100);
+});
+
+test('BE-110: PACK_TOO_LARGE lists at most MAX_TOO_LARGE_FILES files, largest first', async () => {
+  const ids = Array.from({ length: 15 }, (_, i) => String(i));
+  const err = (await buildPack(
+    provider(
+      ids.map((i) => F(i, `F${i.padStart(2, '0')}`)),
+      Object.fromEntries(ids.map((i) => [i, doc('y'.repeat(30 + 30 * Number(i)))])),
+    ),
+    'x',
+    { countTokens: (t) => t.length, maxTokens: 10 },
+  ).catch((e) => e)) as PackTooLargeError;
+  expect(err.files).toHaveLength(MAX_TOO_LARGE_FILES);
+  expect(err.files[0]!.file).toBe('F14');
+  expect(err.files.map((f) => f.tokens)).toEqual(
+    [...err.files.map((f) => f.tokens)].sort((a, b) => b - a),
+  );
 });
 
 test('pack.status flows loading n/m then ready, and validates against the protocol schema', async () => {
@@ -196,6 +228,11 @@ test('pack.status flows loading n/m then ready, and validates against the protoc
     ['loading', 1],
     ['loading', 2],
     ['ready', 2],
+  ]);
+  expect(msgs.map((m) => m.t === 'pack.status' && [m.read, m.total])).toEqual([
+    [1, 2],
+    [2, 2],
+    [2, 2],
   ]);
   const last = msgs.at(-1)!;
   expect(last.t === 'pack.status' && last.unreadable).toEqual([{ file: 'B', fileId: '2' }]);

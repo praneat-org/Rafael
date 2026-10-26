@@ -91,9 +91,12 @@ afterEach(async () => {
   await new Promise((res) => app?.close(res));
 });
 
-async function setup(tweak?: (d: ReturnType<typeof fakeDrive>) => void) {
+async function setup(
+  build?: { maxTokens: number },
+  pre?: (d: ReturnType<typeof fakeDrive>) => void,
+) {
   const drive = fakeDrive();
-  tweak?.(drive);
+  pre?.(drive);
   const f = fakeLlm();
   const store = new MemorySessionStore();
   app = createApp({
@@ -101,7 +104,7 @@ async function setup(tweak?: (d: ReturnType<typeof fakeDrive>) => void) {
     verifier: async (t) => ({ email: t === 'other' ? 'b@praneat.com' : 'a@praneat.com' }),
     allowedOrigins: [ORIGIN],
     brain: { llm: f.llm, config },
-    pack: { provider: drive.provider },
+    pack: { provider: drive.provider, build },
   });
   app.listen(0);
   const port = (app.address() as AddressInfo).port;
@@ -234,14 +237,14 @@ test('audit: real folderName, once per build (BE-111)', async () => {
 });
 
 test('audit: folderName lookup fails -> "" and the build still succeeds (BE-111)', async () => {
-  const t = await setup((d) => (d.state.name = new Error(`boom ${SECRET}`)));
+  const t = await setup(undefined, (d) => (d.state.name = new Error(`boom ${SECRET}`)));
   await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
   expect(audits(out).find((a) => a.event === 'pack.build').folderName).toBe('');
   expect(out.join('\n')).not.toContain(SECRET);
 });
 
 test('audit: folderName over 200 chars is cut, audit line still written (BE-111)', async () => {
-  await setup((d) => (d.state.name = 'x'.repeat(500)));
+  await setup(undefined, (d) => (d.state.name = 'x'.repeat(500)));
   await vi.waitFor(() => expect(audits(out).some((a) => a.event === 'pack.build')).toBe(true));
   expect(audits(out).find((a) => a.event === 'pack.build').folderName).toBe('x'.repeat(200));
 });
@@ -271,9 +274,75 @@ test('a superseded build that fails later sends no pack.status error to the sock
   expect((await t.refresh('tok-1')).status).toBe(200); // build B supersedes A and is ready
   const before = t.msgs.length;
   release();
-  expect((await a).status).toBe(502); // A still reports its own failure over HTTP
+  expect((await a).status).toBe(409); // A is superseded: 409, not its own failure
   await new Promise((r) => setTimeout(r, 50));
   expect(t.msgs.slice(before)).toEqual([]); // but the socket hears nothing from A
   expect(t.states()).not.toContain('error');
   expect(t.states().at(-1)).toBe('ready');
+});
+
+test('BE-110: too-large build sends error PACK_TOO_LARGE with files (names + tokens, no content); HTTP refresh 413 has the same files', async () => {
+  const t = await setup({ maxTokens: 1 });
+  await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
+  const e = t.msgs.find((m) => m.t === 'error') as Extract<ServerMessage, { t: 'error' }>;
+  expect(e.code).toBe('PACK_TOO_LARGE');
+  expect(e.files).toEqual([{ name: 'deck.pdf', tokens: expect.any(Number) }]);
+  expect(JSON.stringify(e)).not.toContain(SECRET);
+  const r = await t.refresh('tok-1');
+  expect(r.status).toBe(413);
+  expect(await r.json()).toEqual({ code: 'PACK_TOO_LARGE', files: e.files });
+});
+
+test('BE-110: pack.status carries read/total while loading and when ready', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  const st = t.msgs.filter((m) => m.t === 'pack.status') as Extract<
+    ServerMessage,
+    { t: 'pack.status' }
+  >[];
+  expect(st.at(-1)).toMatchObject({ read: 1, total: 1 });
+  expect(st.some((m) => m.state === 'loading' && m.read === 1 && m.total === 1)).toBe(true);
+});
+
+test('BE-110: a superseded too-large refresh answers 409 (no stale files); the newer build owns the result', async () => {
+  const t = await setup({ maxTokens: 1 });
+  await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
+  let release = () => {};
+  t.drive.state.listQueue.push({
+    gate: new Promise<void>((r) => {
+      release = r;
+    }),
+    fail: false,
+  });
+  const a = t.refresh('tok-1'); // A hangs in listFolder, then would be too-large
+  await vi.waitFor(() => expect(t.drive.state.listQueue).toHaveLength(0));
+  const b = await t.refresh('tok-1'); // B supersedes A, too-large itself
+  expect(b.status).toBe(413);
+  const before = t.msgs.length;
+  release();
+  const ra = await a;
+  expect(ra.status).toBe(409);
+  expect(await ra.json()).toEqual({ code: 'SUPERSEDED' });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(t.msgs.slice(before)).toEqual([]);
+});
+
+test('BE-110: ask after a too-large build -> PACK_TOO_LARGE with the same files; after a successful refresh the pack answers', async () => {
+  const t = await setup({ maxTokens: 1 });
+  await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
+  const first = t.msgs.find((m) => m.t === 'error') as Extract<ServerMessage, { t: 'error' }>;
+  t.send({ t: 'ask', text: 'ราคาเท่าไหร่' });
+  await vi.waitFor(() => expect(t.msgs.filter((m) => m.t === 'error')).toHaveLength(2));
+  expect(t.msgs.filter((m) => m.t === 'error')[1]).toEqual(first);
+  expect(t.msgs.some((m) => m.t === 'cue')).toBe(false);
+});
+
+test('BE-110: ask after a non-size build failure -> PACK_NOT_READY (refresh may still fix it)', async () => {
+  const t = await setup(undefined, (d) => {
+    d.state.fail = true;
+  });
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('error'));
+  t.send({ t: 'ask', text: 'ราคาเท่าไหร่' });
+  await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
+  expect(t.msgs.find((m) => m.t === 'error')).toEqual({ v: 1, t: 'error', code: 'PACK_NOT_READY' });
 });
