@@ -20,6 +20,13 @@ export type BrainConfig = {
     /** char-bigram Dice similarity at/above which two questions count as the same */
     dedupeSimilarity: number;
   };
+  /** end-to-end budgets (skill cue-brain latency table); exceeding one logs budget.exceeded */
+  pipeline: {
+    /** last voiced frame -> final segment */
+    sttFinalBudgetMs: number;
+    /** speech end -> first cue: the p95 ceiling (p50 target is 3 s) */
+    firstCueBudgetMs: number;
+  };
   answerer: {
     maxBullets: number;
     maxWordsPerBullet: number;
@@ -45,6 +52,7 @@ export function loadBrainConfig(env: Record<string, string | undefined>): BrainC
       maxTokens: 200,
       dedupeSimilarity: 0.85,
     },
+    pipeline: { sttFinalBudgetMs: 800, firstCueBudgetMs: 5000 },
     answerer: {
       maxBullets: 3,
       maxWordsPerBullet: 15,

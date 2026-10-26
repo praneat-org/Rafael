@@ -27,7 +27,11 @@ export function createPipeline(
 ) {
   const perf = () => performance.now();
   const entries = new Map<string, Entry>();
-  const detectors = new Map<string, ReturnType<typeof createDetector>>();
+  // one Detector per session; segments run one at a time so window and dedupe stay in order
+  const detectors = new Map<
+    string,
+    { d: ReturnType<typeof createDetector>; chain: Promise<unknown> }
+  >();
 
   // D21: session end / expiry deletes the CachedContent
   store.onEnd(async (s) => {
@@ -49,6 +53,8 @@ export function createPipeline(
         llm: opts.llm,
         config: opts.config,
         pack,
+        warn: (w) =>
+          log('budget.exceeded', { sessionId: s.id, stage: w.stage, ms: w.firstTokenMs }),
         log: (a) =>
           log('answerer', {
             sessionId: s.id,
@@ -75,6 +81,13 @@ export function createPipeline(
     question: string,
     send: (m: ServerMessage) => void,
     receivedAt = perf(),
+    ctx: {
+      stage: 'ask' | 'segment';
+      sttFinalMs?: number;
+      detectorMs?: number;
+      /** segment path: `pause` arrived, so no cue may start or be emitted */
+      isPaused?: () => boolean;
+    } = { stage: 'ask' },
   ): AskResult {
     const e = entryFor(s);
     if (!e) return 'no-pack';
@@ -83,9 +96,19 @@ export function createPipeline(
     const cueId = randomUUID();
     // answers run in order, the older one is never cancelled
     e.chain = e.chain.then(async () => {
+      if (ctx.isPaused?.()) {
+        e.inFlight--; // queued behind another answer, paused before it started
+        log('cue.dropped', { sessionId: s.id, reason: 'paused' });
+        return;
+      }
       const startedAt = perf();
       let firstCueMs: number | undefined;
+      let dropped = false;
       const emit = (c: CueOut) => {
+        if (ctx.isPaused?.()) {
+          dropped = true;
+          return;
+        }
         firstCueMs ??= Math.round(perf() - receivedAt);
         send({ v: PROTOCOL_VERSION, t: 'cue', ...c });
       };
@@ -95,16 +118,28 @@ export function createPipeline(
       } finally {
         e.inFlight--;
       }
+      if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
+      if (ctx.stage === 'segment' && firstCueMs !== undefined) {
+        const total = firstCueMs + (ctx.sttFinalMs ?? 0);
+        if (total > opts.config.pipeline.firstCueBudgetMs)
+          log('budget.exceeded', { sessionId: s.id, stage: 'total', ms: total });
+      }
       // D11: codes and ms only, never text
       log('cue.latency', {
         sessionId: s.id,
         cueId,
-        stage: 'ask',
+        stage: ctx.stage,
         queueMs: Math.round(startedAt - receivedAt),
         firstCueMs,
         ms: Math.round(perf() - receivedAt),
+        // detector path only; ms counts from the final segment (detector included)
+        ...(ctx.stage === 'segment' && {
+          sttFinalMs: ctx.sttFinalMs,
+          detectorMs: ctx.detectorMs,
+          serverTotalMs: Math.round(perf() - receivedAt) + (ctx.sttFinalMs ?? 0),
+        }),
         bullets: final.bullets.length,
-        outcome: final.notFound ? 'notFound' : 'answered',
+        outcome: dropped ? 'paused' : final.notFound ? 'notFound' : 'answered',
       });
     });
     return 'ok';
@@ -122,19 +157,62 @@ export function createPipeline(
       answerQuestion(s, text, send),
 
     /**
-     * Seam: final transcript segment -> Detector -> Answerer.
-     * TODO(BE-89): call this from SttProvider.onFinal. Not wired anywhere until the STT adapter exists.
+     * Final transcript segment -> Detector -> (question, not a duplicate) -> Answerer -> cue.
+     * `sttFinalMs` = last voiced frame -> final, measured by the STT service. Never throws.
      */
-    async onFinalSegment(s: Session, seg: Segment, send: (m: ServerMessage) => void) {
+    onFinalSegment(
+      s: Session,
+      seg: Segment,
+      send: (m: ServerMessage) => void,
+      sttFinalMs?: number,
+      isPaused: () => boolean = () => false,
+    ): Promise<unknown> {
       const receivedAt = perf();
-      let d = detectors.get(s.id);
-      if (!d) {
-        d = createDetector({ llm: opts.llm, config: opts.config });
-        detectors.set(s.id, d);
+      if (sttFinalMs !== undefined && sttFinalMs > opts.config.pipeline.sttFinalBudgetMs)
+        log('budget.exceeded', { sessionId: s.id, stage: 'stt', ms: sttFinalMs });
+      // no pack -> an answer is impossible, do not pay for a Detector call
+      if (!entryFor(s)) return Promise.resolve('no-pack');
+      let e = detectors.get(s.id);
+      if (!e) {
+        const d = createDetector({
+          llm: opts.llm,
+          config: opts.config,
+          log: (a) =>
+            log('detector', {
+              sessionId: s.id,
+              stage: 'detector',
+              ms: a.ms,
+              model: a.model,
+              inputTokens: a.inputTokens,
+              outputTokens: a.outputTokens,
+              outcome: a.outcome,
+              count: a.attempts,
+            }),
+          warn: (w) => log('budget.exceeded', { sessionId: s.id, stage: w.stage, ms: w.ms }),
+        });
+        e = { d, chain: Promise.resolve() };
+        detectors.set(s.id, e);
       }
-      const r = await d.onFinalSegment(seg);
-      if (r.kind === 'question') return answerQuestion(s, r.question, send, receivedAt);
-      return undefined;
+      const det = e;
+      det.chain = det.chain
+        .then(async () => {
+          // queued behind slower segments: pause may have arrived, do not even pay for the Detector
+          if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
+          const t0 = perf();
+          const r = await det.d.onFinalSegment(seg);
+          if (r.kind !== 'question') return;
+          if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
+          const detectorMs = Math.round(perf() - t0);
+          const res = answerQuestion(s, r.question, send, receivedAt, {
+            stage: 'segment',
+            sttFinalMs,
+            detectorMs,
+            isPaused,
+          });
+          if (res !== 'ok') log('cue.dropped', { sessionId: s.id, reason: res });
+        })
+        .catch(() => {});
+      return det.chain;
     },
   };
 }

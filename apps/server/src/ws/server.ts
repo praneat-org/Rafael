@@ -62,7 +62,26 @@ export function attachWs(http: Server, opts: WsOptions) {
       { ...opts.brain, getPack: opts.brain.getPack ?? ((s) => packs?.get(s.id)?.chunks) },
       store,
     );
-  const stt = opts.stt && createSttService(opts.stt, store);
+  // `pause`: no audio, no new cues. Keyed by Session so it survives a reconnect/resume.
+  const paused = new WeakSet<Session>();
+  // bumped on every pause: a pause->resume must not revive a question heard before the pause
+  const pauseEpoch = new WeakMap<Session, number>();
+  const stt =
+    opts.stt &&
+    createSttService(
+      {
+        ...opts.stt,
+        onFinal: (s, seg, send, meta) => {
+          opts.stt?.onFinal?.(s, seg, send, meta);
+          // a final that was already in the provider when pause arrived must not start a cue
+          if (paused.has(s)) return;
+          const epoch = pauseEpoch.get(s) ?? 0;
+          const isPaused = () => paused.has(s) || (pauseEpoch.get(s) ?? 0) !== epoch;
+          void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs, isPaused);
+        },
+      },
+      store,
+    );
   packs =
     opts.pack && createPackService(opts.pack, store, (s, p) => pipeline?.packReady(s, p.chunks));
 
@@ -109,7 +128,10 @@ export function attachWs(http: Server, opts: WsOptions) {
     ws.on('close', () => {
       clearTimeout(helloTimer);
       if (session) {
-        if (session.socket === ws) packs?.setSender(session.id, undefined);
+        if (session.socket === ws) {
+          packs?.setSender(session.id, undefined);
+          void stt?.end(session); // idle provider stream; a resumed socket opens a new one
+        }
         store.detach(session.id, ws);
       }
     });
@@ -120,7 +142,7 @@ export function attachWs(http: Server, opts: WsOptions) {
       if (session && session.socket !== ws) return;
       if (isBinary) {
         // audio is only accepted inside a session (and so after hello)
-        if (!session) return;
+        if (!session || paused.has(session)) return;
         const frame = decodeAudioFrame(data as Buffer);
         if (!frame) return fail('BAD_MESSAGE');
         session.audioFrames++;
@@ -200,6 +222,8 @@ export function attachWs(http: Server, opts: WsOptions) {
           return;
         case 'ask': {
           if (!session) return fail('SESSION_NOT_FOUND');
+          // BE-99 AC: pause = no new cue. No protocol change: BAD_MESSAGE (same as a refused busy ask)
+          if (paused.has(session)) return fail('BAD_MESSAGE');
           const sock = ws;
           // BE-108: no pack yet -> no guessing, tell the client
           const r = pipeline?.ask(session, m.text, (c) => {
@@ -217,8 +241,16 @@ export function attachWs(http: Server, opts: WsOptions) {
           }
           return;
         }
-        default: // pause / resume: stubs for BE-89
+        case 'pause':
           if (!session) return fail('SESSION_NOT_FOUND');
+          paused.add(session);
+          pauseEpoch.set(session, (pauseEpoch.get(session) ?? 0) + 1);
+          await stt?.pause(session).catch(() => {});
+          return;
+        case 'resume':
+          if (!session) return fail('SESSION_NOT_FOUND');
+          paused.delete(session);
+          return;
       }
     }
 
