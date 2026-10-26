@@ -3,7 +3,7 @@ import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
 import { getAuthToken, isAuthConfigured } from '../../src/auth';
 import { parseFolderId } from '../../src/folder-url';
-import type { PanelToOffscreen } from '../../src/messages';
+import { type PanelToOffscreen, TAB_GRANTED } from '../../src/messages';
 import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
 import { defaultSettings, loadSettings, type Settings, saveSettings } from '../../src/settings';
 import { defaultInputs, startBlock } from '../../src/setup-state';
@@ -29,6 +29,7 @@ export function SetupView({
   audio: AudioState | null;
 }) {
   const [testing, setTesting] = useState(false);
+  const [grants, setGrants] = useState(0); // bumps when the context menu grants the tab: re-run the preview
   const [s, setS] = useState<Settings>(defaultSettings);
   const [wav, setWav] = useState<File | null>(null);
   const [signedIn, setSignedIn] = useState(false);
@@ -53,6 +54,11 @@ export function SetupView({
       () => {},
     );
   }, []);
+  useEffect(() => {
+    const on = (m: unknown) => m === TAB_GRANTED && setGrants((g) => g + 1);
+    browser.runtime.onMessage.addListener(on);
+    return () => browser.runtime.onMessage.removeListener(on);
+  }, []);
   const update = (next: Settings) => {
     setS(next);
     saveSettings(next).catch(() => {});
@@ -62,6 +68,7 @@ export function SetupView({
     setSignedIn(ok);
     setSignInFailed(!ok);
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `grants` is a retrigger counter
   useEffect(() => {
     if (!testing) return;
     let cancelled = false; // a slow wav read must not send a stale preview after cleanup
@@ -74,7 +81,7 @@ export function SetupView({
       cancelled = true;
       send({ k: 'preview-stop' });
     };
-  }, [testing, s.mock, wav, inputs, send]);
+  }, [testing, s.mock, wav, inputs, grants, send]);
   const level = Math.min(1, Math.sqrt(audio?.level ?? 0) * 1.5); // RMS is small for speech: sqrt for a readable bar
   const block = startBlock({ mock: s.mock, signedIn, folderId, ...inputs });
   const start = async () => {
@@ -210,7 +217,7 @@ export function SetupView({
       {testing && audio?.error && (
         <p className="note err">
           {audio.error === 'tab-capture'
-            ? 'จับเสียงแท็บไม่ได้ — กดไอคอน extension บนแท็บที่ต้องการก่อน แล้วลองใหม่'
+            ? 'จับเสียงแท็บไม่ได้ — กดไอคอน extension (หรือ Alt+Shift+R / คลิกขวาในหน้า Meet › Rafael: จับเสียงแท็บนี้) บนแท็บ Meet ก่อน แล้วลองใหม่'
             : `เปิดเสียงไม่ได้ (${audio.error})`}
         </p>
       )}
