@@ -11,6 +11,7 @@ export const ErrorCode = z.enum([
   'VERSION_MISMATCH',
   'UNAUTHORIZED',
   'PACK_TOO_LARGE',
+  'PACK_NOT_READY',
   'SESSION_NOT_FOUND',
   'STT_UNAVAILABLE',
   'LLM_UNAVAILABLE',
@@ -89,8 +90,19 @@ export const ServerMessage = z.discriminatedUnion('t', [
     files: z.array(PackFile),
     tokens: z.number().int().nonnegative(),
     unreadable: z.array(PackFile),
+    // optional in v1 (BE-110): files read so far / files found. Older servers omit them.
+    read: z.number().int().nonnegative().optional(),
+    total: z.number().int().nonnegative().optional(),
   }),
-  z.object({ v, t: z.literal('error'), code: ErrorCode }),
+  z.object({
+    v,
+    t: z.literal('error'),
+    code: ErrorCode,
+    // optional in v1 (BE-110), with PACK_TOO_LARGE: largest first. Names + token counts only (D11).
+    files: z
+      .array(z.object({ name: z.string().min(1), tokens: z.number().int().nonnegative() }))
+      .optional(),
+  }),
 ]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 

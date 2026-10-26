@@ -18,6 +18,8 @@ export type ReadResult = { chunks: Chunk[] } | { unreadable: string };
 export interface SourceProvider {
   listFolder(folderIdOrUrl: string): Promise<DriveFile[]>;
   readFile(file: DriveFile): Promise<ReadResult>;
+  /** folder display name for the audit line (BE-111); rejects on any failure */
+  folderName?(folderIdOrUrl: string): Promise<string>;
 }
 
 export interface DriveOptions {
@@ -147,6 +149,15 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
     return out;
   }
 
+  async function folderName(folderIdOrUrl: string): Promise<string> {
+    const p = new URLSearchParams({ fields: 'name', supportsAllDrives: 'true' });
+    const r = await json<{ name?: string }>(
+      `${DRIVE}/files/${parseFolderId(folderIdOrUrl)}?${p}`,
+      64 * 1024,
+    );
+    return r.name ?? '';
+  }
+
   async function convert(file: DriveFile): Promise<ReadResult> {
     const id = encodeURIComponent(file.fileId);
     switch (file.mimeType) {
@@ -230,5 +241,5 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
     return res;
   }
 
-  return { listFolder, readFile };
+  return { listFolder, readFile, folderName };
 }

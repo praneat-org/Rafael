@@ -105,6 +105,31 @@ test('listFolder paginates, sends Shared Drive params and the user token', async
   expect(headers).toEqual(['Bearer tok', 'Bearer tok']);
 });
 
+test('folderName: files.get name, Shared Drive param, user token', async () => {
+  const { fn, calls, headers } = fakeFetch({
+    '/drive/v3/files/F1': () => j({ name: 'Acme pitch' }),
+  });
+  const p = createDriveProvider({ accessToken: 'tok', fetch: fn });
+  expect(await p.folderName!('https://drive.google.com/drive/folders/F1')).toBe('Acme pitch');
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.searchParams.get('fields')).toBe('name');
+  expect(calls[0]!.searchParams.get('supportsAllDrives')).toBe('true');
+  expect(headers).toEqual(['Bearer tok']);
+});
+
+test('folderName: body over 64 KB rejects as too large', async () => {
+  const { fn } = fakeFetch({ '/drive/v3/files/F1': () => j({ name: 'x'.repeat(70 * 1024) }) });
+  await expect(
+    createDriveProvider({ accessToken: 't', fetch: fn }).folderName!('F1'),
+  ).rejects.toThrow('too large');
+});
+
+test.each([403, 404])('folderName: %i rejects with the status only', async (status) => {
+  const { fn } = fakeFetch({ '/drive/v3/files/F1': () => new Response('secret body', { status }) });
+  const r = createDriveProvider({ accessToken: 't', fetch: fn }).folderName!('F1');
+  await expect(r).rejects.toThrow(`google api ${status}`);
+});
+
 test('Docs export as markdown', async () => {
   const { fn, calls } = fakeFetch({ '/export': () => new Response('# Title\nbody') });
   const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(

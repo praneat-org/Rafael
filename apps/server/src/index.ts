@@ -22,7 +22,7 @@ const verifier: TokenVerifier =
 
 const server = createApp({
   verifier,
-  allowedOrigins: (process.env.EXTENSION_IDS ?? '')
+  allowedOrigins: (process.env.ALLOWED_EXTENSION_IDS ?? '')
     .split(',')
     .filter(Boolean)
     .map((id) => `chrome-extension://${id.trim()}`),
