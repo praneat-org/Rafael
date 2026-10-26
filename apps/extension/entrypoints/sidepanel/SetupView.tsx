@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
 import { getAuthToken, isAuthConfigured } from '../../src/auth';
+import { fetchFolderName, shortId } from '../../src/folder-names';
 import { parseFolderId } from '../../src/folder-url';
 import type { PanelToOffscreen } from '../../src/messages';
 import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
@@ -35,6 +36,8 @@ export function SetupView({
   const [signInFailed, setSignInFailed] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
+  const [names, setNames] = useState<Record<string, string>>({}); // memory only, never stored (D11)
+  const tried = useRef(new Set<string>());
   const recentWritten = useRef(false); // a stale loadRecent() must not clobber a newer save
   const [inputs, setInputs] = useState<CaptureOpts>({ tab: false, mic: true });
   const configured = isAuthConfigured(import.meta.env.WXT_OAUTH_CLIENT_ID);
@@ -53,6 +56,23 @@ export function SetupView({
       () => {},
     );
   }, []);
+  useEffect(() => {
+    const missing = recent.filter((id) => !tried.current.has(id));
+    if (s.mock || !configured || missing.length === 0) return;
+    for (const id of missing) tried.current.add(id); // one attempt per id per panel open
+    let cancelled = false;
+    (async () => {
+      const token = await getAuthToken(false); // silent; no token -> short ids stay
+      if (!token) return;
+      for (const id of missing) {
+        const name = await fetchFolderName(id, token);
+        if (!cancelled && name) setNames((n) => ({ ...n, [id]: name }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [recent, s.mock, configured]);
   const update = (next: Settings) => {
     setS(next);
     saveSettings(next).catch(() => {});
@@ -158,7 +178,7 @@ export function SetupView({
               <option value="">โฟลเดอร์ล่าสุด…</option>
               {recent.map((id) => (
                 <option key={id} value={id}>
-                  …{id.slice(-8)}
+                  {names[id] ?? shortId(id)}
                 </option>
               ))}
             </select>
