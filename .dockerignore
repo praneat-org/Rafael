@@ -1,7 +1,7 @@
 **/node_modules
 **/dist
 .git
-.env*
+**/.env*
 docs
 bench
 apps/extension

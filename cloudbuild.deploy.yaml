@@ -9,7 +9,8 @@ substitutions:
   _MIN: '1' # PROPOSAL Q2 (not decided): min = max = 1 for sprint 1, in-memory sessions
   _MAX: '1' # PROPOSAL Q2: >1 breaks resume (session affinity is best effort)
   _EXTENSION_IDS: '' # chrome-extension ids (not secret), comma separated, set on the trigger
-  _SECRETS: DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest # ENV=SecretName:version, comma separated
+  _SECRETS: DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest # ENV=SecretName:version, comma separated; set '' on the trigger for Chirp 3
+  _RUNTIME_SA: '' # runtime service account email from BE-71 (set on the trigger)
 
 steps:
   - id: build
@@ -20,23 +21,29 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA']
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
-    entrypoint: gcloud
+    entrypoint: bash
     args:
-      - run
-      - deploy
-      - ${_SERVICE}
-      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA
-      - --region=${_REGION}
-      - --port=8080
-      - --timeout=3600 # WS is cut at 60 min, client reconnects + resumes
-      - --session-affinity
-      - --min-instances=${_MIN}
-      - --max-instances=${_MAX}
-      - --allow-unauthenticated # auth is the Google token in WS hello (D13/D19); /api/health is open (D18)
-      - --set-env-vars=^@^EXTENSION_IDS=${_EXTENSION_IDS}
-      - --set-secrets=${_SECRETS}
-      - --startup-probe=httpGet.path=/api/health,httpGet.port=8080
-      - --liveness-probe=httpGet.path=/api/health,httpGet.port=8080
+      - -c
+      - |
+        # optional flags: empty _SECRETS clears secrets (Chirp 3), empty _RUNTIME_SA keeps the service's current identity
+        extra=()
+        if [ -n '${_SECRETS}' ]; then extra+=(--set-secrets='${_SECRETS}'); else extra+=(--clear-secrets); fi
+        if [ -n '${_RUNTIME_SA}' ]; then extra+=(--service-account='${_RUNTIME_SA}'); fi
+        gcloud run deploy ${_SERVICE} \
+          --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA \
+          --region=${_REGION} \
+          --port=8080 \
+          --timeout=3600 \
+          --session-affinity \
+          --min-instances=${_MIN} \
+          --max-instances=${_MAX} \
+          --allow-unauthenticated \
+          --set-env-vars='^@^EXTENSION_IDS=${_EXTENSION_IDS}' \
+          --startup-probe=httpGet.path=/api/health,httpGet.port=8080 \
+          --liveness-probe=httpGet.path=/api/health,httpGet.port=8080 \
+          "$${extra[@]}"
+        # --timeout=3600: WS is cut at 60 min, client reconnects + resumes
+        # --allow-unauthenticated: auth is the Google token in WS hello (D13/D19, needs BE-87 verifier; until then /ws denies every hello), /api/health is open (D18)
 
 options:
   logging: CLOUD_LOGGING_ONLY
