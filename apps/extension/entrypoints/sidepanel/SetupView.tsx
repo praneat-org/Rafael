@@ -56,6 +56,7 @@ export function SetupView({
       () => {},
     );
   }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: signedIn re-runs the silent token fetch after sign-in
   useEffect(() => {
     if (s.mock || !configured) return;
     let cancelled = false;
