@@ -99,7 +99,6 @@ export function attachWs(http: Server, opts: WsOptions) {
         if (!session) return;
         if (!decodeAudioFrame(data as Buffer)) return fail('BAD_MESSAGE');
         session.audioFrames++; // stub for STT (BE-89): count only
-        store.touch(session.id);
         return;
       }
       const parsed = parseClientMessage(data.toString());
@@ -152,7 +151,6 @@ export function attachWs(http: Server, opts: WsOptions) {
           return;
         default: // ask / pause / resume: stubs for BE-89 / Brain
           if (!session) return fail('SESSION_NOT_FOUND');
-          store.touch(session.id);
       }
     }
 

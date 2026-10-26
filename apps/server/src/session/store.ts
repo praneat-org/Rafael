@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { log } from '../log.js';
 
-export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // from last activity (D11: deleted after 24h)
+export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // absolute from create, activity does not extend it (D11: deleted after 24h)
 export const RESUME_GRACE_MS = 5 * 60 * 1000; // socket gone -> session kept this long
 
 /** Minimal socket surface so the store does not depend on `ws`. */
@@ -26,7 +26,6 @@ export interface SessionStore {
   resume(resumeToken: string, email: string): Session | undefined;
   attach(id: string, socket: SessionSocket): void;
   detach(id: string, socket: SessionSocket): void;
-  touch(id: string): void;
   end(id: string): void;
 }
 
@@ -57,9 +56,11 @@ export class MemorySessionStore implements SessionStore {
       socket: undefined,
       audioFrames: 0,
     };
-    this.byId.set(session.id, { session });
+    this.byId.set(session.id, {
+      session,
+      ttl: setTimeout(() => this.end(session.id), this.ttlMs).unref(),
+    });
     this.byToken.set(session.resumeToken, session.id);
-    this.touch(session.id);
     return session;
   }
 
@@ -80,7 +81,6 @@ export class MemorySessionStore implements SessionStore {
     // reconnect before the old socket was noticed dead: the old one loses
     if (e.session.socket && e.session.socket !== socket) e.session.socket.close(4001, 'replaced');
     e.session.socket = socket;
-    this.touch(id);
   }
 
   detach(id: string, socket: SessionSocket) {
@@ -89,13 +89,6 @@ export class MemorySessionStore implements SessionStore {
     e.session.socket = undefined;
     clearTimeout(e.grace);
     e.grace = setTimeout(() => this.end(id), this.graceMs).unref();
-  }
-
-  touch(id: string) {
-    const e = this.byId.get(id);
-    if (!e) return;
-    clearTimeout(e.ttl);
-    e.ttl = setTimeout(() => this.end(id), this.ttlMs).unref();
   }
 
   end(id: string) {
