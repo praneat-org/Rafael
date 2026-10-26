@@ -21,10 +21,12 @@ export function createPackService(
   const packs = new PackStore();
   const senders = new Map<string, (m: ServerMessage) => void>();
   const running = new Set<string>();
+  const gen = new Map<string, number>(); // latest build per session: older builds stay silent
   store.onEnd((s) => {
     packs.clear(s.id); // also cancels an in-flight build
     senders.delete(s.id);
     running.delete(s.id);
+    gen.delete(s.id);
   });
 
   const status = (s: Session, state: 'loading' | 'ready' | 'error', pack?: Pack) =>
@@ -44,12 +46,15 @@ export function createPackService(
   ): Promise<RefreshResult> {
     if (!accessToken) return 'error';
     running.add(s.id);
+    const my = (gen.get(s.id) ?? 0) + 1;
+    gen.set(s.id, my);
+    const current = () => gen.get(s.id) === my;
     status(s, 'loading');
     try {
       const pack = await packs.refresh(s.id, () =>
         buildPack(opts.provider(accessToken), s.packId, {
           ...opts.build,
-          onStatus: (m) => senders.get(s.id)?.(m),
+          onStatus: (m) => current() && senders.get(s.id)?.(m),
         }),
       );
       if (!pack || store.get(s.id) !== s) return 'superseded';
@@ -71,14 +76,14 @@ export function createPackService(
     } catch (e) {
       // codes only: provider errors may carry content (D11). buildPack already emitted status for too-large
       const tooLarge = e instanceof PackTooLargeError;
-      if (!tooLarge) status(s, 'error');
+      if (!tooLarge && current()) status(s, 'error');
       log('pack.failed', {
         sessionId: s.id,
         code: tooLarge ? 'PACK_TOO_LARGE' : 'PACK_BUILD_FAILED',
       });
       return tooLarge ? 'too-large' : 'error';
     } finally {
-      running.delete(s.id);
+      if (current()) running.delete(s.id);
     }
   }
 

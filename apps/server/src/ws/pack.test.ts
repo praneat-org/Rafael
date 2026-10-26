@@ -17,6 +17,7 @@ function fakeDrive() {
   const state = {
     v: 'v1',
     fail: false,
+    listQueue: [] as { gate: Promise<void>; fail: boolean }[],
     gate: undefined as Promise<void> | undefined,
     enter: undefined as (() => void) | undefined,
   };
@@ -25,6 +26,11 @@ function fakeDrive() {
     tokens.push(token);
     return {
       async listFolder() {
+        const next = state.listQueue.shift(); // per-call script: wait, then maybe fail
+        if (next) {
+          await next.gate;
+          if (next.fail) throw new Error(`boom ${SECRET}`);
+        }
         if (state.fail) throw new Error(`boom ${SECRET}`);
         return [{ fileId: 'f1', name: 'deck.pdf', mimeType: 'application/pdf' }];
       },
@@ -217,4 +223,26 @@ test('audit: failed refresh writes no pack.refresh; 401 on refresh writes auth.d
   expect(audits(out).some((a) => a.event === 'pack.refresh')).toBe(false);
   expect((await t.refresh('')).status).toBe(401);
   expect(audits(out).some((a) => a.event === 'auth.denied' && a.source === 'http')).toBe(true);
+});
+
+test('a superseded build that fails later sends no pack.status error to the socket', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  let release = () => {};
+  t.drive.state.listQueue.push({
+    gate: new Promise<void>((r) => {
+      release = r;
+    }),
+    fail: true,
+  });
+  const a = t.refresh('tok-1'); // build A hangs in listFolder, will fail
+  await vi.waitFor(() => expect(t.drive.state.listQueue).toHaveLength(0));
+  expect((await t.refresh('tok-1')).status).toBe(200); // build B supersedes A and is ready
+  const before = t.msgs.length;
+  release();
+  expect((await a).status).toBe(502); // A still reports its own failure over HTTP
+  await new Promise((r) => setTimeout(r, 50));
+  expect(t.msgs.slice(before)).toEqual([]); // but the socket hears nothing from A
+  expect(t.states()).not.toContain('error');
+  expect(t.states().at(-1)).toBe('ready');
 });
