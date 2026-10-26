@@ -54,3 +54,17 @@ test('SESSION_NOT_FOUND (resume failed) returns to setup and keeps the error', (
   expect(s.error).toBe('SESSION_NOT_FOUND');
   expect(reduce(s, { k: 'start' }).error).toBeNull();
 });
+
+test('permanent transport close leaves live and returns to setup', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, { k: 'status', status: 'closed' });
+  expect(s.phase).toBe('setup');
+  expect(s.error).toBe('CONNECTION_CLOSED');
+  // after End the close is expected and ignored
+  expect(
+    reduce(reduce(reduce(initialState, { k: 'start' }), { k: 'end' }), {
+      k: 'status',
+      status: 'closed',
+    }).phase,
+  ).toBe('end');
+});

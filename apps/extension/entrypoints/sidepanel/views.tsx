@@ -33,6 +33,9 @@ export function SetupView({ send, error }: { send: Send; error?: string | null }
       {error === 'SESSION_NOT_FOUND' && (
         <p className="note">session เดิมหายไปแล้ว (server เริ่มใหม่) — กดเริ่มใหม่อีกครั้ง</p>
       )}
+      {error === 'CONNECTION_CLOSED' && (
+        <p className="note">การเชื่อมต่อถูกปิด (ยืนยันตัวตนไม่ผ่านหรือ server ปฏิเสธ) — กดเริ่มใหม่อีกครั้ง</p>
+      )}
       <label className="row">
         <input
           type="checkbox"

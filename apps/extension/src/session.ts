@@ -21,7 +21,7 @@ export type SessionState = {
   segments: Segment[];
   cues: Cue[];
   pack: PackState | null;
-  error: ErrorCode | null;
+  error: ErrorCode | 'CONNECTION_CLOSED' | null; // CONNECTION_CLOSED is client-only (transport closed for good)
   /** audio is not being sent (Pause) */
   paused: boolean;
 };
@@ -64,7 +64,10 @@ export function reduce(s: SessionState, a: Action): SessionState {
     case 'resume':
       return s.phase === 'live' ? { ...s, paused: a.k === 'pause' } : s;
     case 'status':
-      return s.phase === 'live' ? { ...s, status: a.status } : s;
+      if (s.phase !== 'live') return s;
+      // permanent close (4001, 4401, token failure): leave live, back to setup with a readable reason
+      if (a.status === 'closed') return { ...initialState, error: 'CONNECTION_CLOSED' };
+      return { ...s, status: a.status };
     case 'server': {
       if (s.phase !== 'live') return s;
       const m = a.msg;
