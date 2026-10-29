@@ -54,7 +54,7 @@ variable "backend_sa_role" {
 #---------------------------------------------------------------------------------------------------------------------#
 
 variable "app_secret_ids" {
-  description = "Secret ids mounted into Cloud Run as env of the same name (e.g. DEEPGRAM_API_KEY); empty for Chirp 3"
+  description = "Secret ids mounted into Cloud Run as env of the same name ; empty today (D22: Gemini via Vertex uses the backend SA)"
   type        = list(string)
   default     = []
 }

@@ -8,7 +8,7 @@ Terraform in `terraform/` (team convention: `module/app` + one folder per env) c
 (`rafael-<env>-cloudbuild`, `rafael-<env>-backend`) and their roles, Artifact Registry repo `rafael`, Secret Manager
 secrets (ids only, no values), the GitHub repo link and the Cloud Build trigger with all substitutions. Cloud Run itself
 stays owned by `cloudbuild.deploy.yaml`. Roles: Cloud Build SA = Cloud Run Admin, Artifact Registry Writer, Logs Writer,
-Service Account User on the backend SA only; backend SA = Vertex AI User, Secret Accessor (+ Speech client if Chirp 3).
+Service Account User on the backend SA only; backend SA = Vertex AI User (Gemini for LLM and STT, D22), Secret Accessor.
 No Storage roles (D11).
 
 By hand, in this order (dev project `rafael-512903`):
@@ -25,7 +25,7 @@ By hand, in this order (dev project `rafael-512903`):
        terraform init && terraform apply
        gcloud secrets versions add rafael-dev-infra-tfvars --data-file=dev.auto.tfvars --project=rafael-512903
 
-6. If BE-79 picks Deepgram: add `DEEPGRAM_API_KEY` to `app_secret_ids`, apply, then `gcloud secrets versions add DEEPGRAM_API_KEY --data-file=-`. Chirp 3: uncomment `roles/speech.client` instead.
+6. App secrets: none (D22, Gemini via Vertex uses the backend SA). If one is ever needed: add its id to `app_secret_ids`, apply, then `gcloud secrets versions add <ID> --data-file=-`.
 7. Prod: copy `terraform/dev` to `terraform/prod` with bucket `terraform-state-rafael-prod`, branch `^main$`, `cloudbuild_approval_required = true`, `cloud_run_service_name = "rafael"`, the prod extension id.
 8. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
 

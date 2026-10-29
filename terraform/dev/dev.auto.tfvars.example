@@ -27,9 +27,8 @@ gcloud_service = [
   "cloudbuild.googleapis.com",
   "artifactregistry.googleapis.com",
   "secretmanager.googleapis.com",
-  "aiplatform.googleapis.com", # Gemini via Vertex (D20)
+  "aiplatform.googleapis.com", # Gemini via Vertex: LLM + STT (D20, D22)
   "drive.googleapis.com",      # server reads Drive with the user's token
-  "speech.googleapis.com",     # Speech-to-Text v2, used if BE-79 picks Chirp 3
 ]
 
 #---------------------------------------------------------------------------------------------------------------------#
@@ -46,16 +45,13 @@ cloudbuild_sa_role = [
 backend_sa_role = [
   "roles/aiplatform.user",
   "roles/secretmanager.secretAccessor",
-  "roles/speech.client", # Chirp 3 STT (Google, same SA, no key)
 ]
 
 #---------------------------------------------------------------------------------------------------------------------#
 # Secret Manager
 #---------------------------------------------------------------------------------------------------------------------#
 
-app_secret_ids = [
-  # empty: all Google (Gemini via Vertex + Chirp 3 STT) uses the backend SA, no keys
-]
+app_secret_ids = [] # D22: all Gemini via Vertex uses the backend SA, no keys
 
 #---------------------------------------------------------------------------------------------------------------------#
 # Cloud Build

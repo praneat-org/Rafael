@@ -9,7 +9,7 @@ substitutions:
   _MIN: '1' # PROPOSAL Q2 (not decided): min = max = 1 for sprint 1, in-memory sessions
   _MAX: '1' # PROPOSAL Q2: >1 breaks resume (session affinity is best effort)
   _ALLOWED_EXTENSION_IDS: '' # chrome-extension ids (not secret), comma separated, set on the trigger
-  _SECRETS: '' # ENV=SecretName:version, comma separated (e.g. DEEPGRAM_API_KEY=DEEPGRAM_API_KEY:latest if BE-79 picks Deepgram)
+  _SECRETS: '' # ENV=SecretName:version, comma separated; empty = no app secrets (D22)
   _RUNTIME_SA: '' # runtime service account email from BE-71 (set on the trigger)
   _OAUTH_CLIENT_ID: '' # Chrome Extension OAuth client id (not secret); empty = server denies every hello
   _VERTEX_LOCATION: asia-southeast1 # GOOGLE_CLOUD_LOCATION for Gemini on Vertex (D20)
@@ -29,7 +29,7 @@ steps:
     args:
       - -c
       - |
-        # optional flags: empty _SECRETS clears secrets (Chirp 3), empty _RUNTIME_SA keeps the service's current identity
+        # optional flags: empty _SECRETS clears secrets (D22: none needed), empty _RUNTIME_SA keeps the service's current identity
         extra=()
         if [ -n '${_SECRETS}' ]; then extra+=(--set-secrets='${_SECRETS}'); else extra+=(--clear-secrets); fi
         if [ -n '${_RUNTIME_SA}' ]; then extra+=(--service-account='${_RUNTIME_SA}'); fi

@@ -16,7 +16,7 @@ resource "google_secret_manager_secret" "secret_manager_tfvars" {
   depends_on = [google_project_service.project_service]
 }
 
-## App secrets mounted into Cloud Run (e.g. DEEPGRAM_API_KEY if BE-79 picks Deepgram). Values are added by hand, never in tfvars ##
+## App secrets mounted into Cloud Run (none today, D22). Values are added by hand, never in tfvars ##
 resource "google_secret_manager_secret" "app_secret" {
   for_each = toset(var.app_secret_ids)
 
