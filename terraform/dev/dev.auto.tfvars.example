@@ -46,7 +46,7 @@ cloudbuild_sa_role = [
 backend_sa_role = [
   "roles/aiplatform.user",
   "roles/secretmanager.secretAccessor",
-  # "roles/speech.client", # add if BE-79 picks Chirp 3
+  "roles/speech.client", # Chirp 3 STT (Google, same SA, no key)
 ]
 
 #---------------------------------------------------------------------------------------------------------------------#
@@ -54,7 +54,7 @@ backend_sa_role = [
 #---------------------------------------------------------------------------------------------------------------------#
 
 app_secret_ids = [
-  # "DEEPGRAM_API_KEY", # add if BE-79 picks Deepgram, then: gcloud secrets versions add DEEPGRAM_API_KEY --data-file=-
+  # empty: all Google (Gemini via Vertex + Chirp 3 STT) uses the backend SA, no keys
 ]
 
 #---------------------------------------------------------------------------------------------------------------------#
