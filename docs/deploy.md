@@ -4,17 +4,32 @@ Config only: nothing here has run against GCP yet. Files: `apps/server/Dockerfil
 
 ## What BE-71 must create (per env: dev, prod)
 
-1. GCP project (dev, prod), region `asia-southeast1`, with these APIs enabled: Cloud Run, Cloud Build, Artifact Registry, Secret Manager, Speech-to-Text v2 (`speech.googleapis.com`), Drive API (`drive.googleapis.com`), Vertex AI (`aiplatform.googleapis.com`, Gemini per D20; the Vertex AI User role does nothing without it).
-2. Artifact Registry Docker repo `rafael` in `asia-southeast1` (or change `_REPO`). The image is `rafael-server`, full path `asia-southeast1-docker.pkg.dev/<project>/rafael/rafael-server:<sha>`.
-3. Secrets in Secret Manager (create the secret and add a version), names must match `_SECRETS`:
-   - `DEEPGRAM_API_KEY`: only if BE-79 picks Deepgram. Chirp 3 uses the service account, no key; then set `_SECRETS=''` on the trigger (the deploy step then passes `--clear-secrets`).
-   - No `ANTHROPIC_API_KEY` (BE-71 lists it, D20 replaced it with Vertex AI).
-4. Cloud Build service account roles: Cloud Run Admin, Service Account User (on the Cloud Run runtime SA), Artifact Registry Writer, Logs Writer (`roles/logging.logWriter`, needed for `CLOUD_LOGGING_ONLY`). Runtime SA: Secret Manager Secret Accessor on the secrets above, Vertex AI User, Speech client role if Chirp 3. No Storage roles (D11).
-5. Trigger dev: GitHub repo praneat-org/Rafael, push to `^develop$`, config `cloudbuild.deploy.yaml`, substitutions `_ALLOWED_EXTENSION_IDS=<dev extension id>`, `_RUNTIME_SA=<runtime SA email>`.
-6. Trigger prod: push to `^main$`, same config, **require approval**, substitutions `_SERVICE=rafael`, `_ALLOWED_EXTENSION_IDS=<prod id>`, `_RUNTIME_SA=<runtime SA email>`.
-7. OAuth consent screen: **Internal** (workspace praneat.com). Scopes exactly `openid email profile` + `https://www.googleapis.com/auth/drive.readonly` (D13), nothing else.
-8. OAuth client, type **Chrome Extension**, with the fixed extension ID derived from the `key` in the extension manifest (FE-34, or generate the key first).
-9. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
+Terraform in `terraform/` (team convention: `module/app` + one folder per env) creates: enabled APIs, service accounts
+(`rafael-<env>-cloudbuild`, `rafael-<env>-backend`) and their roles, Artifact Registry repo `rafael`, Secret Manager
+secrets (ids only, no values), the GitHub repo link and the Cloud Build trigger with all substitutions. Cloud Run itself
+stays owned by `cloudbuild.deploy.yaml`. Roles: Cloud Build SA = Cloud Run Admin, Artifact Registry Writer, Logs Writer,
+Service Account User on the backend SA only; backend SA = Vertex AI User, Secret Accessor (+ Speech client if Chirp 3).
+No Storage roles (D11).
+
+By hand, in this order (dev project `rafael-512903`):
+
+1. State bucket: `gcloud storage buckets create gs://terraform-state-rafael-dev --project=rafael-512903 --location=asia-southeast1 --uniform-bucket-level-access`
+2. Enable the Cloud Build API (`gcloud services enable cloudbuild.googleapis.com secretmanager.googleapis.com --project=rafael-512903`), then Cloud Build > Repositories > 2nd gen > **Create host connection**: GitHub, region `asia-southeast1`, name `rafael-dev-github-connection`, install the Cloud Build GitHub App on `praneat-org/Rafael` (needs a GitHub org admin).
+3. OAuth consent screen: **Internal** (workspace praneat.com). Scopes exactly `openid email profile` + `https://www.googleapis.com/auth/drive.readonly` (D13), nothing else.
+4. OAuth client, type **Chrome Extension**, item ID `cpilkkgdkpjgjdfbicnnjkncjclnfiff` (from the dev `key` in `apps/extension/wxt.config.ts`). Put the client id in `dev.auto.tfvars` (`oauth_client_id`) and in `apps/extension/.env` (`WXT_OAUTH_CLIENT_ID`).
+5. Apply:
+
+       cd terraform/dev
+       cp dev.auto.tfvars.example dev.auto.tfvars   # fill oauth_client_id
+       gcloud auth application-default login
+       terraform init && terraform apply
+       gcloud secrets versions add rafael-dev-infra-tfvars --data-file=dev.auto.tfvars --project=rafael-512903
+
+6. If BE-79 picks Deepgram: add `DEEPGRAM_API_KEY` to `app_secret_ids`, apply, then `gcloud secrets versions add DEEPGRAM_API_KEY --data-file=-`. Chirp 3: uncomment `roles/speech.client` instead.
+7. Prod: copy `terraform/dev` to `terraform/prod` with bucket `terraform-state-rafael-prod`, branch `^main$`, `cloudbuild_approval_required = true`, `cloud_run_service_name = "rafael"`, the prod extension id.
+8. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
+
+If the org policy `iam.allowedPolicyMemberDomains` blocks `allUsers`, `--allow-unauthenticated` fails on deploy: ask the org admin for an exception on this project.
 
 ## BE-71: report back when done (comment on BE-71, no secrets)
 
@@ -29,7 +44,7 @@ Config only: nothing here has run against GCP yet. Files: `apps/server/Dockerfil
 
 - `--timeout=3600`, `--session-affinity`, `/api/health` startup + liveness probe (D18, no token).
 - `_MIN=1 _MAX=1`: **proposal for Q2, not decided.** Override on the trigger if Q2 closes differently.
-- Env var is `ALLOWED_EXTENSION_IDS` (per the BE-88 card; read by `apps/server/src/index.ts`).
+- Env vars set on deploy: `ALLOWED_EXTENSION_IDS`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `DETECTOR_MODEL`, `ANSWERER_MODEL` (trigger substitutions from Terraform).
 - `--allow-unauthenticated` is required so the extension can reach `/ws`; auth happens in the WS `hello`. Until BE-87 installs the token verifier, the server denies every `hello` on Cloud Run, so only `/api/health` is testable; test WS after BE-87.
 
 ## Check on first real deploy

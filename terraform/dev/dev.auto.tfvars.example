@@ -1,0 +1,79 @@
+## cp dev.auto.tfvars.example dev.auto.tfvars (gitignored). No secret goes in here: secret values are added in Secret Manager by hand ##
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Common
+#---------------------------------------------------------------------------------------------------------------------#
+
+project_name = "rafael"
+environment  = "dev"
+
+#---------------------------------------------------------------------------------------------------------------------#
+# GCP Project
+#---------------------------------------------------------------------------------------------------------------------#
+
+project_id = "rafael-512903"
+region     = "asia-southeast1"
+
+#---------------------------------------------------------------------------------------------------------------------#
+# GCP API Services
+#---------------------------------------------------------------------------------------------------------------------#
+
+gcloud_service = [
+  "cloudresourcemanager.googleapis.com",
+  "serviceusage.googleapis.com",
+  "iam.googleapis.com",
+  "iamcredentials.googleapis.com",
+  "run.googleapis.com",
+  "cloudbuild.googleapis.com",
+  "artifactregistry.googleapis.com",
+  "secretmanager.googleapis.com",
+  "aiplatform.googleapis.com", # Gemini via Vertex (D20)
+  "drive.googleapis.com",      # server reads Drive with the user's token
+  "speech.googleapis.com",     # Speech-to-Text v2, used if BE-79 picks Chirp 3
+]
+
+#---------------------------------------------------------------------------------------------------------------------#
+# GCP IAM
+#---------------------------------------------------------------------------------------------------------------------#
+
+cloudbuild_sa_role = [
+  "roles/run.admin",
+  "roles/artifactregistry.writer",
+  "roles/logging.logWriter",
+]
+
+## No Storage roles (D11) ##
+backend_sa_role = [
+  "roles/aiplatform.user",
+  "roles/secretmanager.secretAccessor",
+  # "roles/speech.client", # add if BE-79 picks Chirp 3
+]
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Secret Manager
+#---------------------------------------------------------------------------------------------------------------------#
+
+app_secret_ids = [
+  # "DEEPGRAM_API_KEY", # add if BE-79 picks Deepgram, then: gcloud secrets versions add DEEPGRAM_API_KEY --data-file=-
+]
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Cloud Build
+#---------------------------------------------------------------------------------------------------------------------#
+
+github_connection_name         = "rafael-dev-github-connection"
+cloudbuild_trigger_branch_name = "^develop$"
+cloudbuild_approval_required   = false
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Cloud Run
+#---------------------------------------------------------------------------------------------------------------------#
+
+cloud_run_service_name = "rafael-dev"
+min_instance_count     = 1 # Q2 proposal, not decided
+max_instance_count     = 1 # >1 breaks resume (in-memory sessions)
+allowed_extension_ids  = ["cpilkkgdkpjgjdfbicnnjkncjclnfiff"] # from the dev key in apps/extension/wxt.config.ts
+oauth_client_id        = "<Chrome Extension OAuth client id>.apps.googleusercontent.com"
+vertex_location        = "asia-southeast1" # docs/llm-provider.md
+detector_model         = "gemini-2.5-flash-lite"
+answerer_model         = "gemini-2.5-flash"
