@@ -4,6 +4,7 @@ import { createGoogleVerifier } from './auth/google.js';
 import { denyAll, devFake, type TokenVerifier } from './auth/verifier.js';
 import { log } from './log.js';
 import { createDriveProvider } from './source/drive.js';
+import { createGeminiStt } from './stt/gemini.js';
 
 // fail-closed: dev conveniences only when explicitly NODE_ENV=development and not on Cloud Run
 const isDev = process.env.NODE_ENV === 'development' && !process.env.K_SERVICE;
@@ -24,6 +25,9 @@ const verifier: TokenVerifier =
         })
       : denyAll;
 
+// BE-89: live STT only when STT_MODEL is set (Vertex, location STT_LOCATION default global); else no stt
+const sttProvider = createGeminiStt(process.env);
+
 const server = createApp({
   verifier,
   allowedOrigins: (process.env.ALLOWED_EXTENSION_IDS ?? '')
@@ -31,6 +35,7 @@ const server = createApp({
     .filter(Boolean)
     .map((id) => `chrome-extension://${id.trim()}`),
   allowLocalhost: isDev,
+  stt: sttProvider && { provider: sttProvider },
   pack: { provider: (accessToken) => createDriveProvider({ accessToken }) },
 }).listen(Number(process.env.PORT ?? 8080), () => {
   const { port } = server.address() as AddressInfo;

@@ -41,6 +41,8 @@ resource "google_cloudbuild_trigger" "cloudbuild_branch_trigger" {
     _ALLOWED_EXTENSION_IDS = join(",", var.allowed_extension_ids)
     _OAUTH_CLIENT_ID       = var.oauth_client_id
     _VERTEX_LOCATION       = var.vertex_location
+    _STT_MODEL             = var.stt_model
+    _STT_LOCATION          = var.stt_location
     _DETECTOR_MODEL        = var.detector_model
     _ANSWERER_MODEL        = var.answerer_model
     _ALLOWED_EMAILS        = join(",", var.allowed_emails)
