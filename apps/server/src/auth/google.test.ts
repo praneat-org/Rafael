@@ -30,6 +30,19 @@ test('wrong domain (gmail / lookalike) -> null', async () => {
   }
 });
 
+test('allowedEmails lets an exact outside email in, nothing else', async () => {
+  const f = (email: string) => async () => json({ ...good, email });
+  const v = (email: string) =>
+    createGoogleVerifier({
+      clientId: CLIENT,
+      allowedEmails: [' Intern@Gmail.com '],
+      fetch: vi.fn(f(email)) as unknown as typeof fetch,
+    })('t');
+  expect(await v('intern@gmail.com')).toEqual({ email: 'intern@gmail.com' });
+  expect(await v('other@gmail.com')).toBeNull();
+  expect(await v('alice@praneat.com')).toEqual({ email: 'alice@praneat.com' });
+});
+
 test('email not verified -> null', async () => {
   for (const v of ['false', false, undefined]) {
     expect(await setup(() => json({ ...good, email_verified: v })).verify('t')).toBeNull();

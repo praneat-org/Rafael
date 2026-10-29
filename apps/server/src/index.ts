@@ -17,7 +17,11 @@ const verifier: TokenVerifier =
   process.env.DEV_FAKE_AUTH === '1'
     ? devFake
     : clientId
-      ? createGoogleVerifier({ clientId })
+      ? createGoogleVerifier({
+          clientId,
+          // ALLOWED_EMAILS: dev-only allowlist outside praneat.com (D13 exception), never set on prod
+          allowedEmails: (process.env.ALLOWED_EMAILS ?? '').split(',').filter(Boolean),
+        })
       : denyAll;
 
 const server = createApp({

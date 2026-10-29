@@ -55,4 +55,5 @@ module "app" {
   vertex_location        = var.vertex_location
   detector_model         = var.detector_model
   answerer_model         = var.answerer_model
+  allowed_emails         = var.allowed_emails
 }

@@ -15,6 +15,7 @@ substitutions:
   _VERTEX_LOCATION: asia-southeast1 # GOOGLE_CLOUD_LOCATION for Gemini on Vertex (D20)
   _DETECTOR_MODEL: '' # Gemini model ids (D20), set on the trigger
   _ANSWERER_MODEL: ''
+  _ALLOWED_EMAILS: '' # dev only: exact emails allowed outside praneat.com (D13 exception), comma separated; empty on prod
 
 steps:
   - id: build
@@ -42,10 +43,11 @@ steps:
           --min-instances=${_MIN} \
           --max-instances=${_MAX} \
           --allow-unauthenticated \
-          --set-env-vars='^@^ALLOWED_EXTENSION_IDS=${_ALLOWED_EXTENSION_IDS}@GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID}@GOOGLE_GENAI_USE_VERTEXAI=true@GOOGLE_CLOUD_PROJECT=$PROJECT_ID@GOOGLE_CLOUD_LOCATION=${_VERTEX_LOCATION}@DETECTOR_MODEL=${_DETECTOR_MODEL}@ANSWERER_MODEL=${_ANSWERER_MODEL}' \
+          --set-env-vars='^|^ALLOWED_EXTENSION_IDS=${_ALLOWED_EXTENSION_IDS}|GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID}|GOOGLE_GENAI_USE_VERTEXAI=true|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=${_VERTEX_LOCATION}|DETECTOR_MODEL=${_DETECTOR_MODEL}|ANSWERER_MODEL=${_ANSWERER_MODEL}|ALLOWED_EMAILS=${_ALLOWED_EMAILS}' \
           --startup-probe=httpGet.path=/api/health,httpGet.port=8080 \
           --liveness-probe=httpGet.path=/api/health,httpGet.port=8080 \
           "$${extra[@]}"
+        # --set-env-vars delimiter is | because emails contain @
         # --timeout=3600: WS is cut at 60 min, client reconnects + resumes
         # --allow-unauthenticated: auth is the Google token in WS hello (D13/D19, needs BE-87 verifier; until then /ws denies every hello), /api/health is open (D18)
 

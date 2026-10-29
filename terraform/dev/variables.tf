@@ -124,6 +124,12 @@ variable "vertex_location" {
   type        = string
 }
 
+variable "allowed_emails" {
+  description = "Dev only: exact emails allowed outside praneat.com (D13 exception, ALLOWED_EMAILS); keep empty on prod"
+  type        = list(string)
+  default     = []
+}
+
 variable "detector_model" {
   description = "Gemini model id for the Detector (DETECTOR_MODEL)"
   type        = string
