@@ -7,6 +7,8 @@ export type GoogleVerifierOptions = {
   fetch?: typeof fetch; // injectable for tests
   now?: () => number;
   domain?: string;
+  /** exact emails allowed outside the domain (dev-only exception to D13, e.g. intern without praneat.com) */
+  allowedEmails?: string[];
   timeoutMs?: number;
 };
 
@@ -22,6 +24,7 @@ export function createGoogleVerifier(o: GoogleVerifierOptions): TokenVerifier {
   const doFetch = o.fetch ?? fetch;
   const now = o.now ?? Date.now;
   const suffix = `@${o.domain ?? 'praneat.com'}`;
+  const allowed = new Set((o.allowedEmails ?? []).map((e) => e.trim().toLowerCase()));
   const cache = new Map<string, { email: string; exp: number }>();
 
   return async (token) => {
@@ -51,7 +54,7 @@ export function createGoogleVerifier(o: GoogleVerifierOptions): TokenVerifier {
       info.aud !== o.clientId || // aud only: azp may name our client while aud is another resource
       // tokeninfo returns email_verified as the string "true"
       !(info.email_verified === true || info.email_verified === 'true') ||
-      !email.endsWith(suffix) ||
+      !(email.endsWith(suffix) || allowed.has(email)) ||
       !(ttl > 0)
     )
       return null;
