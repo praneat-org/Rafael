@@ -8,7 +8,7 @@ terraform {
     }
   }
 
-  ## Create once before init: gcloud storage buckets create gs://terraform-state-rafael-dev --location=asia-southeast1 --uniform-bucket-level-access ##
+  ## Create once before init: gcloud storage buckets create gs://terraform-state-rafael-dev --location=asia-southeast1 --uniform-bucket-level-access, then: gcloud storage buckets update gs://terraform-state-rafael-dev --versioning ##
   backend "gcs" {
     bucket = "terraform-state-rafael-dev"
     prefix = "infra"
