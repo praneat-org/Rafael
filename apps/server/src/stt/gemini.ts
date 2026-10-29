@@ -41,6 +41,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
       let session: LiveSessionLike | undefined;
       let queue: Int16Array[] | null = [];
       let interim = ''; // latest partial of the open segment; flushed as final on close if no final came
+      let pushed = false; // audio sent since the last final: a final may still be in flight even with no partial yet
       let closing = false;
       let dead = false;
       let closeP: Promise<void> | undefined;
@@ -90,6 +91,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
         const speaker = c?.inputTranscription?.speakerLabel;
         if (c?.inputTranscription?.text) {
           interim = '';
+          pushed = false;
           hh.onFinal(c.inputTranscription.text, speaker);
           gotFinal?.();
         } else if (c?.interimInputTranscription?.text) {
@@ -101,6 +103,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
       return {
         push(pcm) {
           if (dead || closing) return;
+          pushed = true;
           if (session) return send(session, pcm);
           queue?.push(pcm);
           if (queue && queue.length > maxQueued) queue.shift();
@@ -114,14 +117,16 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
       async function doClose() {
         closing = true; // from here our own socket close is not an error
         await ready;
-        if (session && !dead && interim) {
-          const waitFinal = new Promise<void>((r) => {
-            gotFinal = r;
-            setTimeout(r, flushMs).unref();
-          });
+        if (session && !dead) {
+          // ponytail: no partial yet but audio pushed -> wait <= 500 ms (rollover latency ceiling); partial open -> flushMs; idle -> no wait
+          const waitMs = interim ? flushMs : pushed ? Math.min(flushMs, 500) : 0;
           try {
             session.sendRealtimeInput({ audioStreamEnd: true });
-            await waitFinal;
+            if (waitMs)
+              await new Promise<void>((r) => {
+                gotFinal = r;
+                setTimeout(r, waitMs).unref();
+              });
           } catch {
             // socket already gone: fall through to the interim flush
           }

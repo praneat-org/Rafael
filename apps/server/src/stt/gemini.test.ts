@@ -66,6 +66,29 @@ describe('gemini stt', () => {
     expect(t.ev.finals).toEqual(['ab']);
   });
 
+  it('close(): audio pushed but no partial yet -> still sends audioStreamEnd and waits for the final', async () => {
+    const t = setup();
+    t.stt.push(frame());
+    await tick();
+    const p = t.stt.close();
+    await tick();
+    expect(t.sent.at(-1)).toEqual({ audioStreamEnd: true });
+    t.msg({ inputTranscription: { text: 'tail' } });
+    await p;
+    expect(t.ev.finals).toEqual(['tail']);
+  });
+
+  it('close(): no audio since last final -> no wait', async () => {
+    const t = setup();
+    t.stt.push(frame());
+    await tick();
+    t.msg({ inputTranscription: { text: 'x' } });
+    const t0 = Date.now();
+    await t.stt.close();
+    expect(Date.now() - t0).toBeLessThan(15); // flushMs is 20 in setup
+    expect(t.ev.finals).toEqual(['x']);
+  });
+
   it('server closing the socket = onError once; own close() is not an error', async () => {
     const t = setup();
     await tick();
