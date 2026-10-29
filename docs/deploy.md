@@ -15,7 +15,7 @@ By hand, in this order (dev project `rafael-512903`):
 
 1. State bucket: `gcloud storage buckets create gs://terraform-state-rafael-dev --project=rafael-512903 --location=asia-southeast1 --uniform-bucket-level-access`, then `gcloud storage buckets update gs://terraform-state-rafael-dev --versioning` (recover an overwritten state)
 2. Enable the Cloud Build API (`gcloud services enable cloudbuild.googleapis.com secretmanager.googleapis.com --project=rafael-512903`), then Cloud Build > Repositories > 2nd gen > **Create host connection**: GitHub, region `asia-southeast1`, name `rafael-dev-github-connection`, install the Cloud Build GitHub App on `praneat-org/Rafael` (needs a GitHub org admin).
-3. OAuth consent screen: **Internal** (workspace praneat.com). Scopes exactly `openid email profile` + `https://www.googleapis.com/auth/drive.readonly` (D13), nothing else.
+3. OAuth consent screen (Google Auth Platform). prod: **Internal** (workspace praneat.com). dev: **External + Testing**, every tester (Gmail or praneat.com) added under Audience > Test users, because a tester has no praneat.com account; that Gmail also goes in `allowed_emails` (tfvars, ALLOWED_EMAILS, D13 dev-only exception). Scopes exactly `openid email profile` + `https://www.googleapis.com/auth/drive.readonly` (D13), nothing else.
 4. OAuth client, type **Chrome Extension**, item ID `cpilkkgdkpjgjdfbicnnjkncjclnfiff` (from the dev `key` in `apps/extension/wxt.config.ts`). Put the client id in `dev.auto.tfvars` (`oauth_client_id`) and in `apps/extension/.env` (`WXT_OAUTH_CLIENT_ID`).
 5. Apply:
 

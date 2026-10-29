@@ -37,7 +37,8 @@ reviews:
         Logs must not contain text / bullets / question / pack / pcm / token fields — treat any such log line as Major.
         Secrets come from env (Secret Manager) only. Every incoming WebSocket message goes through
         parseClientMessage from packages/protocol. WebSocket Origin must be checked against the extension allow-list,
-        and every /ws and /api/* call must verify the Google access token (aud + email_verified + @praneat.com)
+        and every /ws and /api/* call must verify the Google access token (aud + email_verified + @praneat.com,
+        or an exact email in ALLOWED_EMAILS: dev-only D13 exception for an intern without praneat.com, empty on prod)
         — except GET /api/health, which stays unauthenticated and returns only {"ok":true} (Decision log D18).
         Error responses use protocol error codes, never stack traces or payloads.
     - path: "apps/server/src/brain/**"
