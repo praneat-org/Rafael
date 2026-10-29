@@ -6,4 +6,3 @@
 .terraform.lock.hcl
 *.tfvars
 *.tfplan
-!*.tfvars.example

@@ -20,7 +20,7 @@ By hand, in this order (dev project `rafael-512903`):
 5. Apply:
 
        cd terraform/dev
-       cp dev.auto.tfvars.example dev.auto.tfvars   # fill oauth_client_id
+       gcloud secrets versions access latest --secret=rafael-dev-infra-tfvars --project=rafael-512903 > dev.auto.tfvars   # after the first apply; first time: write it by hand
        gcloud auth application-default login
        terraform init && terraform apply
        gcloud secrets versions add rafael-dev-infra-tfvars --data-file=dev.auto.tfvars --project=rafael-512903
