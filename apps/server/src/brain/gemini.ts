@@ -1,4 +1,4 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, type ThinkingLevel } from '@google/genai';
 import type { LlmClient, LlmRequest, LlmResponse } from './llm.js';
 
 // D20: Gemini via Vertex AI OR Google AI Studio, picked by env. D11: never log prompt / response text
@@ -73,6 +73,8 @@ export class GeminiClient implements LlmClient {
       contents: [{ role: 'user', parts: [{ text: r.user }] }],
       config: {
         maxOutputTokens: r.maxTokens,
+        // Gemini 3.x thinks by default: ~2x latency and thinking tokens eat maxOutputTokens (empty text)
+        thinkingConfig: { thinkingLevel: 'MINIMAL' as ThinkingLevel },
         abortSignal: r.signal,
         ...(r.cache ? { cachedContent: r.cache } : { systemInstruction: r.system }),
       },

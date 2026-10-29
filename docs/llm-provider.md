@@ -25,7 +25,7 @@ train on customer data by default.
 ## Real-provider check
 `pnpm --filter server smoke:llm` (needs the env above + `ANSWERER_MODEL`; skips otherwise). Prints countTokens, cache create ms,
 first-token ms and `cacheReadTokens` for 2 questions, then deletes the cache. Uses a synthetic pack only.
-Still to verify: context caching in `asia-southeast1`, `cacheReadTokens > 0` from question 2.
+Verified 2026-10-29 (BE-114): `asia-southeast1` serves only `gemini-3.5-flash` for this project (2.5 = 404); context caching works there, `cacheReadTokens > 0` on question 2. Generate calls use `thinkingLevel: MINIMAL` (~0.8 s vs ~1.9 s).
 
 ## STT (BE-89): Gemini Live transcription via Vertex
 `apps/server/src/stt/gemini.ts` implements `SttProvider` on `ai.live.connect` (`inputAudioTranscription`, `responseModalities: TEXT`).

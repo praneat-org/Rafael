@@ -141,18 +141,18 @@ describe('detector', () => {
     expect(await s.d.onFinalSegment({ text: 'c' })).toEqual({ kind: 'none', reason: 'duplicate' });
   });
 
-  it('warns (no text) when a segment exceeds the 600 ms budget', async () => {
+  it('warns (no text) when a segment exceeds the 1200 ms budget', async () => {
     const f = fake([no]);
     let p = 0;
     const warns: unknown[] = [];
     const d = createDetector({
       llm: f.llm,
       config,
-      perf: () => (p += 700),
+      perf: () => (p += 1300),
       warn: (e) => warns.push(e),
     });
     await d.onFinalSegment({ text: 'ข้อความลับ' });
-    expect(warns).toEqual([{ stage: 'detector', ms: 700, budgetMs: 600 }]);
+    expect(warns).toEqual([{ stage: 'detector', ms: 1300, budgetMs: 1200 }]);
   });
 
   it('log never contains transcript or question text (D11)', async () => {

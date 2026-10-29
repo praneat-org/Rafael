@@ -47,8 +47,9 @@ export function loadBrainConfig(env: Record<string, string | undefined>): BrainC
     detector: {
       windowMs: 30_000,
       dedupeMs: 60_000,
-      budgetMs: 600,
-      timeoutMs: 400,
+      // measured gemini-3.5-flash, asia-southeast1, thinking MINIMAL: ~0.8 s from TH (2026-10-29)
+      budgetMs: 1200,
+      timeoutMs: 1500,
       maxTokens: 200,
       dedupeSimilarity: 0.85,
     },
