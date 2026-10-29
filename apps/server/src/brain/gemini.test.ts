@@ -114,6 +114,14 @@ describe('GeminiClient', () => {
     });
   });
 
+  it('generate calls ask for MINIMAL thinking (latency, thinking must not eat maxOutputTokens)', async () => {
+    const { ai, c } = fake();
+    await c.complete(req());
+    await c.stream(req(), () => {});
+    for (const f of [ai.models.generateContent, ai.models.generateContentStream])
+      expect(f.mock.calls[0]![0].config.thinkingConfig).toEqual({ thinkingLevel: 'MINIMAL' });
+  });
+
   it('abortSignal is forwarded into every SDK config', async () => {
     const { ai, c } = fake();
     const signal = new AbortController().signal;
