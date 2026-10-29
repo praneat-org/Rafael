@@ -8,6 +8,8 @@ resource "google_cloudbuildv2_repository" "cloudbuildv2_repository" {
   name              = "${var.project_name}-${var.environment}-repo"
   parent_connection = var.github_connection_name
   remote_uri        = "https://github.com/${var.github_repository}.git"
+
+  depends_on = [google_project_service.project_service]
 }
 
 ## https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloudbuild_trigger ##
