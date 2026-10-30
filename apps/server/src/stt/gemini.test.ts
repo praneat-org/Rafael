@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createGeminiSttProvider, type LiveConnect } from './gemini.js';
 
 function setup(o: { connectFails?: boolean } = {}) {
@@ -108,5 +108,62 @@ describe('gemini stt', () => {
     await tick();
     expect(t.ev.errors).toBe(1);
     await t.stt.close();
+  });
+});
+
+describe('gemini stt watchdog (BE-116)', () => {
+  afterEach(() => vi.useRealTimers());
+  const speech = () => new Int16Array(1600).fill(5000);
+  async function wd(ms: number | undefined) {
+    vi.useFakeTimers();
+    let cb: any;
+    const errors = { n: 0 };
+    const stt = createGeminiSttProvider({
+      model: 'm',
+      watchdogMs: ms,
+      connect: async (p) => {
+        cb = p.callbacks;
+        return { sendRealtimeInput: () => {}, close: () => {} };
+      },
+    }).start([], { onPartial() {}, onFinal() {}, onError: () => errors.n++ });
+    await vi.advanceTimersByTimeAsync(0);
+    return { stt, errors, msg: (c: any) => cb.onmessage({ serverContent: c }) };
+  }
+
+  it('speech with no partial/final -> onError after N ms, once', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(999);
+    expect(t.errors.n).toBe(0);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(t.errors.n).toBe(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('a partial or final disarms it; silence frames never arm it', async () => {
+    const t = await wd(1000);
+    t.stt.push(new Int16Array(1600));
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(500);
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(0);
+    const s = await wd(1000);
+    s.stt.push(new Int16Array(1600));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(s.errors.n).toBe(0);
+  });
+
+  it('close() disarms; watchdogMs 0 is off', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    void t.stt.close();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(0);
+    const off = await wd(0);
+    off.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(off.errors.n).toBe(0);
   });
 });

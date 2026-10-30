@@ -49,6 +49,11 @@ skills:
    - ยังเปิดอยู่ → ข้าม (รอคน merge)
 2. **ยังไม่ติด label** — ดู review ของ CodeRabbit บน commit ล่าสุดของ PR (`gh pr view --json reviews,comments`, `gh api repos/{owner}/{repo}/pulls/{n}/comments`, `gh api repos/{owner}/{repo}/pulls/{n}/reviews`)
    - CodeRabbit ยัง review commit ล่าสุดไม่เสร็จ → ข้ามไป tick หน้า · commit status ของ CodeRabbit ที่เป็น "Review paused" = **ยังไม่ได้ review** commit นั้น (ไม่ใช่ผ่าน)
+   - **CodeRabbit ติด limit** (ตอบ "Review limit reached" / rate limit) หรือ review ไม่มาเกิน 1 tick → ใช้ **fallback review** แทน (Sapon ตัดสิน 30 ต.ค.)
+     - วิธีหลัก: เรียก skill `code-review` ด้วย `medium <PR#> --comment` (โพสต์ inline comment ลง PR) · ถ้าเรียก skill ไม่ได้ ให้ review diff เอง (`gh pr diff`) โฟกัสที่ correctness / security / D11 แล้วโพสต์เป็น PR review comment ขึ้นต้น `[Fallback review]`
+     - finding จาก fallback review นับเหมือน finding ของ CodeRabbit ทุกข้อ: Dev ต้องตัดสิน fix / wont-fix / deferred · นับรอบ `[CodeRabbit] รอบ N` ตามเดิม
+     - ใน PR summary หัว "CodeRabbit decisions" ให้ระบุว่า reviewer = fallback (Claude code-review) · decision log ใส่ reviewer ด้วย
+     - review ซ้ำเฉพาะเมื่อมี commit ใหม่หลัง fallback review ครั้งก่อน (ไม่ต้องรันทุก tick)
    - **อ่าน body ของทุก review ทุกรอบ** ไม่ใช่แค่ thread — finding มี 2 แบบ ต้องนับทั้งคู่:
      - inline thread ที่ยังไม่ resolve
      - finding ใน **body ของ review** — หัวข้อ "Outside diff range comments", "Additional comments", "Actionable comments" ที่ชี้บรรทัดนอก diff และ **Security summary** (ไม่มี thread ให้ resolve) · ถือว่าตัดสินแล้วเมื่อมี PR comment ของ Dev ที่อ้าง file:line นั้นพร้อม decision
