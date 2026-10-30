@@ -210,6 +210,15 @@ describe('gemini stt watchdog (BE-116)', () => {
     expect(t.errors.n).toBe(1);
   });
 
+  it('a partial clears the only armed timer (no stacked second timer)', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    t.stt.push(speech());
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(0);
+  });
+
   it('parseWatchdogMs: invalid -> default, 0 stays 0', () => {
     expect(parseWatchdogMs('abc')).toBeUndefined();
     expect(parseWatchdogMs('-5')).toBeUndefined();
