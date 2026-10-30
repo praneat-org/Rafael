@@ -291,6 +291,7 @@ test('a superseded build that fails later sends no pack.status error to the sock
   await new Promise((r) => setTimeout(r, 50));
   expect(t.msgs.slice(before)).toEqual([]); // but the socket hears nothing from A
   expect(t.states()).not.toContain('error');
+  expect(t.msgs.some((m) => m.t === 'error')).toBe(false); // BE-118: no PACK_BUILD_FAILED for a superseded build
   expect(t.states().at(-1)).toBe('ready');
 });
 
@@ -356,6 +357,33 @@ test('BE-110: ask after a non-size build failure -> PACK_NOT_READY (refresh may 
   });
   await vi.waitFor(() => expect(t.states().at(-1)).toBe('error'));
   t.send({ t: 'ask', text: 'ราคาเท่าไหร่' });
+  await vi.waitFor(() => expect(t.msgs.filter((m) => m.t === 'error')).toHaveLength(2));
+  expect(t.msgs.filter((m) => m.t === 'error').at(-1)).toEqual({
+    v: 1,
+    t: 'error',
+    code: 'PACK_NOT_READY',
+  });
+});
+
+test('BE-118: non-size build failure sends error PACK_BUILD_FAILED (code only) on session.start and on HTTP refresh', async () => {
+  const t = await setup(undefined, (d) => {
+    d.state.fail = true;
+  });
   await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
-  expect(t.msgs.find((m) => m.t === 'error')).toEqual({ v: 1, t: 'error', code: 'PACK_NOT_READY' });
+  expect(t.msgs.find((m) => m.t === 'error')).toEqual({
+    v: 1,
+    t: 'error',
+    code: 'PACK_BUILD_FAILED',
+  });
+  const before = t.msgs.length;
+  const r = await t.refresh('tok-1');
+  expect(r.status).toBe(502);
+  expect(await r.json()).toEqual({ code: 'PACK_BUILD_FAILED' });
+  await vi.waitFor(() => expect(t.msgs.length).toBeGreaterThan(before));
+  expect(t.msgs.slice(before).find((m) => m.t === 'error')).toEqual({
+    v: 1,
+    t: 'error',
+    code: 'PACK_BUILD_FAILED',
+  });
+  expect(JSON.stringify(t.msgs)).not.toContain(SECRET);
 });

@@ -96,6 +96,11 @@ describe('server messages', () => {
     );
   });
 
+  test('BE-118: PACK_BUILD_FAILED parses as an error code, no PROTOCOL_VERSION bump', () => {
+    expect(parseServerMessage(j({ v: 1, t: 'error', code: 'PACK_BUILD_FAILED' })).ok).toBe(true);
+    expect(PROTOCOL_VERSION).toBe(1);
+  });
+
   test('BE-110: error.files and pack.status read/total are optional in v1', () => {
     const files = [
       { name: 'big.pdf', tokens: 90000 },
