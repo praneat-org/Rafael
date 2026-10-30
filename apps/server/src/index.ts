@@ -6,6 +6,7 @@ import { loadBrainConfig } from './brain/config.js';
 import { createGeminiClient, packTokenCounter } from './brain/gemini.js';
 import { log } from './log.js';
 import { createDriveProvider } from './source/drive.js';
+import { createMcpProvider } from './source/driveMcp.js';
 import { createGeminiStt } from './stt/gemini.js';
 
 // fail-closed: dev conveniences only when explicitly NODE_ENV=development and not on Cloud Run
@@ -45,7 +46,13 @@ const server = createApp({
   stt: sttProvider && { provider: sttProvider },
   brain,
   pack: {
-    provider: (accessToken) => createDriveProvider({ accessToken }),
+    // BE-92: SOURCE_PROVIDER=mcp|driveApi (default driveApi: MCP is Developer Preview; falls back per call)
+    provider: (accessToken) => {
+      const api = createDriveProvider({ accessToken });
+      return process.env.SOURCE_PROVIDER === 'mcp'
+        ? createMcpProvider({ accessToken, fallback: api })
+        : api;
+    },
     build: { countTokens: packTokenCounter(llm, brain?.config.answererModel) },
   },
 }).listen(Number(process.env.PORT ?? 8080), () => {
