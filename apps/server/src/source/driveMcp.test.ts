@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { createDriveProvider, type SourceProvider } from './drive.js';
 import { createMcpProvider } from './driveMcp.js';
 
@@ -82,6 +82,28 @@ test.each(['down', 'toolError'] as const)(
     expect(await p.readFile(f!)).toEqual({ chunks: [{ locator: 'เอกสาร', text: '# Hello' }] });
   },
 );
+
+test('D11: non-JSON MCP body never leaks into the fallback log', async () => {
+  const SENTINEL = 'SENTINEL_SECRET_BODY';
+  const lines: string[] = [];
+  const spy = vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => {
+    lines.push(a.map(String).join(' '));
+  });
+  try {
+    const base = net().fn;
+    // MCP answers 200 with a non-JSON body: JSON.parse's message echoes the first chars on Node 22
+    const fn = (async (input: string | URL | Request, init?: RequestInit) =>
+      new URL(String(input)).host === 'drivemcp.googleapis.com'
+        ? new Response(`${SENTINEL} <html>`, { headers: { 'content-type': 'application/json' } })
+        : base(input, init)) as typeof fetch;
+    const [f] = await mcp(fn).listFolder('F1');
+    expect(f?.name).toBe('Doc'); // fell back to API
+    expect(lines.some((l) => l.includes('source.mcp.fallback'))).toBe(true);
+    expect(lines.join('\n')).not.toContain('SENTINEL');
+  } finally {
+    spy.mockRestore();
+  }
+});
 
 test('non-Docs mime goes to the API provider without calling MCP', async () => {
   const { fn, mcpCalls } = net();

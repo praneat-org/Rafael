@@ -18,6 +18,9 @@ export interface McpOptions {
   timeoutMs?: number;
 }
 
+// our own errors carry fixed, content-free messages (safe to log)
+class McpErr extends Error {}
+
 type RpcRes = {
   result?: { content?: { type: string; text?: string }[]; isError?: boolean };
   error?: unknown;
@@ -27,7 +30,7 @@ type RpcRes = {
 const parseBody = (ct: string, body: string): RpcRes => {
   if (!ct.includes('text/event-stream')) return JSON.parse(body) as RpcRes;
   const line = body.split('\n').find((l) => l.startsWith('data:'));
-  if (!line) throw new Error('empty sse');
+  if (!line) throw new McpErr('empty sse');
   return JSON.parse(line.slice(5)) as RpcRes;
 };
 
@@ -52,11 +55,11 @@ export function createMcpProvider(opts: McpOptions): SourceProvider {
       },
       body: JSON.stringify({ jsonrpc: '2.0', method, params, ...(notify ? {} : { id: ++id }) }),
     });
-    if (!res.ok) throw new Error(`mcp ${res.status}`); // status only, never the body
+    if (!res.ok) throw new McpErr(`mcp ${res.status}`); // status only, never the body
     sid ??= res.headers.get('mcp-session-id') ?? undefined;
     if (notify) return {};
     const r = parseBody(res.headers.get('content-type') ?? '', await res.text());
-    if (r.error) throw new Error('mcp rpc error');
+    if (r.error) throw new McpErr('mcp rpc error');
     return r;
   }
 
@@ -72,7 +75,7 @@ export function createMcpProvider(opts: McpOptions): SourceProvider {
   async function tool(name: string, args: object): Promise<string> {
     await init();
     const r = (await rpc('tools/call', { name, arguments: args })).result;
-    if (!r || r.isError) throw new Error('mcp tool error');
+    if (!r || r.isError) throw new McpErr('mcp tool error');
     return (r.content ?? []).map((c) => c.text ?? '').join('');
   }
 
@@ -83,7 +86,14 @@ export function createMcpProvider(opts: McpOptions): SourceProvider {
     } catch (e) {
       ready = undefined; // let the next call re-initialize
       sid = undefined;
-      log('source.mcp.fallback', { reason: `${op}: ${e instanceof Error ? e.message : 'error'}` });
+      // D11: only fixed codes; never interpolate foreign e.message (JSON.parse echoes input)
+      const code =
+        e instanceof McpErr
+          ? e.message
+          : (e as Error)?.name === 'TimeoutError'
+            ? 'timeout'
+            : 'error';
+      log('source.mcp.fallback', { reason: `${op}: ${code}` });
       return viaApi();
     }
   }
@@ -101,11 +111,11 @@ export function createMcpProvider(opts: McpOptions): SourceProvider {
             | { files?: Record<string, string>[] }
             | Record<string, string>[];
           const rows = Array.isArray(j) ? j : j.files;
-          if (!rows) throw new Error('mcp bad list');
+          if (!rows) throw new McpErr('mcp bad list');
           return rows.map((x): DriveFile => {
             const fileId = x.id ?? x.fileId;
             const name = x.name ?? x.title;
-            if (!fileId || !name || !x.mimeType) throw new Error('mcp bad list');
+            if (!fileId || !name || !x.mimeType) throw new McpErr('mcp bad list');
             return {
               fileId,
               name,
@@ -127,7 +137,7 @@ export function createMcpProvider(opts: McpOptions): SourceProvider {
             'read',
             async () => {
               const text = await tool('read_file_content', { fileId: file.fileId });
-              if (!text.trim()) throw new Error('mcp empty');
+              if (!text.trim()) throw new McpErr('mcp empty');
               return { chunks: [{ locator: 'เอกสาร', text }] };
             },
             () => fb.readFile(file),
