@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { resolveServerUrl, SERVER_URL } from './config';
+import { serverHostPattern } from './server-url';
 
 test('dev server url is localhost:8080', () => {
   expect(SERVER_URL).toBe('http://localhost:8080');
@@ -18,4 +19,12 @@ test('prod accepts https and local http only; rest is unusable', () => {
     undefined,
   ])
     expect(resolveServerUrl(false, u), String(u)).toBe('');
+});
+
+test('manifest host_permissions pattern covers the server origin', () => {
+  expect(serverHostPattern('http://localhost:8080')).toBe('http://localhost:8080/*');
+  expect(serverHostPattern('https://rafael-dev-x-as.a.run.app/')).toBe(
+    'https://rafael-dev-x-as.a.run.app/*',
+  );
+  expect(serverHostPattern('')).toBe('');
 });
