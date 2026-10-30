@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createGeminiSttProvider, type LiveConnect } from './gemini.js';
+import { createGeminiSttProvider, type LiveConnect, parseWatchdogMs } from './gemini.js';
 
 function setup(o: { connectFails?: boolean } = {}) {
   const sent: any[] = [];
@@ -165,5 +165,65 @@ describe('gemini stt watchdog (BE-116)', () => {
     off.stt.push(speech());
     await vi.advanceTimersByTimeAsync(60000);
     expect(off.errors.n).toBe(0);
+  });
+
+  it('default is 8000 ms', async () => {
+    const t = await wd(undefined);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(7999);
+    expect(t.errors.n).toBe(0);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('peak 1000 does not arm, 1001 arms', async () => {
+    const lo = await wd(1000);
+    lo.stt.push(new Int16Array(1600).fill(1000));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(lo.errors.n).toBe(0);
+    const hi = await wd(1000);
+    hi.stt.push(new Int16Array(1600).fill(1001));
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(hi.errors.n).toBe(1);
+  });
+
+  it('repeated speech does not stack/reset the timer', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(600);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(401); // fires at 1000 from the first push, not 1600
+    expect(t.errors.n).toBe(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('stale timer does not fire after a partial', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(500);
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    t.stt.push(speech()); // re-arms: fires at 1500, not at the stale 1000
+    await vi.advanceTimersByTimeAsync(600);
+    expect(t.errors.n).toBe(0);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('a partial clears the only armed timer (no stacked second timer)', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    t.stt.push(speech());
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(0);
+  });
+
+  it('parseWatchdogMs: invalid -> default, 0 stays 0', () => {
+    expect(parseWatchdogMs('abc')).toBeUndefined();
+    expect(parseWatchdogMs('-5')).toBeUndefined();
+    expect(parseWatchdogMs(undefined)).toBeUndefined();
+    expect(parseWatchdogMs('0')).toBe(0);
+    expect(parseWatchdogMs('3000')).toBe(3000);
   });
 });
