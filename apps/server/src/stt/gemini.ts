@@ -31,11 +31,21 @@ export type GeminiSttOptions = {
   maxQueuedFrames?: number;
   /** end-of-speech silence the server waits before finalising (VAD); unset = model default */
   silenceMs?: number;
+  /** BE-116: speech pushed but no partial/final within this many ms -> onError (rolling reopens). 0 = off */
+  watchdogMs?: number;
+};
+
+// ponytail: peak-amplitude gate (~3% FS) so idle/near-silent mic frames don't arm the watchdog
+const SPEECH_PEAK = 1000;
+const isSpeech = (pcm: Int16Array) => {
+  for (let i = 0; i < pcm.length; i++) if (Math.abs(pcm[i] ?? 0) > SPEECH_PEAK) return true;
+  return false;
 };
 
 export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
   const flushMs = o.flushTimeoutMs ?? 2000;
   const maxQueued = o.maxQueuedFrames ?? 100;
+  const watchMs = o.watchdogMs ?? 8000;
   return {
     start(hints, h): SttStream {
       let session: LiveSessionLike | undefined;
@@ -46,7 +56,13 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
       let dead = false;
       let closeP: Promise<void> | undefined;
       let gotFinal: (() => void) | undefined; // wakes close()
+      let watch: NodeJS.Timeout | undefined;
+      const disarm = () => {
+        clearTimeout(watch);
+        watch = undefined;
+      };
       const fail = () => {
+        disarm();
         if (dead || closing) return;
         dead = true;
         h.onError();
@@ -88,6 +104,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
 
       function onMessage(m: any, hh: SttHandlers) {
         const c = m?.serverContent;
+        if (c?.inputTranscription?.text || c?.interimInputTranscription?.text) disarm();
         const speaker = c?.inputTranscription?.speakerLabel;
         if (c?.inputTranscription?.text) {
           interim = '';
@@ -104,6 +121,10 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
         push(pcm) {
           if (dead || closing) return;
           pushed = true;
+          if (watchMs && !watch && isSpeech(pcm)) {
+            watch = setTimeout(fail, watchMs);
+            watch.unref();
+          }
           if (session) return send(session, pcm);
           queue?.push(pcm);
           if (queue && queue.length > maxQueued) queue.shift();
@@ -115,6 +136,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
       };
 
       async function doClose() {
+        disarm();
         closing = true; // from here our own socket close is not an error
         await ready;
         if (session && !dead) {
@@ -152,6 +174,7 @@ export function createGeminiStt(env: Record<string, string | undefined>): SttPro
   const ai = new GoogleGenAI({ vertexai: true, project, location: env.STT_LOCATION || 'global' });
   return createGeminiSttProvider({
     model,
+    watchdogMs: env.STT_WATCHDOG_MS ? Number(env.STT_WATCHDOG_MS) : undefined,
     silenceMs: Number(env.STT_SILENCE_MS) || 300, // measured: default VAD ~1.4-2.8 s to final, 300 ~1.0 s, 100 ~0.8 s
     connect: ({ model, config, callbacks }) =>
       ai.live.connect({ model, config, callbacks } as any) as Promise<LiveSessionLike>,
