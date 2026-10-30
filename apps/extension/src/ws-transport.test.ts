@@ -281,4 +281,25 @@ describe('rebuild (FE-48)', () => {
     expect(got).toEqual([{ v: 1, t: 'error', code: 'PACK_TOO_LARGE', files: body.files }]);
     vi.unstubAllGlobals();
   });
+
+  test('retry with [] resends the accumulated exclude; 502 / 409 emit nothing and log no body (BE-118)', async () => {
+    const f = vi.fn(async () => new Response('{"code":"PACK_BUILD_FAILED"}', { status: 502 }));
+    vi.stubGlobal('fetch', f);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const t = await live();
+    const got: ServerMessage[] = [];
+    t.onMessage((m) => got.push(m));
+    await t.rebuild(['a']);
+    await t.rebuild([]);
+    const bodies = (f.mock.calls as unknown as [string, { body: string }][]).map((c) =>
+      JSON.parse(c[1].body),
+    );
+    expect(bodies).toEqual([{ exclude: ['a'] }, { exclude: ['a'] }]);
+    f.mockResolvedValueOnce(new Response('{"code":"SUPERSEDED"}', { status: 409 }));
+    await t.rebuild([]);
+    expect(got).toEqual([]);
+    expect(warn.mock.calls.flat().join(' ')).not.toContain('PACK_BUILD_FAILED');
+    warn.mockRestore();
+    vi.unstubAllGlobals();
+  });
 });

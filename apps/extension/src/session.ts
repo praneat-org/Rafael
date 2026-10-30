@@ -25,7 +25,11 @@ export type PackInfo = {
   read?: number;
   total?: number;
 };
-const PACK_ERRORS: SessionState['error'][] = ['PACK_TOO_LARGE', 'PACK_NOT_READY'];
+const PACK_ERRORS: SessionState['error'][] = [
+  'PACK_TOO_LARGE',
+  'PACK_NOT_READY',
+  'PACK_BUILD_FAILED',
+];
 export type PackState = 'loading' | 'ready' | 'error';
 
 export type SessionState = {
@@ -142,12 +146,20 @@ export function reduce(s: SessionState, a: Action): SessionState {
         case 'error':
           // PACK_NOT_READY after a too-large build must not hide the file list (defence in depth)
           if (m.code === 'PACK_NOT_READY' && s.tooLarge) return s;
+          // ...and must not replace the retry prompt after a failed build
+          if (m.code === 'PACK_NOT_READY' && s.error === 'PACK_BUILD_FAILED') return s;
           // resume failed (server restarted): the session is gone, back to Setup with the reason
           if (m.code === 'SESSION_NOT_FOUND') return { ...initialState, error: m.code };
           return {
             ...s,
             error: m.code,
-            tooLarge: m.code === 'PACK_TOO_LARGE' ? (m.files ?? []) : s.tooLarge,
+            // a failed build makes the old over-limit list stale (BE-118)
+            tooLarge:
+              m.code === 'PACK_TOO_LARGE'
+                ? (m.files ?? [])
+                : m.code === 'PACK_BUILD_FAILED'
+                  ? null
+                  : s.tooLarge,
           };
         default:
           return s; // session.ready: resumeToken is kept by WsTransport (FE-35), not in UI state
