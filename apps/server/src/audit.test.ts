@@ -75,18 +75,20 @@ test('real session: start, end, expiry and denied auth are audited, no token in 
     const ws = new WebSocket(url, { origin: 'chrome-extension://x' });
     await new Promise((r) => ws.once('open', r));
     ws.send(JSON.stringify({ v: 1, t: 'hello', accessToken: token }));
+    const closed = new Promise((r) => ws.once('close', r));
     then?.(ws);
-    await new Promise((r) => ws.once('close', r));
+    await closed;
   };
   await open('bad');
   await open('good', (ws) => {
     ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'p' }));
-    setTimeout(() => ws.send(JSON.stringify({ v: 1, t: 'session.end' })), 50);
+    // wait for the server's ack instead of a timer: no dependence on load
+    ws.once('message', () => ws.send(JSON.stringify({ v: 1, t: 'session.end' })));
   });
   // second session: drop the socket, grace (30 ms) expires it
   await open('good', (ws) => {
     ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'ราคา ลูกค้า' }));
-    setTimeout(() => ws.close(), 50);
+    ws.once('message', () => ws.close());
   });
   await vi.waitFor(() => expect(out.join('\n')).toContain('session.expired'));
   const events = out
