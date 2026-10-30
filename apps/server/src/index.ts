@@ -6,6 +6,7 @@ import { loadBrainConfig } from './brain/config.js';
 import { createGeminiClient, packTokenCounter } from './brain/gemini.js';
 import { log } from './log.js';
 import { createDriveProvider } from './source/drive.js';
+import { createGeminiStt } from './stt/gemini.js';
 
 // fail-closed: dev conveniences only when explicitly NODE_ENV=development and not on Cloud Run
 const isDev = process.env.NODE_ENV === 'development' && !process.env.K_SERVICE;
@@ -31,6 +32,9 @@ const llm = createGeminiClient(process.env);
 const brain =
   llm && process.env.DETECTOR_MODEL ? { llm, config: loadBrainConfig(process.env) } : undefined;
 
+// BE-89: live STT only when STT_MODEL is set (Vertex, location STT_LOCATION default global); else no stt
+const sttProvider = createGeminiStt(process.env);
+
 const server = createApp({
   verifier,
   allowedOrigins: (process.env.ALLOWED_EXTENSION_IDS ?? '')
@@ -38,6 +42,7 @@ const server = createApp({
     .filter(Boolean)
     .map((id) => `chrome-extension://${id.trim()}`),
   allowLocalhost: isDev,
+  stt: sttProvider && { provider: sttProvider },
   brain,
   pack: {
     provider: (accessToken) => createDriveProvider({ accessToken }),

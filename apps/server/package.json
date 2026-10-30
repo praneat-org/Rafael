@@ -9,6 +9,8 @@
     "start": "node dist/index.js",
     "typecheck": "tsc -p .",
     "smoke:llm": "tsx scripts/smoke-llm.ts",
+    "gen:stt-audio": "tsx scripts/gen-stt-audio.ts",
+    "smoke:stt": "tsx scripts/smoke-stt.ts",
     "test": "pnpm run build && vitest run"
   },
   "dependencies": {

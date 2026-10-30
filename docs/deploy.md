@@ -44,7 +44,7 @@ If the org policy `iam.allowedPolicyMemberDomains` blocks `allUsers`, `--allow-u
 
 - `--timeout=3600`, `--session-affinity`, `/api/health` startup + liveness probe (D18, no token).
 - `_MIN=1 _MAX=1`: **proposal for Q2, not decided.** Override on the trigger if Q2 closes differently.
-- Env vars set on deploy: `ALLOWED_EXTENSION_IDS`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `DETECTOR_MODEL`, `ANSWERER_MODEL` (trigger substitutions from Terraform).
+- Env vars set on deploy: `ALLOWED_EXTENSION_IDS`, `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_GENAI_USE_VERTEXAI=true`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `STT_MODEL`, `STT_LOCATION` (BE-89, empty = no STT), `DETECTOR_MODEL`, `ANSWERER_MODEL` (trigger substitutions from Terraform).
 - `--allow-unauthenticated` is required so the extension can reach `/ws`; auth happens in the WS `hello`. Until BE-87 installs the token verifier, the server denies every `hello` on Cloud Run, so only `/api/health` is testable; test WS after BE-87.
 
 ## Check on first real deploy

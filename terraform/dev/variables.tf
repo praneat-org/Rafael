@@ -130,6 +130,18 @@ variable "allowed_emails" {
   default     = []
 }
 
+variable "stt_model" {
+  description = "Gemini transcribe model id for live STT (STT_MODEL); empty = no STT"
+  type        = string
+  default     = ""
+}
+
+variable "stt_location" {
+  description = "Vertex location for STT (STT_LOCATION); the transcribe models only exist at global, unlike vertex_location"
+  type        = string
+  default     = "global"
+}
+
 variable "detector_model" {
   description = "Gemini model id for the Detector (DETECTOR_MODEL)"
   type        = string

@@ -53,6 +53,8 @@ module "app" {
   allowed_extension_ids  = var.allowed_extension_ids
   oauth_client_id        = var.oauth_client_id
   vertex_location        = var.vertex_location
+  stt_model              = var.stt_model
+  stt_location           = var.stt_location
   detector_model         = var.detector_model
   answerer_model         = var.answerer_model
   allowed_emails         = var.allowed_emails

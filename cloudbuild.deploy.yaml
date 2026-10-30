@@ -13,6 +13,8 @@ substitutions:
   _RUNTIME_SA: '' # runtime service account email from BE-71 (set on the trigger)
   _OAUTH_CLIENT_ID: '' # Chrome Extension OAuth client id (not secret); empty = server denies every hello
   _VERTEX_LOCATION: asia-southeast1 # GOOGLE_CLOUD_LOCATION for Gemini on Vertex (D20)
+  _STT_MODEL: '' # Gemini transcribe model (BE-89); empty = no STT. Location below: these models only exist at global
+  _STT_LOCATION: global
   _DETECTOR_MODEL: '' # Gemini model ids (D20), set on the trigger
   _ANSWERER_MODEL: ''
   _ALLOWED_EMAILS: '' # dev only: exact emails allowed outside praneat.com (D13 exception), comma separated; empty on prod
@@ -43,7 +45,7 @@ steps:
           --min-instances=${_MIN} \
           --max-instances=${_MAX} \
           --allow-unauthenticated \
-          --set-env-vars='^|^ALLOWED_EXTENSION_IDS=${_ALLOWED_EXTENSION_IDS}|GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID}|GOOGLE_GENAI_USE_VERTEXAI=true|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=${_VERTEX_LOCATION}|DETECTOR_MODEL=${_DETECTOR_MODEL}|ANSWERER_MODEL=${_ANSWERER_MODEL}|ALLOWED_EMAILS=${_ALLOWED_EMAILS}' \
+          --set-env-vars='^|^ALLOWED_EXTENSION_IDS=${_ALLOWED_EXTENSION_IDS}|GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID}|GOOGLE_GENAI_USE_VERTEXAI=true|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=${_VERTEX_LOCATION}|STT_MODEL=${_STT_MODEL}|STT_LOCATION=${_STT_LOCATION}|DETECTOR_MODEL=${_DETECTOR_MODEL}|ANSWERER_MODEL=${_ANSWERER_MODEL}|ALLOWED_EMAILS=${_ALLOWED_EMAILS}' \
           --startup-probe=httpGet.path=/api/health,httpGet.port=8080 \
           --liveness-probe=httpGet.path=/api/health,httpGet.port=8080 \
           "$${extra[@]}"
