@@ -117,10 +117,11 @@ async function setup(
   send({ t: 'session.start', packId: 'folder-1' });
   await vi.waitFor(() => expect(msgs.some((m) => m.t === 'session.ready')).toBe(true));
   const sessionId = (msgs.find((m) => m.t === 'session.ready') as { sessionId: string }).sessionId;
-  const refresh = (token: string, id = sessionId) =>
+  const refresh = (token: string, id = sessionId, body?: string) =>
     fetch(`http://127.0.0.1:${port}/api/pack/${id}/refresh`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
+      body,
     });
   const states = () => msgs.flatMap((m) => (m.t === 'pack.status' ? [m.state] : []));
   return { ...f, drive, store, ws, msgs, send, sessionId, refresh, states };
@@ -151,6 +152,18 @@ test('refresh swaps the pack: new cache with new prefix, old cache deleted, ask 
   expect(t.prefixes[1]).not.toContain('หน้า v1');
   await vi.waitFor(() => expect(t.live.size).toBe(1)); // old one gone
   expect([...t.live]).toEqual(['cache-2']);
+});
+
+test('BE-112: refresh body { exclude } drops those files; bad body -> 400', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  expect((await t.refresh('tok-1', t.sessionId, '{"exclude":"f1"}')).status).toBe(400);
+  expect((await t.refresh('tok-1', t.sessionId, 'not json')).status).toBe(400);
+  expect((await t.refresh('tok-1', t.sessionId, JSON.stringify({ exclude: ['f1'] }))).status).toBe(
+    200,
+  );
+  const last = t.msgs.filter((m) => m.t === 'pack.status').at(-1);
+  expect(last).toMatchObject({ state: 'ready', files: [], total: 0 });
 });
 
 test('refresh: wrong user -> 404, no token -> 401, failed build keeps the old pack', async () => {
@@ -286,7 +299,7 @@ test('BE-110: too-large build sends error PACK_TOO_LARGE with files (names + tok
   await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
   const e = t.msgs.find((m) => m.t === 'error') as Extract<ServerMessage, { t: 'error' }>;
   expect(e.code).toBe('PACK_TOO_LARGE');
-  expect(e.files).toEqual([{ name: 'deck.pdf', tokens: expect.any(Number) }]);
+  expect(e.files).toEqual([{ id: 'f1', name: 'deck.pdf', tokens: expect.any(Number) }]);
   expect(JSON.stringify(e)).not.toContain(SECRET);
   const r = await t.refresh('tok-1');
   expect(r.status).toBe(413);

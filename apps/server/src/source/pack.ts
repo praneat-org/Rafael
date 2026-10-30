@@ -69,6 +69,7 @@ export interface BuildOptions {
   warnRatio?: number; // log warn above this share of maxTokens
   concurrency?: number;
   maxHints?: number;
+  exclude?: readonly string[]; // BE-112: Drive file ids left out of the pack (not listed, not counted)
   onStatus?: (m: Extract<ServerMessage, { t: 'pack.status' }>) => void;
   now?: () => number;
 }
@@ -135,7 +136,8 @@ export async function buildPack(
     throw new RangeError('maxHints must be a non-negative integer');
   const t0 = now();
 
-  const listed = await provider.listFolder(folder);
+  const skip = new Set(o.exclude);
+  const listed = (await provider.listFolder(folder)).filter((f) => !skip.has(f.fileId));
   const label = labels(listed);
   const order = [...listed].sort(
     (a, b) => cmp(label.get(a.fileId)!, label.get(b.fileId)!) || cmp(a.fileId, b.fileId),
