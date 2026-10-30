@@ -8,7 +8,8 @@
       "!.mcp.json",
       "!**/.wxt",
       "!**/.output",
-      "!**/dist"
+      "!**/dist",
+      "!!**/.claude"
     ]
   },
   "formatter": { "indentStyle": "space", "lineWidth": 100 },
