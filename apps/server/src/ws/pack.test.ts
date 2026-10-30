@@ -22,6 +22,7 @@ function fakeDrive() {
     enter: undefined as (() => void) | undefined,
     name: 'Acme pitch' as string | Error,
     nameCalls: 0,
+    two: false,
   };
   const tokens: string[] = [];
   const provider = (token: string): SourceProvider => {
@@ -39,7 +40,10 @@ function fakeDrive() {
           if (next.fail) throw new Error(`boom ${SECRET}`);
         }
         if (state.fail) throw new Error(`boom ${SECRET}`);
-        return [{ fileId: 'f1', name: 'deck.pdf', mimeType: 'application/pdf' }];
+        return [
+          { fileId: 'f1', name: 'deck.pdf', mimeType: 'application/pdf' },
+          ...(state.two ? [{ fileId: 'f2', name: 'big.pdf', mimeType: 'application/pdf' }] : []),
+        ];
       },
       async readFile() {
         state.enter?.();
@@ -117,10 +121,11 @@ async function setup(
   send({ t: 'session.start', packId: 'folder-1' });
   await vi.waitFor(() => expect(msgs.some((m) => m.t === 'session.ready')).toBe(true));
   const sessionId = (msgs.find((m) => m.t === 'session.ready') as { sessionId: string }).sessionId;
-  const refresh = (token: string, id = sessionId) =>
+  const refresh = (token: string, id = sessionId, body?: unknown) =>
     fetch(`http://127.0.0.1:${port}/api/pack/${id}/refresh`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
+      ...(body !== undefined && { body: typeof body === 'string' ? body : JSON.stringify(body) }),
     });
   const states = () => msgs.flatMap((m) => (m.t === 'pack.status' ? [m.state] : []));
   return { ...f, drive, store, ws, msgs, send, sessionId, refresh, states };
@@ -286,7 +291,7 @@ test('BE-110: too-large build sends error PACK_TOO_LARGE with files (names + tok
   await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
   const e = t.msgs.find((m) => m.t === 'error') as Extract<ServerMessage, { t: 'error' }>;
   expect(e.code).toBe('PACK_TOO_LARGE');
-  expect(e.files).toEqual([{ name: 'deck.pdf', tokens: expect.any(Number) }]);
+  expect(e.files).toEqual([{ id: 'f1', name: 'deck.pdf', tokens: expect.any(Number) }]);
   expect(JSON.stringify(e)).not.toContain(SECRET);
   const r = await t.refresh('tok-1');
   expect(r.status).toBe(413);
@@ -345,4 +350,63 @@ test('BE-110: ask after a non-size build failure -> PACK_NOT_READY (refresh may 
   t.send({ t: 'ask', text: 'ราคาเท่าไหร่' });
   await vi.waitFor(() => expect(t.msgs.some((m) => m.t === 'error')).toBe(true));
   expect(t.msgs.find((m) => m.t === 'error')).toEqual({ v: 1, t: 'error', code: 'PACK_NOT_READY' });
+});
+
+test('BE-112: HTTP refresh exclude skips the file; read/total count the rest; a plain refresh keeps the list', async () => {
+  const t = await setup(undefined, (d) => {
+    d.state.two = true;
+  });
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  const last = () =>
+    t.msgs.filter((m) => m.t === 'pack.status').at(-1) as Extract<
+      ServerMessage,
+      { t: 'pack.status' }
+    >;
+  expect(last()).toMatchObject({ read: 2, total: 2 });
+  expect((await t.refresh('tok-1', undefined, { exclude: ['f2'] })).status).toBe(200);
+  expect(last().files.map((f) => f.fileId)).toEqual(['f1']);
+  expect(last()).toMatchObject({ read: 1, total: 1 });
+  expect((await t.refresh('tok-1')).status).toBe(200); // no body: still excluded
+  expect(last()).toMatchObject({ read: 1, total: 1 });
+  expect((await t.refresh('tok-1', undefined, { exclude: [] })).status).toBe(200); // cleared
+  expect(last()).toMatchObject({ read: 2, total: 2 });
+});
+
+test('BE-112: HTTP refresh rejects a bad body (>200 ids, wrong type, bad JSON) with 400', async () => {
+  const t = await setup();
+  await vi.waitFor(() => expect(t.states().at(-1)).toBe('ready'));
+  const ids = Array.from({ length: 201 }, (_, i) => `id${i}`);
+  for (const body of [{ exclude: ids }, { exclude: 'f1' }, { x: 1 }, '{nope'])
+    expect((await t.refresh('tok-1', undefined, body)).status).toBe(400);
+});
+
+test('BE-112: session.start exclude is honored by the first build', async () => {
+  const drive = fakeDrive();
+  drive.state.two = true;
+  const f = fakeLlm();
+  app = createApp({
+    store: new MemorySessionStore(),
+    verifier: async () => ({ email: 'a@praneat.com' }),
+    allowedOrigins: [ORIGIN],
+    brain: { llm: f.llm, config },
+    pack: { provider: drive.provider },
+  });
+  app.listen(0);
+  const ws = new WebSocket(`ws://127.0.0.1:${(app.address() as AddressInfo).port}/ws`, {
+    origin: ORIGIN,
+  });
+  const msgs: ServerMessage[] = [];
+  ws.on('message', (d) => msgs.push(JSON.parse(d.toString())));
+  await new Promise((res) => ws.once('open', res));
+  ws.send(JSON.stringify({ v: 1, t: 'hello', accessToken: 'tok-1' }));
+  ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'folder-1', exclude: ['f2'] }));
+  await vi.waitFor(() =>
+    expect(msgs.some((m) => m.t === 'pack.status' && m.state === 'ready')).toBe(true),
+  );
+  const ready = msgs.find((m) => m.t === 'pack.status' && m.state === 'ready') as Extract<
+    ServerMessage,
+    { t: 'pack.status' }
+  >;
+  expect(ready.files.map((x) => x.fileId)).toEqual(['f1']);
+  expect(ready.total).toBe(1);
 });

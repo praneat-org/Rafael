@@ -80,6 +80,18 @@ describe('server messages', () => {
     });
   });
 
+  test('BE-112: session.start exclude optional, max 200 ids; error.files may carry id', () => {
+    const start = { v: 1, t: 'session.start', packId: 'p' };
+    expect(parseClientMessage(j(start)).ok).toBe(true);
+    expect(parseClientMessage(j({ ...start, exclude: ['a', 'b'] })).ok).toBe(true);
+    expect(parseClientMessage(j({ ...start, exclude: Array(201).fill('a') })).ok).toBe(false);
+    expect(parseClientMessage(j({ ...start, exclude: [''] })).ok).toBe(false);
+    const e = { v: 1, t: 'error', code: 'PACK_TOO_LARGE' };
+    expect(parseServerMessage(j({ ...e, files: [{ id: 'f1', name: 'a', tokens: 1 }] })).ok).toBe(
+      true,
+    );
+  });
+
   test('BE-110: error.files and pack.status read/total are optional in v1', () => {
     const files = [
       { name: 'big.pdf', tokens: 90000 },

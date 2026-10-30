@@ -22,6 +22,10 @@ const v = z.literal(PROTOCOL_VERSION);
 
 // ---- Client -> Server: strict objects. Server-owned values (sessionId, cueId,
 // latency, email, ...) are never accepted from the client.
+/** file ids to skip when building the pack: ids only, never content (D11) */
+export const ExcludeIds = z.array(z.string().min(1).max(256)).max(200);
+export type ExcludeIds = z.infer<typeof ExcludeIds>;
+
 export const ClientMessage = z.discriminatedUnion('t', [
   /**
    * Must be the first message on a connection (D19). The token never goes in the
@@ -33,6 +37,8 @@ export const ClientMessage = z.discriminatedUnion('t', [
     t: z.literal('session.start'),
     packId: z.string().min(1).max(256),
     resumeToken: z.string().min(1).max(256).optional(),
+    // optional in v1 (BE-112): Drive file ids to leave out of the pack (FE-48 PACK_TOO_LARGE rebuild)
+    exclude: ExcludeIds.optional(),
   }),
   z.strictObject({ v, t: z.literal('ask'), text: z.string().min(1).max(2000) }),
   z.strictObject({ v, t: z.literal('pause') }),
@@ -100,7 +106,14 @@ export const ServerMessage = z.discriminatedUnion('t', [
     code: ErrorCode,
     // optional in v1 (BE-110), with PACK_TOO_LARGE: largest first. Names + token counts only (D11).
     files: z
-      .array(z.object({ name: z.string().min(1), tokens: z.number().int().nonnegative() }))
+      .array(
+        z.object({
+          // optional in v1 (BE-112): Drive file id, to match against `exclude`
+          id: z.string().min(1).optional(),
+          name: z.string().min(1),
+          tokens: z.number().int().nonnegative(),
+        }),
+      )
       .optional(),
   }),
 ]);

@@ -209,7 +209,7 @@ export function attachWs(http: Server, opts: WsOptions) {
             packs.setSender(s.id, (msg) => {
               if (sock.readyState === sock.OPEN) send(msg);
             });
-            void packs.start(s); // not awaited: a slow Drive must not block this socket's queue
+            void packs.start(s, m.exclude); // not awaited: a slow Drive must not block this socket's queue
           }
           return;
         }
