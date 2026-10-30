@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { PackExclude } from '@rafael/protocol';
 import { audit } from './audit.js';
 import { denyAll } from './auth/verifier.js';
 import { MemorySessionStore } from './session/store.js';
@@ -38,7 +39,25 @@ export function createApp(ws?: Partial<WsOptions>) {
         // another user's session looks the same as a missing one
         if (!s || s.email !== who.email || !wsApi?.packs)
           return json(404, { code: 'SESSION_NOT_FOUND' });
-        const { result: r, files } = await wsApi.packs.refresh(s, token, 'pack.refresh');
+        // BE-112: optional JSON body { exclude?: string[] }; empty body = no exclusions
+        let body = '';
+        for await (const c of req) {
+          body += c;
+          if (body.length > 64 * 1024) return json(413, { code: 'BAD_MESSAGE' });
+        }
+        let exclude: string[] | undefined;
+        if (body.trim()) {
+          let raw: unknown;
+          try {
+            raw = JSON.parse(body);
+          } catch {}
+          const p = PackExclude.optional().safeParse(
+            (raw as { exclude?: unknown } | null)?.exclude,
+          );
+          if (!p.success || typeof raw !== 'object') return json(400, { code: 'BAD_MESSAGE' });
+          exclude = p.data;
+        }
+        const { result: r, files } = await wsApi.packs.refresh(s, token, 'pack.refresh', exclude);
         return json(
           r === 'ready' ? 200 : r === 'superseded' ? 409 : r === 'too-large' ? 413 : 502,
           {

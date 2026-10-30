@@ -22,6 +22,9 @@ const v = z.literal(PROTOCOL_VERSION);
 
 // ---- Client -> Server: strict objects. Server-owned values (sessionId, cueId,
 // latency, email, ...) are never accepted from the client.
+/** optional in v1 (BE-112): Drive file ids to leave out of the pack (session.start and POST /api/pack/:id/refresh body) */
+export const PackExclude = z.array(z.string().min(1).max(256)).max(200);
+
 export const ClientMessage = z.discriminatedUnion('t', [
   /**
    * Must be the first message on a connection (D19). The token never goes in the
@@ -33,6 +36,7 @@ export const ClientMessage = z.discriminatedUnion('t', [
     t: z.literal('session.start'),
     packId: z.string().min(1).max(256),
     resumeToken: z.string().min(1).max(256).optional(),
+    exclude: PackExclude.optional(),
   }),
   z.strictObject({ v, t: z.literal('ask'), text: z.string().min(1).max(2000) }),
   z.strictObject({ v, t: z.literal('pause') }),
@@ -100,7 +104,13 @@ export const ServerMessage = z.discriminatedUnion('t', [
     code: ErrorCode,
     // optional in v1 (BE-110), with PACK_TOO_LARGE: largest first. Names + token counts only (D11).
     files: z
-      .array(z.object({ name: z.string().min(1), tokens: z.number().int().nonnegative() }))
+      .array(
+        z.object({
+          id: z.string().min(1).optional(), // BE-112: Drive file id, to pass back in exclude
+          name: z.string().min(1),
+          tokens: z.number().int().nonnegative(),
+        }),
+      )
       .optional(),
   }),
 ]);

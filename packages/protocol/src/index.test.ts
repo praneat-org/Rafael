@@ -17,6 +17,7 @@ describe('client messages', () => {
     { v: 1, t: 'hello', accessToken: 'tok' },
     { v: 1, t: 'session.start', packId: 'p1' },
     { v: 1, t: 'session.start', packId: 'p1', resumeToken: 'r' },
+    { v: 1, t: 'session.start', packId: 'p1', exclude: ['f1', 'f2'] }, // BE-112
     { v: 1, t: 'ask', text: 'hi' },
     { v: 1, t: 'pause' },
     { v: 1, t: 'resume' },
@@ -78,6 +79,21 @@ describe('server messages', () => {
       ok: false,
       error: { code: 'VERSION_MISMATCH' },
     });
+  });
+
+  test('BE-112: exclude max 200 non-empty ids; error.files[].id optional', () => {
+    const start = { v: 1, t: 'session.start', packId: 'p' };
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `f${i}`);
+    expect(parseClientMessage(j({ ...start, exclude: ids(200) })).ok).toBe(true);
+    expect(parseClientMessage(j({ ...start, exclude: ids(201) })).ok).toBe(false);
+    expect(parseClientMessage(j({ ...start, exclude: [''] })).ok).toBe(false);
+    const err = { v: 1, t: 'error', code: 'PACK_TOO_LARGE' };
+    expect(parseServerMessage(j({ ...err, files: [{ id: 'f1', name: 'a', tokens: 1 }] })).ok).toBe(
+      true,
+    );
+    expect(parseServerMessage(j({ ...err, files: [{ id: '', name: 'a', tokens: 1 }] })).ok).toBe(
+      false,
+    );
   });
 
   test('BE-110: error.files and pack.status read/total are optional in v1', () => {

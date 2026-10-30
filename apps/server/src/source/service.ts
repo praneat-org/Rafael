@@ -11,7 +11,7 @@ export type PackServiceOptions = {
   build?: BuildOptions;
 };
 export type RefreshResult = 'ready' | 'superseded' | 'too-large' | 'error';
-export type TooLargeFile = { name: string; tokens: number };
+export type TooLargeFile = { id: string; name: string; tokens: number };
 /** `files` only with 'too-large': this build's own list, never a shared / stale one */
 export type RefreshOutcome = { result: RefreshResult; files?: TooLargeFile[] };
 
@@ -70,6 +70,7 @@ export function createPackService(
     s: Session,
     accessToken = s.accessToken,
     event: 'pack.build' | 'pack.refresh' = 'pack.build',
+    exclude?: string[],
   ): Promise<RefreshOutcome> {
     if (!accessToken) return { result: 'error' };
     running.add(s.id);
@@ -84,6 +85,7 @@ export function createPackService(
       const pack = await packs.refresh(s.id, () =>
         buildPack(drive, s.packId, {
           ...opts.build,
+          exclude,
           onStatus: (m) => current() && senders.get(s.id)?.(m),
         }),
       );
@@ -111,7 +113,7 @@ export function createPackService(
       let files: TooLargeFile[] | undefined;
       if (big) {
         // names + token counts only (D11); the pack.status error was already emitted by buildPack
-        files = e.files.map((f) => ({ name: f.file, tokens: f.tokens }));
+        files = e.files.map((f) => ({ id: f.fileId, name: f.file, tokens: f.tokens }));
         tooLarge.set(s.id, files);
         senders.get(s.id)?.({ v: PROTOCOL_VERSION, t: 'error', code: 'PACK_TOO_LARGE', files });
       }
@@ -136,11 +138,11 @@ export function createPackService(
       else senders.delete(id);
     },
     /** session.start / resume: build once; a resumed session with a pack just re-announces it */
-    async start(s: Session): Promise<RefreshOutcome | undefined> {
+    async start(s: Session, exclude?: string[]): Promise<RefreshOutcome | undefined> {
       const have = packs.get(s.id);
       if (have) return void status(s, 'ready', have);
       if (running.has(s.id)) return undefined;
-      return refresh(s);
+      return refresh(s, s.accessToken, 'pack.build', exclude);
     },
   };
 }

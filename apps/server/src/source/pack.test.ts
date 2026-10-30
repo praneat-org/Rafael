@@ -200,6 +200,31 @@ test('over PACK_MAX_TOKENS -> PACK_TOO_LARGE with files largest first, and statu
   expect(ok.tokens).toBe(100);
 });
 
+test('BE-112: exclude skips files; read/total count only the rest; too-large files carry fileId', async () => {
+  const seen: { read?: number; total?: number }[] = [];
+  const p = provider([F('1', 'Aaa'), F('2', 'Zzz'), F('3', 'Mmm')], {
+    '1': doc('x'),
+    '2': doc('y'.repeat(500)),
+    '3': doc('z'),
+  });
+  const o = {
+    countTokens: (t: string) => t.length,
+    onStatus: (m: { read?: number; total?: number }) => seen.push(m),
+  };
+  const big = (await buildPack(p, 'x', { ...o, maxTokens: 100 }).catch(
+    (e) => e,
+  )) as PackTooLargeError;
+  expect(big.files[0]).toMatchObject({ fileId: '2', file: 'Zzz' });
+  const ok = await buildPack(p, 'x', {
+    ...o,
+    maxTokens: 100,
+    exclude: [big.files[0]!.fileId, 'nope'],
+  });
+  expect(ok.files.map((f) => f.fileId)).toEqual(['1', '3']);
+  expect(ok.text).not.toContain('yyy');
+  expect(seen.at(-1)).toMatchObject({ read: 2, total: 2 });
+});
+
 test('BE-110: PACK_TOO_LARGE lists at most MAX_TOO_LARGE_FILES files, largest first', async () => {
   const ids = Array.from({ length: 15 }, (_, i) => String(i));
   const err = (await buildPack(
