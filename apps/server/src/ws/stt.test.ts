@@ -22,6 +22,7 @@ beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation((...a) => void out.push(a.join(' ')));
 });
 afterEach(async () => {
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
   if (!app) return;
   app.shutdown();
@@ -100,7 +101,15 @@ test('rollover over the socket: every word once, in order', async () => {
   expect(ids).toEqual(Array.from({ length: ids.length }, (_, i) => i + 1));
 });
 
+test('hints: empty unless STT_HINTS=1 (BE-115)', async () => {
+  const t = await setup({ getHints: () => ['Praneat'] });
+  t.audio(1, 1);
+  await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
+  expect(t.provider.starts).toEqual([[]]);
+});
+
 test('final segments reach the Brain callback with the session', async () => {
+  vi.stubEnv('STT_HINTS', '1');
   const seen: string[] = [];
   const t = await setup({
     onFinal: (s, seg) => void seen.push(`${s.email}|${seg.text}`),
