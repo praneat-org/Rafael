@@ -42,6 +42,12 @@ const isSpeech = (pcm: Int16Array) => {
   return false;
 };
 
+/** STT_WATCHDOG_MS: unset/invalid/negative -> default (undefined); "0" stays 0 = off */
+export const parseWatchdogMs = (v: string | undefined) => {
+  const n = v ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+};
+
 export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
   const flushMs = o.flushTimeoutMs ?? 2000;
   const maxQueued = o.maxQueuedFrames ?? 100;
@@ -174,7 +180,7 @@ export function createGeminiStt(env: Record<string, string | undefined>): SttPro
   const ai = new GoogleGenAI({ vertexai: true, project, location: env.STT_LOCATION || 'global' });
   return createGeminiSttProvider({
     model,
-    watchdogMs: env.STT_WATCHDOG_MS ? Number(env.STT_WATCHDOG_MS) : undefined,
+    watchdogMs: parseWatchdogMs(env.STT_WATCHDOG_MS),
     silenceMs: Number(env.STT_SILENCE_MS) || 300, // measured: default VAD ~1.4-2.8 s to final, 300 ~1.0 s, 100 ~0.8 s
     connect: ({ model, config, callbacks }) =>
       ai.live.connect({ model, config, callbacks } as any) as Promise<LiveSessionLike>,
