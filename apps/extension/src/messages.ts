@@ -30,6 +30,8 @@ export type PanelToOffscreen =
   | { k: 'pause' }
   | { k: 'resume' }
   | { k: 'end' }
+  /** PACK_TOO_LARGE: rebuild without these Drive file ids (FE-48); held in offscreen memory only (D11) */
+  | { k: 'rebuild'; exclude: string[] }
   | { k: 'pause' }
   | { k: 'resume' }
   | { k: 'ask'; text: string }

@@ -233,3 +233,52 @@ describe('audio buffer', () => {
     expect(last().sent.filter((s) => typeof s !== 'string')).toHaveLength(0);
   });
 });
+
+describe('rebuild (FE-48)', () => {
+  const live = async () => {
+    const { t } = make();
+    t.connect();
+    t.send({ v: 1, t: 'session.start', packId: 'p1' });
+    last().open();
+    await flushP();
+    last().recv(ready());
+    return t;
+  };
+
+  test('POSTs the whole accumulated exclude on every refresh and resends it on start', async () => {
+    const f = vi.fn(async () => new Response('{"code":"OK"}', { status: 200 }));
+    vi.stubGlobal('fetch', f);
+    const t = await live();
+    await t.rebuild(['a']);
+    await t.rebuild(['b', 'a']);
+    const calls = f.mock.calls as unknown as [
+      string,
+      { body: string; headers: Record<string, string> },
+    ][];
+    expect(calls[0]?.[0]).toBe('http://x/api/pack/s1/refresh');
+    expect(JSON.parse(calls[0]?.[1].body ?? '')).toEqual({ exclude: ['a'] });
+    expect(JSON.parse(calls[1]?.[1].body ?? '')).toEqual({ exclude: ['a', 'b'] });
+    expect(calls[1]?.[1].headers.authorization).toBe('Bearer tok');
+    last().drop(1006); // reconnect: session.start carries exclude again
+    await vi.advanceTimersByTimeAsync(600);
+    last().open();
+    await flushP();
+    expect(
+      last()
+        .texts()
+        .find((m) => m.t === 'session.start')?.exclude,
+    ).toEqual(['a', 'b']);
+    vi.unstubAllGlobals();
+  });
+
+  test('413 re-emits PACK_TOO_LARGE with the new files', async () => {
+    const body = { code: 'PACK_TOO_LARGE', files: [{ id: 'z', name: 'z.pdf', tokens: 5 }] };
+    vi.stubGlobal('fetch', async () => new Response(JSON.stringify(body), { status: 413 }));
+    const t = await live();
+    const got: ServerMessage[] = [];
+    t.onMessage((m) => got.push(m));
+    await t.rebuild(['a']);
+    expect(got).toEqual([{ v: 1, t: 'error', code: 'PACK_TOO_LARGE', files: body.files }]);
+    vi.unstubAllGlobals();
+  });
+});

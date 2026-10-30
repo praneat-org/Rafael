@@ -165,6 +165,7 @@ function onCommand(cmd: PanelToOffscreen) {
   if (cmd.k === 'start') start(cmd);
   else if (cmd.k === 'preview') preview(cmd);
   else if (cmd.k === 'preview-stop') stopPreview();
+  else if (cmd.k === 'rebuild') void transport?.rebuild?.(cmd.exclude);
   else if (cmd.k === 'pause' || cmd.k === 'resume') {
     if (state.phase !== 'live') return;
     applyPause(cmd.k, {

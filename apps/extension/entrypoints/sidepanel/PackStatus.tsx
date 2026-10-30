@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { PackInfo, PackState } from '../../src/session';
 
 const TEXT = { loading: 'กำลังอ่าน pack', ready: 'pack พร้อม', error: 'สร้าง pack ไม่สำเร็จ' } as const;
@@ -25,18 +26,42 @@ export function PackStatus({ state, info }: { state: PackState | null; info: Pac
   );
 }
 
-/** PACK_TOO_LARGE: biggest files with approximate tokens. Display only: protocol has no "exclude" request yet (follow-up on BE-110). */
-export function PackTooLarge({ files }: { files: { name: string; tokens: number }[] }) {
+/** PACK_TOO_LARGE: tick files (by Drive id from the server) to leave out, then rebuild. Ticks live in this component only (D11). */
+export function PackTooLarge({
+  files,
+  onRebuild,
+}: {
+  files: { id?: string; name: string; tokens: number }[];
+  onRebuild: (exclude: string[]) => void;
+}) {
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const toggle = (id: string) =>
+    setTicked((t) => {
+      const n = new Set(t);
+      if (!n.delete(id)) n.add(id);
+      return n;
+    });
   return (
     <section className="note err" aria-label="pack ใหญ่เกินไป">
-      <p>pack ใหญ่เกินไป — ย้ายหรือลบไฟล์ใหญ่ออกจากโฟลเดอร์ใน Drive แล้วจบ session เริ่มใหม่</p>
+      <p>pack ใหญ่เกินไป — ติ๊กไฟล์ที่จะตัดออก แล้วสร้าง pack ใหม่</p>
       <ul>
-        {files.map((f) => (
-          <li key={f.name}>
-            {f.name} · ~{f.tokens.toLocaleString()} token
+        {files.map((f, i) => (
+          <li key={f.id ?? `${f.name}-${i}`}>
+            <label>
+              <input
+                type="checkbox"
+                disabled={!f.id}
+                checked={!!f.id && ticked.has(f.id)}
+                onChange={() => f.id && toggle(f.id)}
+              />{' '}
+              {f.name} · ~{f.tokens.toLocaleString()} token
+            </label>
           </li>
         ))}
       </ul>
+      <button type="button" disabled={ticked.size === 0} onClick={() => onRebuild([...ticked])}>
+        สร้างใหม่โดยไม่เอาไฟล์ที่ติ๊ก ({ticked.size})
+      </button>
     </section>
   );
 }
