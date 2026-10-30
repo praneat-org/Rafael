@@ -116,6 +116,9 @@ export function createPackService(
         files = e.files.map((f) => ({ id: f.fileId, name: f.file, tokens: f.tokens }));
         tooLarge.set(s.id, files);
         senders.get(s.id)?.({ v: PROTOCOL_VERSION, t: 'error', code: 'PACK_TOO_LARGE', files });
+      } else {
+        // BE-118: code only, no message/file names (D11); covers session.start and HTTP refresh
+        senders.get(s.id)?.({ v: PROTOCOL_VERSION, t: 'error', code: 'PACK_BUILD_FAILED' });
       }
       log('pack.failed', {
         sessionId: s.id,

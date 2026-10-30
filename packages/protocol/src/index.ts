@@ -11,6 +11,7 @@ export const ErrorCode = z.enum([
   'VERSION_MISMATCH',
   'UNAUTHORIZED',
   'PACK_TOO_LARGE',
+  'PACK_BUILD_FAILED', // BE-118: build failed for a reason other than too-large (code only, D11)
   'PACK_NOT_READY',
   'SESSION_NOT_FOUND',
   'STT_UNAVAILABLE',
