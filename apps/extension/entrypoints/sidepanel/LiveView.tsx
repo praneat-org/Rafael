@@ -103,7 +103,10 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
       </header>
       <PackStatus state={state.pack} info={state.packInfo} />
       {state.error === 'PACK_TOO_LARGE' && state.tooLarge && state.tooLarge.length > 0 ? (
-        <PackTooLarge files={state.tooLarge} />
+        <PackTooLarge
+          files={state.tooLarge}
+          onRebuild={(exclude) => send({ k: 'rebuild', exclude })}
+        />
       ) : state.error === 'PACK_NOT_READY' && state.pack === 'loading' ? (
         <p className="note">กำลังเตรียมเอกสาร — รอสักครู่แล้วถามใหม่</p>
       ) : (

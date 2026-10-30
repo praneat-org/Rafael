@@ -47,6 +47,9 @@ export class WsTransport implements Transport {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private packId: string | undefined;
   private resumeToken: string | undefined;
+  private sessionId: string | undefined;
+  /** Drive file ids left out of the pack. Memory only (D11); the server does not keep it, so every start/refresh resends it. */
+  private exclude: string[] = [];
   private helloSent = false;
   private ready = false;
   private everLive = false;
@@ -91,6 +94,7 @@ export class WsTransport implements Transport {
     if (!this.packId) return;
     const m: ClientMessage = { v: 1, t: 'session.start', packId: this.packId };
     if (this.resumeToken) m.resumeToken = this.resumeToken;
+    if (this.exclude.length) m.exclude = this.exclude;
     ws.send(JSON.stringify(m));
   }
 
@@ -98,6 +102,7 @@ export class WsTransport implements Transport {
     dispatchRaw(raw, (m) => {
       if (m.t === 'session.ready') {
         this.resumeToken = m.resumeToken;
+        this.sessionId = m.sessionId;
         this.ready = true;
         this.everLive = true;
         this.attempt = 0;
@@ -138,10 +143,39 @@ export class WsTransport implements Transport {
     if (msg.t === 'session.start') {
       this.packId = msg.packId;
       this.resumeToken = msg.resumeToken ?? this.resumeToken;
+      if (msg.exclude) this.exclude = msg.exclude;
       if (this.ws?.readyState === OPEN && this.helloSent && !this.ready) this.sendStart(this.ws);
       return;
     }
     if (this.ws?.readyState === OPEN && this.ready) this.ws.send(JSON.stringify(msg));
+  }
+
+  /**
+   * FE-48: rebuild the pack without more files. `more` (file ids) is added to what was already excluded
+   * (the too-large list no longer shows earlier exclusions) and the whole set is sent, since the server keeps none.
+   * 413 -> PACK_TOO_LARGE again with the new list; ready arrives as pack.status over the socket.
+   */
+  async rebuild(more: string[]): Promise<void> {
+    if (this.closed || !this.sessionId) return;
+    this.exclude = [...new Set([...this.exclude, ...more])].slice(0, 200); // PackExclude max
+    try {
+      const token = await this.o.getToken(false);
+      const base = this.o.url.replace(/^ws/, 'http').replace(/\/ws$/, '');
+      const res = await fetch(`${base}/api/pack/${encodeURIComponent(this.sessionId)}/refresh`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ exclude: this.exclude }),
+      });
+      if (res.status === 413) {
+        const b = (await res.json()) as { files?: unknown };
+        dispatchRaw(
+          JSON.stringify({ v: 1, t: 'error', code: 'PACK_TOO_LARGE', files: b.files }),
+          (m) => this.emit(m),
+        );
+      } else if (!res.ok) console.warn('[rafael] pack refresh failed:', res.status); // 409 superseded / 502: no content logged
+    } catch {
+      console.warn('[rafael] pack refresh failed');
+    }
   }
 
   sendAudio(frame: Uint8Array): void {

@@ -37,7 +37,7 @@ export type SessionState = {
   /** file names only, no content (D11) */
   packInfo: PackInfo | null;
   /** PACK_TOO_LARGE: largest first, names + approx tokens only (D11) */
-  tooLarge: { name: string; tokens: number }[] | null;
+  tooLarge: { id?: string; name: string; tokens: number }[] | null;
   error: ErrorCode | 'CONNECTION_CLOSED' | null; // CONNECTION_CLOSED is client-only (transport closed for good)
   /** audio is not being sent (Pause) */
   paused: boolean;

@@ -7,6 +7,8 @@ export interface Transport {
   send(msg: ClientMessage): void;
   /** Encoded binary frame (encodeAudioFrame from @rafael/protocol). */
   sendAudio(frame: Uint8Array): void;
+  /** FE-48: rebuild the pack without these Drive file ids (WsTransport only). */
+  rebuild?(exclude: string[]): Promise<void>;
   /** Returns an unsubscribe function. */
   onMessage(cb: (msg: ServerMessage) => void): () => void;
   onStatus(cb: (status: TransportStatus) => void): () => void;
