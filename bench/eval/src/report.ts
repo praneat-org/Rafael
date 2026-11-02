@@ -1,6 +1,6 @@
 import type { Prices } from './cost.js';
 import { costPerHour } from './cost.js';
-import { factsOf, scoreOne, tally } from './score.js';
+import { factsOf, missingFacts, scoreOne, tally } from './score.js';
 import { latencyStats } from './stats.js';
 import { type KeyRow, type RunResult, STAGES } from './types.js';
 
@@ -22,7 +22,10 @@ export function buildReport(
     throw new Error(`eval: ${results.length} results for ${keys.length} keys`);
   const outcomes = keys.map((k, i) => scoreOne(k, results[i]?.cue ?? null, packAnchors));
   const t = tally(outcomes);
-  const good = t.correct + t['not-found-correct'];
+  // anchor-only keys (no checkable fact) are shown apart and never count toward the gate
+  const anchorOnly = keys.map((k) => !!k.anchor && !factsOf(k).length);
+  const anchorOnlyCorrect = outcomes.filter((o, i) => o === 'correct' && anchorOnly[i]).length;
+  const good = t.correct - anchorOnlyCorrect + t['not-found-correct'];
   const lat = latencyStats(results);
   const cost = costPerHour(
     results.map((r) => r.usage),
@@ -35,7 +38,7 @@ export function buildReport(
     '## Gates',
     '| gate | value | target | |',
     '| -- | -- | -- | -- |',
-    `| correct (incl. not-found-correct) | ${good}/${keys.length} | >= ${GATES.minCorrect}/${keys.length} | ${mark(good >= GATES.minCorrect)} |`,
+    `| correct (fact-checked + not-found-correct) | ${good}/${keys.length} | >= ${GATES.minCorrect}/${keys.length} | ${mark(good >= GATES.minCorrect)} |`,
     `| out-of-source | ${t['out-of-source']} | ${GATES.maxOutOfSource} | ${mark(t['out-of-source'] <= GATES.maxOutOfSource)} |`,
     `| total p50 | ${lat.total.p50} ms | <= ${GATES.p50Ms} ms | ${mark(lat.total.p50 <= GATES.p50Ms)} |`,
     `| total p95 | ${lat.total.p95} ms | <= ${GATES.p95Ms} ms | ${mark(lat.total.p95 <= GATES.p95Ms)} |`,
@@ -45,7 +48,7 @@ export function buildReport(
     '| -- | -- |',
     ...Object.entries(t).map(([k, v]) => `| ${k} | ${v} |`),
     '',
-    `Fact-checked: ${keys.filter((k) => k.anchor && factsOf(k).length).length} · anchor-only: ${keys.filter((k) => k.anchor && !factsOf(k).length).length} · not-found keys: ${keys.filter((k) => !k.anchor).length}`,
+    `Fact-checked: ${keys.filter((k) => k.anchor && factsOf(k).length).length} · anchor-only: ${anchorOnly.filter(Boolean).length} (correct, not in gate: ${anchorOnlyCorrect}) · not-found keys: ${keys.filter((k) => !k.anchor).length}`,
     '',
     '## Latency (ms)',
     '| stage | p50 | p95 |',
@@ -55,9 +58,13 @@ export function buildReport(
     `## Cost\n${cost.toFixed(4)} USD per hour of pitch (${audioSeconds} s audio, prices from config)`,
     '',
     '## Per question',
-    '| # | outcome |',
-    '| -- | -- |',
-    ...outcomes.map((o, i) => `| ${i + 1} | ${o} |`),
+    '| # | outcome | missing facts |',
+    '| -- | -- | -- |',
+    ...outcomes.map((o, i) => {
+      const c = results[i]?.cue;
+      const miss = o === 'wrong-fact' && c ? missingFacts(keys[i] as KeyRow, c).join(', ') : '';
+      return `| ${i + 1} | ${o} | ${miss} |`;
+    }),
     '',
   ];
   return L.join('\n');

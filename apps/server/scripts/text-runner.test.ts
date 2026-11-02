@@ -1,11 +1,13 @@
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { parsePrices } from '../../../bench/eval/src/cost.js';
+import { parseCues } from '../../../bench/eval/src/cues.js';
 import { parseKey } from '../../../bench/eval/src/key.js';
 import { buildReport } from '../../../bench/eval/src/report.js';
 import { loadBrainConfig } from '../src/brain/config.js';
 import type { LlmClient } from '../src/brain/llm.js';
-import { buildFixturePack, textRunner } from './text-runner.js';
+import { buildFixturePack, dumpResults, textRunner } from './text-runner.js';
 
 const fx = new URL('../../../bench/eval/fixtures/', import.meta.url).pathname;
 const dir = `${fx}synthetic-deal/pack`;
@@ -51,7 +53,7 @@ describe('text runner on the synthetic fixture', () => {
     );
     const prices = parsePrices(readFileSync(`${fx}prices.json`, 'utf8'));
     const md = buildReport(keys, results, new Set(pack.anchors), 600, prices);
-    expect(md).toContain('| correct (incl. not-found-correct) | 20/20');
+    expect(md).toContain('| correct (fact-checked + not-found-correct) | 20/20');
     expect(md).toContain('| out-of-source | 0 |');
     expect(deleted).toBe(1);
   });
@@ -71,5 +73,18 @@ describe('text runner on the synthetic fixture', () => {
     expect(buildReport(none, results, new Set(pack.anchors), 600, prices)).toContain(
       '| missed | 1 |',
     );
+  });
+
+  it('dump refuses repo paths; saved cues re-score to the same report offline', async () => {
+    const pack = await buildFixturePack(dir);
+    const results = await (await textRunner({ llm: fakeLlm(), config, pack }))(
+      keys.map((k) => ({ question: k.question })),
+    );
+    expect(() => dumpResults(`${fx}cues.json`, results)).toThrow(/outside the repo/);
+    const f = `${mkdtempSync(`${tmpdir()}/cues-`)}/c.json`;
+    dumpResults(f, results);
+    const prices = parsePrices(readFileSync(`${fx}prices.json`, 'utf8'));
+    const rep = (r: typeof results) => buildReport(keys, r, new Set(pack.anchors), 600, prices);
+    expect(rep(parseCues(readFileSync(f, 'utf8'), keys.length))).toBe(rep(results));
   });
 });

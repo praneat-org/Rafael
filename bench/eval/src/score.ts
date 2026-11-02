@@ -1,16 +1,37 @@
 import type { Cue, KeyRow, Outcome } from './types.js';
 
 const ANCHOR = /\[[^\]]*›[^\]]*\]/g;
-const norm = (s: string) =>
-  s
-    .toLowerCase()
-    .replace(/(\d),(?=\d)/g, '$1')
-    .replace(/\s+/g, '');
+const HYPHEN = /[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)+/g; // ap-southeast-7
+const dropCommas = (s: string) => s.replace(/(\d),(?=\d)/g, '$1'); // 2,900 -> 2900
+const NUM = /\d+(?:\.\d+)*/g;
+const WORD = /[A-Za-z][A-Za-z0-9]*(?:-[A-Za-z0-9]+)*/g;
 
-/** Checkable facts of a key answer: numbers and capitalized / acronym latin tokens (normalized). */
+/**
+ * Checkable facts of a key answer: whole numbers, hyphenated latin ids, capitalized / acronym latin
+ * words. Facts that match by accident (single digit, latin <= 2 chars) are dropped unless nothing else is left.
+ */
 export function factsOf(key: KeyRow): string[] {
-  const m = key.answer.match(/\d+(?:[.,]\d+)*|[A-Z][A-Za-z0-9]+/g) ?? [];
-  return [...new Set(m.map(norm))];
+  const a = dropCommas(key.answer);
+  const rest = a.replace(HYPHEN, ' ');
+  const all = [
+    ...new Set([
+      ...(a.match(HYPHEN) ?? []).map((x) => x.toLowerCase()),
+      ...(rest.match(NUM) ?? []),
+      ...(rest.match(/[A-Z][A-Za-z0-9]+/g) ?? []).map((x) => x.toLowerCase()),
+    ]),
+  ];
+  const strong = all.filter((f) => (/^\d/.test(f) ? f.length > 1 : f.length > 2));
+  return strong.length ? strong : all;
+}
+
+/** Facts of the key answer that are missing from the cue bullets (anchors stripped), compared as whole tokens. */
+export function missingFacts(key: KeyRow, cue: Cue): string[] {
+  const text = dropCommas(cue.bullets.join(' ').replace(ANCHOR, ''));
+  const have = new Set([
+    ...(text.match(NUM) ?? []),
+    ...(text.match(WORD) ?? []).map((w) => w.toLowerCase()),
+  ]);
+  return factsOf(key).filter((f) => !have.has(f));
 }
 
 /**
@@ -30,8 +51,7 @@ export function scoreOne(
   if (cue.notFound) return 'wrong';
   if (!cue.sources.includes(key.anchor)) return 'wrong';
   // anchor alone proves nothing about the answer: its facts must appear in the bullets (anchors stripped)
-  const text = norm(cue.bullets.join(' ').replace(ANCHOR, ''));
-  if (!factsOf(key).every((f) => text.includes(f))) return 'wrong-fact';
+  if (missingFacts(key, cue).length) return 'wrong-fact';
   return agrees(cue, key) ? 'correct' : 'wrong';
 }
 

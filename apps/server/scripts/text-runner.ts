@@ -1,7 +1,8 @@
 // BE-101 text-mode eval: key.csv question -> real Answerer (skips Detector / STT) -> bench/eval Runner.
 // Lives in the server because it needs the Answerer + @google/genai; bench/eval stays dependency-free
 // (types only, imported by relative path). Never logs question / answer / pack text (D11).
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { relative, resolve } from 'node:path';
 import type { Runner, RunResult } from '../../../bench/eval/src/types.js';
 import { type AnswererLog, createAnswerer } from '../src/brain/answerer.js';
 import type { BrainConfig } from '../src/brain/config.js';
@@ -84,4 +85,16 @@ export async function textRunner(o: {
       await answerer.dispose(); // D21: delete the CachedContent
     }
   };
+}
+
+const repoRoot = resolve(new URL('../../..', import.meta.url).pathname);
+
+/**
+ * Save raw results (they contain cue bullets) for offline re-scoring. Synthetic data only (D11):
+ * refuses any path inside the repo.
+ */
+export function dumpResults(path: string, results: RunResult[]) {
+  const rel = relative(repoRoot, resolve(path));
+  if (!rel.startsWith('..')) throw new Error('--dump must point outside the repo (D11)');
+  writeFileSync(path, JSON.stringify(results));
 }

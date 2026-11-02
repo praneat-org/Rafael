@@ -35,7 +35,7 @@ describe('synthetic-deal fixture', () => {
       600,
       prices,
     );
-    expect(md).toContain('| correct (incl. not-found-correct) | 20/20');
+    expect(md).toContain('| correct (fact-checked + not-found-correct) | 20/20');
     expect(md).not.toContain('FAIL');
   });
 });
