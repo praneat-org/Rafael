@@ -50,8 +50,31 @@ Status: partly implemented. The Drive reader is merged (BE-90 #16) but not wired
 - Data: our server sends the user's access token and file requests; Drive returns the pack file content. Whether Drive reads fall under the Google Cloud Data Processing Addendum (formerly the Workspace "Data Processing Amendment") is **UNVERIFIED** (the covered-services appendix was not read); if it does, Google is processor with deletion within max 180 days after term end [11]. Drive region: **UNVERIFIED**. Drive's own retention of the files is a Praneat Workspace admin setting: **not found / not researched** (not Rafael-controlled).
 - Our app is bound by the Google API Services User Data Policy: Limited Use (use only for user-facing features, no transfer except listed exceptions, human reading only in narrow cases, data secured in transit and at rest). The page does not mention AI model training and sets no retention period. [12] Open question for DPO / legal: whether sending pack content to Gemini is a permitted transfer.
 - Provider logging / zero-retention controls for Drive: **not found / UNVERIFIED**; [12] does not specify Drive logging or a zero-retention control.
-- Google Drive MCP: **not researched**. Our server calls Drive API v3 directly (BE-90); no MCP is used in code. Data sent, region, retention, training use, logging / zero-retention and DPA for an MCP path are all **UNVERIFIED**, with no dated source. Research before any MCP use; otherwise record an explicit out-of-scope decision.
+- Google Drive MCP: see the dedicated section below (researched 2026-11-02, BE-117).
 - Token handling: in memory only, per session (D11). Proof card: BE-85 (#8, merged) for in-memory session state; the Drive reader card was not checked here.
+
+## Google Drive MCP (Google-hosted, Developer Preview) - BE-117
+
+Checked: **2026-11-02**. Official pages only; "not stated" means the page does not say so as of that date. Not legal advice. No real MCP call was made (needs a user `drive.readonly` token; smoke is the remaining part of BE-117). Code: BE-92 (PR #44), opt-in via `SOURCE_PROVIDER=mcp`, default `driveApi`.
+
+| Topic | Finding | Source |
+|---|---|---|
+| What it is | `https://drivemcp.googleapis.com/mcp/v1`, Streamable HTTP, OAuth 2.0. Needs the Drive API + Drive MCP API enabled on a GCP project and an OAuth client marked "Use this client for an AI-powered agent". Scopes `drive.readonly`, `drive.file`. Tools listed: `copy_file`, `create_file`, `download_file_content`, `get_file_metadata`, `get_file_permissions`, `list_recent_files`, `read_file_content`, `search_files` (no parameters or output schemas on the page). | [13] |
+| Preview status | "Available as part of the Google Workspace Developer Preview Program"; membership required. Page last updated 2026-10-29. GA date, SLA, support: not stated. | [13][14] |
+| Data passed through | Not stated as a data-flow description. Functionally: our query text (search terms), file ids, and the file content Google returns for `read_file_content` / `download_file_content`, plus the OAuth token. Content is parsed Google-side (CSE files are ineligible because "AI agents" cannot parse them), so Google processes the pack content, unlike the plain Drive API download. Permissions: "Inherit the same permissions and data governance controls as the user". Ineligible items (IRM / DLP-IRM, CAA block, CSE, spam, malware, trash) are filtered from lists and error on single reads. | [13][15][17] |
+| Region / data residency | **Not stated in the docs as of 2026-11-02.** Separately, test data under the Pre-GA terms "is not subject to the data location requirements" (Workspace Service Specific Terms s.6.1(c), paraphrased from the Thai page). Effect: residency of pack content cannot be asserted; treat as possibly outside Asia. | [13][14][16] |
+| Retention / deletion | **Not stated in the docs as of 2026-11-02** (neither the MCP setup page nor the eligibility page). Cannot claim zero retention. | [13][15] |
+| Logging | Only stated: admins can see "OAuth log events" in the security investigation tool. Logging / retention of MCP tool calls or request content: **not stated as of 2026-11-02**. Page recommends Model Armor or own screening of prompts / responses. | [13][14] |
+| Use of data to improve Google products | Developer Preview Program term (vi): "Google may use any data submitted, stored, sent, or received via any Pre-GA APIs" (to improve them, subject to applicable law). Workspace Service Specific Terms s.6.1(b): customer test data may be used by Google to test, analyze, develop and improve the pre-GA offering and other Google products used with it. Whether the Drive MCP is a "Pre-GA API" under these terms is an inference from "Developer Preview"; the MCP pages do not state it. | [14][16] |
+| DPA | Not mentioned on the MCP pages. Service Specific Terms s.6.1 (third paragraph): the Cloud Data Processing Addendum applies to a pre-GA offering as a "Service" **only if the customer has accepted it / the parties agree**; Praneat's CDPA status was not checked. Pre-GA = AS IS, no SLA, no TSS support. | [14][16] |
+| Terms that bind us | Developer Preview Program terms (Google APIs Terms of Service, Pre-GA offering terms), Google API Services User Data Policy (consent screen), Workspace Service Specific Terms s.6. Program term (iv): Pre-GA APIs not for production apps shared outside the org; Rafael is internal (@praneat.com). Term (vii): regulated/government users may use only test data (whether Praneat is in scope: not assessed). | [12][14][16][17] |
+
+Effect on the prod decision:
+
+- Three facts that matter for deal content are unresolved or negative: region not stated, retention not stated, and the Pre-GA terms allow Google to use data sent via Pre-GA APIs to improve them. D11/D21 want a bounded story for pack content; MCP gives none in writing.
+- The Drive API path (BE-90) returns the file to our server and the Drive API terms / Workspace agreement apply (CDPA coverage there is itself still UNVERIFIED above, but it is GA, not Pre-GA).
+
+**Proposed prod default (for the human decision, CAR-3820 AC 3): keep `SOURCE_PROVIDER=driveApi`.** Do not set `mcp` on prod until (1) the BE-117 smoke and file-type table pass, and (2) DPO / legal accept the Pre-GA data-use term, or Google confirms in writing (account team): region, retention, no-training for Drive MCP content under the CDPA, or GA arrives with GA terms. This is a proposal; the decision is the human's.
 
 ## Q1: direct API vs Vertex (settled by D20)
 
@@ -64,7 +87,7 @@ We call the regional endpoint in asia-southeast1 (same as Cloud Run), but "Endpo
 3. STT: if Chirp 3 in asia-southeast1 cannot do th-TH streaming, region is `us`/`eu`; Deepgram would be the EU endpoint (verified) or the US (UNVERIFIED). Any of these is a cross-border transfer out of Thailand; flag to DPO.
 4. When adapters land (BE-77/79): Deepgram `mip_opt_out=true` in adapter config. No code exists yet.
 
-## Sources (checked 2026-10-24)
+## Sources (1–12 checked 2026-10-24 · 13–17 checked 2026-11-02)
 
 1. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/data-governance
 2. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/locations
@@ -78,3 +101,8 @@ We call the regional endpoint in asia-southeast1 (same as Cloud Run), but "Endpo
 10. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/abuse-monitoring
 11. https://cloud.google.com/terms/data-processing-addendum/ (first 100k chars read; subprocessors/transfers not read)
 12. https://developers.google.com/terms/api-services-user-data-policy
+13. https://developers.google.com/workspace/drive/api/guides/configure-mcp-server (checked 2026-11-02)
+14. https://developers.google.com/workspace/preview (Developer Preview Program terms, checked 2026-11-02)
+15. https://developers.google.com/workspace/drive/api/guides/drive-mcp-server-file-eligibility (checked 2026-11-02)
+16. https://workspace.google.com/terms/service-terms/ (s.6 Pre-GA Offerings; fetched in Thai, first 100k of 105k chars read, 2026-11-02)
+17. https://developers.google.com/workspace/guides/configure-mcp-servers (checked 2026-11-02)
