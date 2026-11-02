@@ -8,6 +8,9 @@ import { buildReport } from './report.js';
 import { fakeRunner } from './runner.js';
 
 const arg = (n: string, d: string) => optArg(process.argv, n, d);
+// real runner needs the server's Answerer + @google/genai, so it lives there (ponytail: no workspace dep)
+if (arg('runner', 'fake') !== 'fake')
+  throw new Error('only the fake runner lives here; real text run: pnpm --filter server eval:text');
 const keys = parseKey(readFileSync(arg('key', 'fixtures/key.csv'), 'utf8'));
 const prices = parsePrices(readFileSync(arg('prices', 'fixtures/prices.json'), 'utf8'));
 const results = await fakeRunner(keys)(keys.map((k) => ({ question: k.question })));
