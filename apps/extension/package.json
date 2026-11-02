@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "zip:dev": "sh -c '[ -n \"$WXT_SERVER_URL\" ] && [ -n \"$WXT_OAUTH_CLIENT_ID\" ] || { echo \"set WXT_SERVER_URL and WXT_OAUTH_CLIENT_ID\" >&2; exit 1; }; wxt zip'",
     "typecheck": "wxt prepare && tsc -p .",
     "test": "vitest run",
     "e2e": "tsx e2e/pack-refresh-network.e2e.ts"
