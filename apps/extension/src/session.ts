@@ -45,6 +45,8 @@ export type SessionState = {
   error: ErrorCode | 'CONNECTION_CLOSED' | null; // CONNECTION_CLOSED is client-only (transport closed for good)
   /** audio is not being sent (Pause) */
   paused: boolean;
+  /** a pack refresh request is in flight: retry / rebuild buttons are disabled (FE-49) */
+  refreshing: boolean;
   /** filled on `end`, emptied by `reset` */
   unanswered: Unanswered[];
 };
@@ -59,6 +61,7 @@ export const initialState: SessionState = {
   tooLarge: null,
   error: null,
   paused: false,
+  refreshing: false,
   unanswered: [],
 };
 
@@ -68,6 +71,7 @@ export type Action =
   | { k: 'reset' }
   | { k: 'pause' }
   | { k: 'resume' }
+  | { k: 'refreshing'; on: boolean }
   | { k: 'status'; status: TransportStatus }
   | { k: 'server'; msg: ServerMessage; at?: number };
 
@@ -95,6 +99,8 @@ export function reduce(s: SessionState, a: Action): SessionState {
       };
     case 'reset':
       return initialState;
+    case 'refreshing':
+      return { ...s, refreshing: a.on };
     case 'pause':
     case 'resume':
       return s.phase === 'live' ? { ...s, paused: a.k === 'pause' } : s;

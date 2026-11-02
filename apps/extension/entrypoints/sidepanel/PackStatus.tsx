@@ -30,7 +30,9 @@ export function PackStatus({ state, info }: { state: PackState | null; info: Pac
 export function PackTooLarge({
   files,
   onRebuild,
+  busy,
 }: {
+  busy?: boolean;
   files: { id?: string; name: string; tokens: number }[];
   onRebuild: (exclude: string[]) => void;
 }) {
@@ -59,7 +61,11 @@ export function PackTooLarge({
           </li>
         ))}
       </ul>
-      <button type="button" disabled={ticked.size === 0} onClick={() => onRebuild([...ticked])}>
+      <button
+        type="button"
+        disabled={busy || ticked.size === 0}
+        onClick={() => onRebuild([...ticked])}
+      >
         สร้างใหม่โดยไม่เอาไฟล์ที่ติ๊ก ({ticked.size})
       </button>
     </section>

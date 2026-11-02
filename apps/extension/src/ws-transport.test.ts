@@ -302,4 +302,35 @@ describe('rebuild (FE-48)', () => {
     warn.mockRestore();
     vi.unstubAllGlobals();
   });
+
+  test('fetch rejects (offline) -> PACK_BUILD_FAILED emitted, no body logged (FE-49)', async () => {
+    vi.stubGlobal('fetch', async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const t = await live();
+    const got: ServerMessage[] = [];
+    t.onMessage((m) => got.push(m));
+    await t.rebuild([]);
+    expect(got).toEqual([{ v: 1, t: 'error', code: 'PACK_BUILD_FAILED' }]);
+    vi.unstubAllGlobals();
+  });
+
+  test('second rebuild while one is in flight does not call fetch again (FE-49)', async () => {
+    let done: (r: Response) => void = () => {};
+    const f = vi.fn(() => new Promise<Response>((r) => (done = r)));
+    vi.stubGlobal('fetch', f);
+    const t = await live();
+    const first = t.rebuild(['a']);
+    await flushP();
+    await flushP();
+    await t.rebuild(['b']);
+    expect(f).toHaveBeenCalledTimes(1);
+    done(new Response('{}', { status: 200 }));
+    await first;
+    f.mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    await t.rebuild([]); // free again
+    expect(f).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
 });

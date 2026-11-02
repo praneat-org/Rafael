@@ -27,3 +27,12 @@ test('retry button calls onRetry', () => {
   btn?.props.onClick();
   expect(onRetry).toHaveBeenCalledOnce();
 });
+
+test('retry is disabled while a refresh is in flight (FE-49)', () => {
+  const busy = renderToStaticMarkup(
+    <LiveView state={{ ...failed, refreshing: true }} send={() => {}} />,
+  );
+  expect(busy).toMatch(/<button[^>]*disabled=""[^>]*>ลองใหม่/);
+  const idle = renderToStaticMarkup(<LiveView state={failed} send={() => {}} />);
+  expect(idle).not.toMatch(/<button[^>]*disabled[^>]*>ลองใหม่/);
+});
