@@ -116,7 +116,7 @@ const ps = (state: 'loading' | 'ready' | 'error'): Action => ({
   msg: { v: 1, t: 'pack.status', state, files: [], tokens: 0, unreadable: [] },
 });
 const err = (
-  code: 'PACK_NOT_READY' | 'PACK_TOO_LARGE' | 'STT_UNAVAILABLE',
+  code: 'PACK_NOT_READY' | 'PACK_TOO_LARGE' | 'PACK_BUILD_FAILED' | 'STT_UNAVAILABLE',
   files?: { name: string; tokens: number }[],
 ): Action => ({ k: 'server', msg: { v: 1, t: 'error', code, files } });
 
@@ -143,4 +143,14 @@ test('pack loading clears the old too-large list', () => {
   );
   s = reduce(s, ps('loading'));
   expect(s.tooLarge).toBeNull();
+});
+
+test('PACK_BUILD_FAILED drops the stale too-large list, survives PACK_NOT_READY, clears on ready (BE-118)', () => {
+  let s = reduce(initialState, { k: 'start' });
+  s = reduce(s, err('PACK_TOO_LARGE', [{ name: 'big.pdf', tokens: 9 }]));
+  s = reduce(s, err('PACK_BUILD_FAILED'));
+  expect(s.error).toBe('PACK_BUILD_FAILED');
+  expect(s.tooLarge).toBeNull();
+  expect(reduce(s, err('PACK_NOT_READY')).error).toBe('PACK_BUILD_FAILED');
+  expect(reduce(s, ps('ready')).error).toBeNull();
 });

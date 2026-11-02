@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Cue, SessionState } from '../../src/session';
+import { PackBuildFailed } from './PackBuildFailed';
 import { PackStatus, PackTooLarge } from './PackStatus';
 
 type Send = (cmd: PanelToOffscreen) => void;
@@ -107,6 +108,9 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
           files={state.tooLarge}
           onRebuild={(exclude) => send({ k: 'rebuild', exclude })}
         />
+      ) : state.error === 'PACK_BUILD_FAILED' ? (
+        // [] = add nothing; WsTransport resends everything already excluded
+        <PackBuildFailed onRetry={() => send({ k: 'rebuild', exclude: [] })} />
       ) : state.error === 'PACK_NOT_READY' && state.pack === 'loading' ? (
         <p className="note">กำลังเตรียมเอกสาร — รอสักครู่แล้วถามใหม่</p>
       ) : (
