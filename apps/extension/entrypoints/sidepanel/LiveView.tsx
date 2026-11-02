@@ -106,11 +106,15 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
       {state.error === 'PACK_TOO_LARGE' && state.tooLarge && state.tooLarge.length > 0 ? (
         <PackTooLarge
           files={state.tooLarge}
+          busy={state.refreshing}
           onRebuild={(exclude) => send({ k: 'rebuild', exclude })}
         />
       ) : state.error === 'PACK_BUILD_FAILED' ? (
         // [] = add nothing; WsTransport resends everything already excluded
-        <PackBuildFailed onRetry={() => send({ k: 'rebuild', exclude: [] })} />
+        <PackBuildFailed
+          busy={state.refreshing}
+          onRetry={() => send({ k: 'rebuild', exclude: [] })}
+        />
       ) : state.error === 'PACK_NOT_READY' && state.pack === 'loading' ? (
         <p className="note">กำลังเตรียมเอกสาร — รอสักครู่แล้วถามใหม่</p>
       ) : (

@@ -155,8 +155,10 @@ export class WsTransport implements Transport {
    * (the too-large list no longer shows earlier exclusions) and the whole set is sent, since the server keeps none.
    * 413 -> PACK_TOO_LARGE again with the new list; ready arrives as pack.status over the socket.
    */
+  private refreshing = false;
   async rebuild(more: string[]): Promise<void> {
-    if (this.closed || !this.sessionId) return;
+    if (this.closed || !this.sessionId || this.refreshing) return; // FE-49: one refresh at a time
+    this.refreshing = true;
     this.exclude = [...new Set([...this.exclude, ...more])].slice(0, 200); // PackExclude max
     try {
       const token = await this.o.getToken(false);
@@ -175,6 +177,12 @@ export class WsTransport implements Transport {
       } else if (!res.ok) console.warn('[rafael] pack refresh failed:', res.status); // 409 superseded / 502: no content logged
     } catch {
       console.warn('[rafael] pack refresh failed');
+      // FE-49: network down / offline -> same prompt as a failed build (code only, D11)
+      dispatchRaw(JSON.stringify({ v: 1, t: 'error', code: 'PACK_BUILD_FAILED' }), (m) =>
+        this.emit(m),
+      );
+    } finally {
+      this.refreshing = false;
     }
   }
 

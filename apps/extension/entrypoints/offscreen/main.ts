@@ -165,8 +165,13 @@ function onCommand(cmd: PanelToOffscreen) {
   if (cmd.k === 'start') start(cmd);
   else if (cmd.k === 'preview') preview(cmd);
   else if (cmd.k === 'preview-stop') stopPreview();
-  else if (cmd.k === 'rebuild') void transport?.rebuild?.(cmd.exclude);
-  else if (cmd.k === 'pause' || cmd.k === 'resume') {
+  else if (cmd.k === 'rebuild') {
+    if (state.refreshing) return;
+    dispatch({ k: 'refreshing', on: true });
+    void Promise.resolve(transport?.rebuild?.(cmd.exclude)).finally(() =>
+      dispatch({ k: 'refreshing', on: false }),
+    );
+  } else if (cmd.k === 'pause' || cmd.k === 'resume') {
     if (state.phase !== 'live') return;
     applyPause(cmd.k, {
       capture,
