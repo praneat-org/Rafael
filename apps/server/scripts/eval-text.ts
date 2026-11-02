@@ -5,6 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { optArg } from '../../../bench/eval/src/args.js';
 import { parsePrices } from '../../../bench/eval/src/cost.js';
 import { parseKey } from '../../../bench/eval/src/key.js';
+import { assertOutsideRepo } from '../../../bench/eval/src/outside.js';
 import { buildReport } from '../../../bench/eval/src/report.js';
 import { loadBrainConfig } from '../src/brain/config.js';
 import { createGeminiClient } from '../src/brain/gemini.js';
@@ -33,5 +34,5 @@ const md = buildReport(
   `Eval run (TEXT runner, real Vertex, ${config.answererModel}; cost = tokens only, ${keys.length} Q as a 600 s pitch)`,
 );
 const out = arg('out', '');
-if (out) writeFileSync(out, md);
+if (out) writeFileSync(assertOutsideRepo(out, '--out'), md);
 else process.stdout.write(md);

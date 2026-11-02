@@ -4,6 +4,7 @@ import { optArg } from './args.js';
 import { costPerHour, parsePrices } from './cost.js';
 import { parseCues } from './cues.js';
 import { parseKey } from './key.js';
+import { assertOutsideRepo } from './outside.js';
 import { buildReport, GATES } from './report.js';
 import { fakeRunner } from './runner.js';
 import { factsOf, missingFacts, scoreOne } from './score.js';
@@ -65,6 +66,15 @@ describe('scoreOne whole-token facts', () => {
       expect(md).toContain('| 1/2 |'); // anchor-only correct is not counted
       expect(md).toContain('anchor-only: 1 (correct, not in gate: 1)');
     });
+  });
+});
+
+describe('assertOutsideRepo', () => {
+  it('rejects repo paths, accepts others', () => {
+    expect(() => assertOutsideRepo(new URL('../r.md', import.meta.url).pathname, '--out')).toThrow(
+      /outside the repo/,
+    );
+    expect(assertOutsideRepo('/tmp/r.md', '--out')).toBe('/tmp/r.md');
   });
 });
 

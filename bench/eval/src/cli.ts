@@ -5,6 +5,7 @@ import { optArg } from './args.js';
 import { parsePrices } from './cost.js';
 import { parseCues } from './cues.js';
 import { parseKey } from './key.js';
+import { assertOutsideRepo } from './outside.js';
 import { buildReport } from './report.js';
 import { fakeRunner } from './runner.js';
 
@@ -38,5 +39,5 @@ const md = buildReport(
   cues ? 'Eval re-score (saved cues)' : 'Eval run (FAKE runner, fixture)',
 );
 const out = arg('out', '');
-if (out) writeFileSync(out, md);
+if (out) writeFileSync(assertOutsideRepo(out, '--out'), md);
 else process.stdout.write(md);
