@@ -31,7 +31,7 @@
 
 1. Dev เปิด PR เข้า `develop` เป็น **draft** → ใบใน Linear `In Review`
 2. QA ตรวจเทียบ AC → ไม่ผ่าน: ใบกลับ `Todo` · ผ่าน: เปลี่ยน PR เป็น **ready for review** → ใบ `CodeRabbit`
-3. CodeRabbit review อัตโนมัติ (ข้าม draft · review ใหม่ทุก push)
+3. CodeRabbit review อัตโนมัติ (ข้าม draft · review ใหม่ทุก push) · CodeRabbit ติด limit / ไม่มา → agent `reviewer` review แทนในรูปแบบเดียวกัน (comment ขึ้นต้น `[Reviewer]`, commit status `Rafael Reviewer`) นับ finding เท่ากัน
    - มีข้อค้าง (ทั้ง thread **และ** Outside diff / Additional comments ใน review body) → ใบกลับ `Todo` ให้ Dev ตอบทุกข้อ (`fixed <sha>` / `wont-fix: เหตุผล + อ้าง D/AC` / `deferred: <ID>`)
    - ไม่มีค้าง → QA สรุปท้าย PR + ลง CodeRabbit decision log → label `ready-to-merge`
 4. คน approve + **Squash and merge** → ใบ `Done`
