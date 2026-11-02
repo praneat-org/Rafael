@@ -55,4 +55,21 @@ describe('text runner on the synthetic fixture', () => {
     expect(md).toContain('| out-of-source | 0 |');
     expect(deleted).toBe(1);
   });
+
+  it('stream failure is missed, not not-found-correct', async () => {
+    const pack = await buildFixturePack(dir);
+    const llm = fakeLlm();
+    llm.stream = async () => {
+      throw new Error('boom');
+    };
+    const none = keys.filter((k) => !k.anchor).slice(0, 1);
+    const results = await (await textRunner({ llm, config, pack }))(
+      none.map((k) => ({ question: k.question })),
+    );
+    expect(results[0]?.cue).toBeNull();
+    const prices = parsePrices(readFileSync(`${fx}prices.json`, 'utf8'));
+    expect(buildReport(none, results, new Set(pack.anchors), 600, prices)).toContain(
+      '| missed | 1 |',
+    );
+  });
 });

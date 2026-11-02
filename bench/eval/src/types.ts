@@ -35,4 +35,10 @@ export interface RunResult {
 /** Runner seam: BE-99/BE-89 will provide a real one that replays audio. */
 export type Runner = (inputs: { question: string }[]) => Promise<RunResult[]>;
 
-export type Outcome = 'correct' | 'wrong' | 'out-of-source' | 'not-found-correct' | 'missed';
+export type Outcome =
+  | 'correct'
+  | 'wrong'
+  | 'wrong-fact'
+  | 'out-of-source'
+  | 'not-found-correct'
+  | 'missed';

@@ -56,11 +56,15 @@ export async function textRunner(o: {
         const cue = await answerer.answer(`eval-${i}`, question, () => {});
         const l = last;
         out.push({
-          cue: {
-            notFound: cue.notFound,
-            bullets: cue.bullets,
-            sources: cue.sources.map((s) => `[${s.file} › ${s.locator}]`),
-          },
+          // stream failed: no trustworthy cue, so it is a miss, never a (correct) notFound
+          cue:
+            l?.outcome === 'error'
+              ? null
+              : {
+                  notFound: cue.notFound,
+                  bullets: cue.bullets,
+                  sources: cue.sources.map((s) => `[${s.file} › ${s.locator}]`),
+                },
           timings: {
             stt: 0, // text mode: no STT / Detector
             detector: 0,

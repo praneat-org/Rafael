@@ -33,6 +33,17 @@ describe('parseKey', () => {
   });
 });
 
+describe('scoreOne facts', () => {
+  const price: KeyRow = { question: 'q', answer: '2,900 บาท Business', anchor: '[a › 1]' };
+  const c = (b: string): Cue => ({ notFound: false, bullets: [b], sources: ['[a › 1]'] });
+  it('right anchor, wrong price -> wrong-fact', () =>
+    expect(scoreOne(price, c('1,200 บาท Business [a › 1]'), pack)).toBe('wrong-fact'));
+  it('facts present (comma / spacing normalized) -> correct', () =>
+    expect(scoreOne(price, c('Business 2900 บาท [a › 1]'), pack)).toBe('correct'));
+  it('anchor digits do not count as facts', () =>
+    expect(scoreOne({ ...price, answer: '1 บาท' }, c('ฟรี [a › 1]'), pack)).toBe('wrong-fact'));
+});
+
 describe('scoreOne', () => {
   it('correct', () => expect(scoreOne(key, cue(['[a › 1]']), pack)).toBe('correct'));
   it('wrong anchor in pack', () => expect(scoreOne(key, cue(['[b › 2]']), pack)).toBe('wrong'));

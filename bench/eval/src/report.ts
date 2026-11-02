@@ -1,6 +1,6 @@
 import type { Prices } from './cost.js';
 import { costPerHour } from './cost.js';
-import { scoreOne, tally } from './score.js';
+import { factsOf, scoreOne, tally } from './score.js';
 import { latencyStats } from './stats.js';
 import { type KeyRow, type RunResult, STAGES } from './types.js';
 
@@ -44,6 +44,8 @@ export function buildReport(
     '| outcome | count |',
     '| -- | -- |',
     ...Object.entries(t).map(([k, v]) => `| ${k} | ${v} |`),
+    '',
+    `Fact-checked: ${keys.filter((k) => k.anchor && factsOf(k).length).length} · anchor-only: ${keys.filter((k) => k.anchor && !factsOf(k).length).length} · not-found keys: ${keys.filter((k) => !k.anchor).length}`,
     '',
     '## Latency (ms)',
     '| stage | p50 | p95 |',
