@@ -2,10 +2,12 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { optArg } from './args.js';
 import { costPerHour, parsePrices } from './cost.js';
+import { parseCues } from './cues.js';
 import { parseKey } from './key.js';
+import { assertOutsideRepo } from './outside.js';
 import { buildReport, GATES } from './report.js';
 import { fakeRunner } from './runner.js';
-import { scoreOne } from './score.js';
+import { factsOf, missingFacts, scoreOne } from './score.js';
 import { percentile } from './stats.js';
 import { type Cue, type KeyRow, type RunResult, sourceAnchor } from './types.js';
 
@@ -31,6 +33,68 @@ describe('parseKey', () => {
     expect(() => parseKey('question,answer,anchor\nq,a')).toThrow(/cells/);
     expect(() => parseKey('question,answer,anchor\nq,a,[a › 1],extra')).toThrow(/cells/);
   });
+});
+
+describe('scoreOne whole-token facts', () => {
+  const k = (answer: string): KeyRow => ({ question: 'q', answer, anchor: '[a › 1]' });
+  const c = (b: string): Cue => ({ notFound: false, bullets: [b], sources: ['[a › 1]'] });
+  it('2900 does not match 29000; 15 does not match 150', () => {
+    expect(scoreOne(k('2,900 บาท'), c('29,000 บาท [a › 1]'), pack)).toBe('wrong-fact');
+    expect(scoreOne(k('ลด 15%'), c('ลด 150% [a › 1]'), pack)).toBe('wrong-fact');
+  });
+  it('latin word boundary, case-insensitive', () => {
+    expect(scoreOne(k('Okta'), c('รองรับ okta [a › 1]'), pack)).toBe('correct');
+    expect(scoreOne(k('Okta'), c('Oktapus [a › 1]'), pack)).toBe('wrong-fact');
+  });
+  it('hyphenated id is one fact; lone digit alone is ignored when others exist', () => {
+    expect(factsOf(k('Region (ap-southeast-7) 7 วัน'))).toEqual(['ap-southeast-7', 'region']);
+    expect(scoreOne(k('ap-southeast-7'), c('อยู่ที่ ap-southeast-1 [a › 1]'), pack)).toBe('wrong-fact');
+    expect(factsOf(k('4 ชั่วโมง'))).toEqual(['4']); // only fact left: kept
+  });
+  it('missingFacts lists facts, never bullet text; gate excludes anchor-only', () => {
+    expect(missingFacts(k('2,900 บาท'), c('1,200 [a › 1]'))).toEqual(['2900']);
+    const keys: KeyRow[] = [
+      { question: 'q', answer: 'ไม่มีตัวเลข', anchor: '[a › 1]' },
+      { question: 'q', answer: 'x', anchor: null },
+    ];
+    const res = fakeRunner(keys);
+    return res(keys.map((x) => ({ question: x.question }))).then((r) => {
+      const prices = parsePrices(
+        readFileSync(new URL('../fixtures/prices.json', import.meta.url), 'utf8'),
+      );
+      const md = buildReport(keys, r, pack, 60, prices);
+      expect(md).toContain('| 1/2 |'); // anchor-only correct is not counted
+      expect(md).toContain('anchor-only: 1 (correct, not in gate: 1)');
+    });
+  });
+});
+
+describe('assertOutsideRepo', () => {
+  it('rejects repo paths, accepts others', () => {
+    expect(() => assertOutsideRepo(new URL('../r.md', import.meta.url).pathname, '--out')).toThrow(
+      /outside the repo/,
+    );
+    expect(assertOutsideRepo('/tmp/r.md', '--out')).toBe('/tmp/r.md');
+  });
+});
+
+describe('parseCues', () => {
+  it('rejects wrong length / shape', () => {
+    expect(() => parseCues('[]', 1)).toThrow(/expected/);
+    expect(() => parseCues('[{"cue":null}]', 1)).toThrow(/needs/);
+    expect(() => parseCues('{}', 1)).toThrow(/expected/);
+  });
+});
+
+describe('scoreOne facts', () => {
+  const price: KeyRow = { question: 'q', answer: '2,900 บาท Business', anchor: '[a › 1]' };
+  const c = (b: string): Cue => ({ notFound: false, bullets: [b], sources: ['[a › 1]'] });
+  it('right anchor, wrong price -> wrong-fact', () =>
+    expect(scoreOne(price, c('1,200 บาท Business [a › 1]'), pack)).toBe('wrong-fact'));
+  it('facts present (comma / spacing normalized) -> correct', () =>
+    expect(scoreOne(price, c('Business 2900 บาท [a › 1]'), pack)).toBe('correct'));
+  it('anchor digits do not count as facts', () =>
+    expect(scoreOne({ ...price, answer: '1 บาท' }, c('ฟรี [a › 1]'), pack)).toBe('wrong-fact'));
 });
 
 describe('scoreOne', () => {
@@ -116,7 +180,7 @@ describe('gates one by one (boundaries)', () => {
   );
   const keys: KeyRow[] = Array.from({ length: N }, (_, i) => ({
     question: `q${i}`,
-    answer: 'a',
+    answer: '12',
     anchor: `[f › ${i}]`,
   }));
   const anchors = new Set(keys.map((k) => k.anchor as string));
@@ -128,7 +192,7 @@ describe('gates one by one (boundaries)', () => {
         i < correct ? [k.anchor as string] : i < correct + oos ? ['[zzz › 9]'] : ['[f › 0]'];
       const total = totals[i] ?? 1000;
       return {
-        cue: { notFound: false, bullets: ['x'], sources },
+        cue: { notFound: false, bullets: ['12'], sources },
         timings: { stt: 1, detector: 1, answererFirstToken: 1, total },
         usage,
       };

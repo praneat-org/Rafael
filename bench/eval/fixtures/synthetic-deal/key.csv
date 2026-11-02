@@ -1,0 +1,21 @@
+question,answer,anchor
+แพ็กเกจ Business ราคาเท่าไรต่อ agent ต่อเดือนครับ,"2,900 บาท ต่อ agent ต่อเดือน",[pricing.pdf › หน้า 1]
+ถ้าจ่ายเป็น annual มีส่วนลดไหม,ลด 15% เมื่อชำระรายปีล่วงหน้า,[pricing.pdf › หน้า 1]
+ส่วน AI Assist add-on คิดเพิ่มเท่าไร,450 บาท ต่อ agent ต่อเดือน,[pricing.pdf › หน้า 2]
+Premium onboarding ราคาเท่าไร จ่ายครั้งเดียวหรือรายเดือน,"45,000 บาท จ่ายครั้งเดียว",[pricing.pdf › หน้า 2]
+เรื่อง SSO รองรับอะไรบ้างครับ Okta ได้ไหม,SAML 2.0 และ OIDC รวม Okta,[spec.pdf › หน้า 2]
+ข้อมูลลูกค้าเก็บอยู่ที่ไหน อยู่ในไทยหรือเปล่า,cloud region กรุงเทพฯ (ap-southeast-7) ไม่ออกนอกประเทศ,[spec.pdf › หน้า 1]
+มี certification อะไรบ้าง เช่น ISO หรือ SOC 2,ISO 27001 และ SOC 2 Type II,[spec.pdf › หน้า 2]
+ปกติ integrate กับ LINE OA ได้ใช่ไหม แล้ว Salesforce ล่ะ,รองรับทั้ง LINE OA และ Salesforce,[spec.pdf › หน้า 2]
+ประวัติ ticket เก็บไว้นานแค่ไหน,24 เดือน (ค่าเริ่มต้น),[spec.pdf › หน้า 3]
+Uptime SLA ของแพ็กเกจ Business กี่เปอร์เซ็นต์,99.9% ต่อเดือน,[sla.pdf › หน้า 1]
+ถ้า uptime ต่ำกว่า 99% เราได้ service credit เท่าไร,25% ของค่าบริการเดือนนั้น,[sla.pdf › หน้า 1]
+ถ้าเป็น P1 incident ฝั่ง Enterprise ตอบภายในกี่นาที,30 นาที ตลอด 24x7,[sla.pdf › หน้า 2]
+RPO กับ RTO ของ disaster recovery เท่าไร,RPO 15 นาที / RTO 4 ชั่วโมง,[sla.pdf › หน้า 3]
+Siam Kitchen ใช้แล้ว first response time ลดลงเท่าไร,จาก 6 ชั่วโมง เหลือ 45 นาที,[case-study.pdf › หน้า 1]
+Northern Logistics ใช้เวลา go-live กี่สัปดาห์,10 สัปดาห์,[case-study.pdf › หน้า 2]
+ย้ายข้อมูลมาจาก Zendesk ได้ไหม คิดเงินหรือเปล่า,"ได้ ฟรีไม่เกิน 100,000 tickets",[faq.pdf › หน้า 1]
+ขอ trial ได้กี่วัน ต้องใส่บัตรเครดิตไหม,30 วัน ไม่ต้องใช้บัตรเครดิต,[faq.pdf › หน้า 2]
+ระบบรองรับ WhatsApp Business ไหมครับ,,ไม่มีใน source
+ติดตั้งแบบ on-premise ใน data center ของเราเองได้หรือเปล่า,,ไม่มีใน source
+มี voice call หรือ IVR สำหรับ call center ด้วยไหม,,ไม่มีใน source
