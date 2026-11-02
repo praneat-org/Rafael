@@ -16,6 +16,18 @@ pnpm dev                 # server :8080 + extension (WXT dev) — load apps/exte
 
 Before a PR: `pnpm lint && pnpm typecheck && pnpm test && pnpm build`
 
+## ติดตั้งสำหรับทีม BD (dry-run)
+
+ทาง (ข) ชั่วคราว: ผู้ดูแลสร้าง zip ด้วย `WXT_SERVER_URL=https://<server dev> WXT_OAUTH_CLIENT_ID=<id> pnpm --filter extension zip:dev` (ได้ `apps/extension/.output/extension-*-chrome.zip` · ห้าม commit) แล้วแจกให้ BD
+
+1. แตก zip เป็นโฟลเดอร์ (ห้ามลบโฟลเดอร์หลังติดตั้ง)
+2. เปิด `chrome://extensions` → เปิด **Developer mode** (มุมขวาบน)
+3. กด **Load unpacked** → เลือกโฟลเดอร์ที่แตกไว้
+4. กดไอคอนจิ๊กซอว์ → ปักหมุด (pin) Rafael แล้วกดไอคอนเพื่อเปิด Side Panel
+5. กด sign-in ด้วยบัญชี Google ที่อยู่ใน test users ของ OAuth client (Chrome ต้อง login profile นั้นอยู่)
+
+ทาง (ก) Web Store แบบ private + force-install ต้องให้ Google Workspace admin เป็นคนทำ
+
 ## Layout
 
 | Path | What |
