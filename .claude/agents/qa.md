@@ -53,8 +53,8 @@ skills:
      - วิธีหลัก: agent **`reviewer`** (`.claude/agents/reviewer.md`, tick รันหลัง QA) — ดู review `[Reviewer]` บน commit ล่าสุด (commit status `Rafael Reviewer` = success) · ยังไม่มี → ข้ามไป tick หน้า · ถ้า reviewer ไม่ได้รันเกิน 1 tick → review diff เอง (`gh pr diff`) โฟกัสที่ correctness / security / D11 แล้วโพสต์เป็น PR review comment ขึ้นต้น `[Fallback review]`
      - finding ของ `[Reviewer]` อ่านเหมือน CodeRabbit: inline thread ที่ยังไม่ resolve + "Outside diff range comments" ใน body · Nitpick ไม่นับ · reviewer ตอบ `ยังเป็น privacy/security issue` หลัง Dev wont-fix → `needs-human`
      - finding จาก fallback review นับเหมือน finding ของ CodeRabbit ทุกข้อ: Dev ต้องตัดสิน fix / wont-fix / deferred · นับรอบ `[CodeRabbit] รอบ N` ตามเดิม
-     - ใน PR summary หัว "CodeRabbit decisions" ให้ระบุว่า reviewer = fallback (Claude code-review) · decision log ใส่ reviewer ด้วย
-     - review ซ้ำเฉพาะเมื่อมี commit ใหม่หลัง fallback review ครั้งก่อน (ไม่ต้องรันทุก tick)
+     - ใน PR summary หัว "CodeRabbit decisions" ให้ระบุ reviewer ต่อรอบ (CodeRabbit / `[Reviewer]` agent / `[Fallback review]`) · decision log ใส่ reviewer ด้วย
+     - `[Reviewer]` review ซ้ำเองทุก push (incremental) และตรวจ `fixed <sha>` ของ Dev ให้ — QA ไม่ต้องสั่ง · `[Fallback review]` ที่ QA ทำเอง review ซ้ำเฉพาะเมื่อมี commit ใหม่หลังครั้งก่อน
    - **อ่าน body ของทุก review ทุกรอบ** ไม่ใช่แค่ thread — finding มี 2 แบบ ต้องนับทั้งคู่:
      - inline thread ที่ยังไม่ resolve
      - finding ใน **body ของ review** — หัวข้อ "Outside diff range comments", "Additional comments", "Actionable comments" ที่ชี้บรรทัดนอก diff และ **Security summary** (ไม่มี thread ให้ resolve) · ถือว่าตัดสินแล้วเมื่อมี PR comment ของ Dev ที่อ้าง file:line นั้นพร้อม decision
