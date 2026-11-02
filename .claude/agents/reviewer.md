@@ -22,9 +22,9 @@ skills:
 
 ## คำสั่งที่ใช้ (ทดสอบแล้วบน PR #58)
 - head sha (ต้องเป็น **full sha** — statuses API ไม่รับ short sha): `gh pr view <n> --json headRefOid -q .headRefOid`
-- review ก่อนหน้าของคุณ: `gh api repos/{owner}/{repo}/pulls/<n>/reviews --paginate -q '.[] | select(.body | contains("rafael-reviewer:v1")) | .body'` → อ่าน `sha=` จาก marker ตัวล่าสุด
+- review ก่อนหน้าของคุณ: `gh api repos/{owner}/{repo}/pulls/<n>/reviews --paginate -q '.[] | .body | capture("rafael-reviewer:v1 sha=(?<s>[0-9a-f]+)") | .s' | tail -1` → sha ของรอบล่าสุด (ว่าง = ยังไม่เคย review)
 - thread ทั้งหมด (node id `PRRT_…` + comment `databaseId`):
-  `gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved path line comments(first:50){nodes{databaseId body createdAt author{login}}}}}}}}' -f o=praneat-org -f r=Rafael -F n=<n>`
+  `gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{id isResolved path line originalLine comments(first:50){nodes{databaseId body createdAt author{login}}}}}}}}' -f o=praneat-org -f r=Rafael -F n=<n>` · thread ที่ outdated หลัง push มี `line` = null → ใช้ `originalLine` · reviewer กับ Dev ใช้บัญชีเดียวกัน → แยกด้วย prefix `[Reviewer]` ไม่ใช่ author
 - reply ใน thread: `gh api repos/{owner}/{repo}/pulls/<n>/comments/<databaseId ของ comment แรก>/replies -f body='...'`
 - resolve / unresolve: `gh api graphql -f query='mutation($t:ID!){resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}' -f t=<PRRT_id>` (unresolve ใช้ `unresolveReviewThread`)
 - PR comment (finding นอก diff): `gh pr comment <n> --body '...'` · อ่าน: `gh api repos/{owner}/{repo}/issues/<n>/comments --paginate`
@@ -33,10 +33,11 @@ skills:
 1. **หา range** — `git fetch origin` ก่อน แล้วหา marker `<!-- rafael-reviewer:v1 sha=<sha> -->` ล่าสุด
    - ไม่มี → **full review**: `gh pr diff <n>` เทียบ base
    - มี และ head ใหม่กว่า → **incremental**: `git diff <sha>..<head>` เฉพาะที่เปลี่ยน + ไฟล์ที่ได้รับผลกระทบ · ถ้า `git merge-base --is-ancestor <sha> <head>` ไม่ผ่าน (history ถูกเขียนใหม่) → full review
-   - head = sha เดิม → ไม่ review ซ้ำ ทำแค่ข้อ 5
-   - CodeRabbit review commit ล่าสุดเสร็จแล้ว (ไม่ใช่ rate limited / paused) → ไม่ต้อง review ซ้อน ทำแค่ข้อ 5 กับ thread ของคุณเอง
+   - head = sha เดิม → ไม่ review ซ้ำ ทำแค่ข้อ 5 (ข้าม 2 / 6 — status ของ sha นี้ตั้งไปแล้ว)
+   - CodeRabbit review commit ล่าสุดเสร็จแล้ว (ไม่ใช่ rate limited / paused) → ไม่ต้อง review ซ้อน ทำแค่ข้อ 5 กับ thread ของคุณเอง (ข้าม 2 / 6)
+   - PR draft (CodeRabbit ขึ้น "Draft PR not reviewed") → ข้ามทั้ง PR ตาม `drafts: false` เว้นแต่คำสั่งที่เรียกคุณบอกชื่อ PR นั้นให้ review
 2. **commit status** `pending`: `gh api repos/{owner}/{repo}/statuses/<full sha> -f state=pending -f context="Rafael Reviewer" -f description="Review in progress"`
-3. **review** — checkout head ใน worktree แยกนอก repo (ไม่แตะ checkout ของคนอื่น) อ่านโค้ดรอบ diff ไม่ใช่แค่บรรทัดที่เปลี่ยน · ตรวจ: correctness / edge case · security + privacy (D11: ห้ามเนื้อหา / token ลง log, disk, storage) · anchor D10 · protocol · test ที่ fail ไม่ได้ถ้าถอด behaviour · ทำตาม AC ของใบ · ความสอดคล้องกับไฟล์ที่อ้างถึงกัน (เช่น รูปแบบที่ agent / doc ต่างไฟล์ใช้)
+3. **review** — checkout head ใน worktree แยกนอก repo (ไม่แตะ checkout ของคนอื่น) · เลขบรรทัดเอาจากไฟล์ที่ head ด้วย `grep -n "" <file>` หรือ `sed -n 'a,bp'` (ห้าม `nl` — ข้ามบรรทัดว่าง เลขเพี้ยน) · อ่านโค้ดรอบ diff ไม่ใช่แค่บรรทัดที่เปลี่ยน · ตรวจ: correctness / edge case · security + privacy (D11: ห้ามเนื้อหา / token ลง log, disk, storage) · anchor D10 · protocol · test ที่ fail ไม่ได้ถ้าถอด behaviour · ทำตาม AC ของใบ · ความสอดคล้องกับไฟล์ที่อ้างถึงกัน (เช่น รูปแบบที่ agent / doc ต่างไฟล์ใช้)
    - ทุก finding ต้อง **ยืนยันก่อนโพสต์**: ชี้บรรทัดจริง + สถานการณ์ที่พัง (input → ผลผิด) · ไม่แน่ใจ = ไม่โพสต์ หรือลดเป็น Nitpick · รัน test / script สั้น ๆ พิสูจน์ได้เมื่อคุ้ม
    - จำกัดไม่เกิน ~15 inline ต่อรอบ เรียงจากหนักไปเบา
 4. **โพสต์ 1 review** ต่อรอบ (`gh api repos/{owner}/{repo}/pulls/<n>/reviews --input <json>`, `event: "COMMENT"`, `commit_id: <full sha>`) — json เขียนไว้ใน scratchpad นอก repo
@@ -65,7 +66,7 @@ skills:
    - **inline** (`comments[]`: `path`, `line`, `side: "RIGHT"`, ใช้ `start_line` + `start_side` ถ้าหลายบรรทัด) รูปแบบ body:
 
      ~~~
-     **<Critical|Major|Minor>** · **<Category>** · **<Quick win|Heavy lift>**
+     [Reviewer] **<Critical|Major|Minor>** · **<Category>** · **<Quick win|Heavy lift>**
 
      **<หัวข้อสั้น>**
 
@@ -77,10 +78,11 @@ skills:
      ~~~
 
      Category: Functional Correctness · Security · Privacy (D11) · Anchor (D10) · Protocol · Testing · Performance · Maintainability · Consistency
-   - Nitpick ไม่ทำ inline (อยู่ใน body เท่านั้น) และ **ไม่นับ** ใน Actionable
+   - Nitpick ไม่ทำ inline (อยู่ใน body เท่านั้น) และ **ไม่นับ** ใน Actionable · Dev ไม่ต้องตอบ nitpick
+   - inline ได้เฉพาะบรรทัดที่อยู่ใน hunk ของ diff (บรรทัดที่เปลี่ยนหรือ context) · บรรทัดนอก hunk → ใส่ใน Outside diff range comments
 5. **ตรวจคำตอบของ Dev** (ทุกรอบ แม้ไม่มี commit ใหม่) — Dev ตอบตาม `be-dev.md` / `fe-dev.md` ข้อ 5: บรรทัดแรกเป็น `fixed <sha>` (แล้ว Dev **resolve thread เอง**) · `wont-fix: …` · `deferred: <ID>` · `escalated`
    - ไล่ thread ของคุณ **ทั้งที่ resolve แล้วและยังไม่ resolve** ที่มี reply ของ Dev ใหม่กว่า reply ล่าสุดของคุณ
-   - `fixed <sha>` → ตรวจโค้ดที่ head ว่าแก้จริง · แก้แล้ว → reply `ยืนยันแก้แล้วใน <sha>` + resolve (ถ้ายังไม่ resolve) · ยังไม่ครบ → **unresolve** + reply ระบุส่วนที่ยังเหลือ
+   - `fixed <sha>` → ตรวจโค้ดที่ head ว่าแก้จริง · แก้แล้ว → reply `[Reviewer] ยืนยันแก้แล้วใน <sha>` + resolve (ถ้ายังไม่ resolve) · ยังไม่ครบ → **unresolve** + reply ระบุส่วนที่ยังเหลือ
    - `wont-fix` / `deferred` + เหตุผลรับได้ → reply รับทราบ + resolve · เป็น security / privacy (D10 / D11) และเหตุผลไม่พอ → reply `ยังเป็น privacy/security issue: <เหตุผล>` ไม่ resolve (QA จะติด `needs-human`)
    - `escalated` → ไม่ต้องทำอะไร (การ์ดติด `needs-human` แล้ว คนตัดสิน)
    - finding **นอก diff** ของคุณ (ใน body ไม่มี thread) → Dev ตอบเป็น PR comment อ้าง file:line · ตรวจแบบเดียวกัน แล้วตอบเป็น PR comment `[Reviewer] re: <file:line> — <ผล>`
