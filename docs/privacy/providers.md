@@ -87,7 +87,7 @@ We call the regional endpoint in asia-southeast1 (same as Cloud Run), but "Endpo
 3. STT: if Chirp 3 in asia-southeast1 cannot do th-TH streaming, region is `us`/`eu`; Deepgram would be the EU endpoint (verified) or the US (UNVERIFIED). Any of these is a cross-border transfer out of Thailand; flag to DPO.
 4. When adapters land (BE-77/79): Deepgram `mip_opt_out=true` in adapter config. No code exists yet.
 
-## Sources (checked 2026-10-24)
+## Sources (1–12 checked 2026-10-24 · 13–17 checked 2026-11-02)
 
 1. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/data-governance
 2. https://docs.cloud.google.com/vertex-ai/generative-ai/docs/learn/locations
