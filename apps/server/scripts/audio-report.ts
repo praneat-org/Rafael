@@ -6,6 +6,7 @@ export function auditReport(o: {
   ids: string[];
   results: RunResult[];
   extraCues: number;
+  duplicateCues?: number;
   synthetic: boolean;
 }): string {
   const banner = o.synthetic
@@ -23,6 +24,7 @@ export function auditReport(o: {
     ...rows,
     '',
     `Cues not matched to a question window: ${o.extraCues}`,
+    `Duplicate cues (emitted before the endMs of the question whose window they fall in, i.e. stale cue of an earlier question): ${o.duplicateCues ?? 0}`,
     '',
   ].join('\n');
 }

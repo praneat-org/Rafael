@@ -101,12 +101,13 @@ export type AudioRunOptions = {
 /**
  * Results are in timeline order. A cue belongs to question i when its FIRST emission falls in
  * [startMs_i, startMs_{i+1}) on the audio clock; a second cue in the same window is counted, not scored.
+ * A cue before that question's endMs is a duplicate of the previous question: extra + duplicateCues.
  * ponytail: a cue slower than the gap to the next question lands in the next window (reads as missed +
  * extra); real pitches have multi-second gaps, tighten only if the BE-121 timeline has none.
  */
 export async function runAudio(
   o: AudioRunOptions,
-): Promise<{ results: RunResult[]; extraCues: number }> {
+): Promise<{ results: RunResult[]; extraCues: number; duplicateCues: number }> {
   const frameMs = o.frameMs ?? 100;
   const store = new MemorySessionStore();
   const session = store.create('eval@local', 'eval');
@@ -180,10 +181,16 @@ export async function runAudio(
     const qs = o.timeline.questions;
     const slot = new Map<number, Out>();
     let extra = 0;
+    let dup = 0;
     for (const c of [...outs.values()].sort((a, b) => a.at - b.at)) {
       const ms = ((c.at - t0) * 100) / frameMs;
       const i = qs.reduce((a, q, k) => (q.startMs <= ms ? k : a), -1);
-      if (i < 0 || slot.has(i)) extra++;
+      // (i = 0 has no previous question, still counted: nothing may answer before the first question ends)
+      // a cue before the question ends cannot answer it (stale cue of the previous one, BE-122)
+      if (i >= 0 && ms < (qs[i]?.endMs ?? 0)) {
+        extra++;
+        dup++;
+      } else if (i < 0 || slot.has(i)) extra++;
       else slot.set(i, c);
     }
     const lat = new Map(cueLat.map((l, k) => [l.cueId as string, { l, a: ansLog[k] }]));
@@ -207,7 +214,7 @@ export async function runAudio(
         },
       };
     });
-    return { results, extraCues: extra };
+    return { results, extraCues: extra, duplicateCues: dup };
   } finally {
     console.log = realLog;
     store.end(session.id, 'ended'); // D21: disposes the Answerer / CachedContent

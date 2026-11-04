@@ -168,6 +168,10 @@ export function createDetector(deps: DetectorDeps) {
     if (!parsed.isQuestion || !question) return done({ kind: 'none', reason: 'not-question' });
     if (!parsed.fromCustomer) return done({ kind: 'none', reason: 'not-customer' });
 
+    // BE-122: the question is consumed. Keeping it in the window made the model re-extract it
+    // (reworded, so Dice dedupe missed) on every later segment, firing a stale cue mid-next-question.
+    window = [];
+
     const norm = normalizeQuestion(question);
     if (
       asked.some(
