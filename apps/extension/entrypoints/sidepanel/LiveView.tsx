@@ -18,6 +18,9 @@ const STATUS_TEXT = {
 function CueBody({ cue, big }: { cue: Cue; big: boolean }) {
   return (
     <>
+      <p className={cue.notFound ? 'announce-head nf' : 'announce-head'}>
+        {cue.notFound ? '《ไม่พบในเอกสาร》' : '《ตอบ》'}
+      </p>
       <p className="question">Q: {cue.question}</p>
       <div className="cuebody">
         {cue.notFound ? (
@@ -121,8 +124,13 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
         state.error && <p className="note">ผิดพลาด: {state.error}</p>
       )}
       {/* fixed-height slot: any cue (partial or final) fits without moving the rest */}
-      <section className={`latest${latest?.partial ? ' partial' : ''}`} aria-live="polite">
-        {latest ? <CueBody cue={latest} big /> : <p className="note">รอคำถามจากลูกค้า…</p>}
+      <section className="latestwrap" aria-live="polite">
+        <div
+          key={latest?.cueId}
+          className={`latest${latest?.partial ? ' partial' : ''}${latest ? ' arrive' : ''}`}
+        >
+          {latest ? <CueBody cue={latest} big /> : <p className="note">รอคำถามจากลูกค้า…</p>}
+        </div>
       </section>
       <ul className="previous" aria-label="cue ก่อนหน้า">
         {previous.map((c) => (
