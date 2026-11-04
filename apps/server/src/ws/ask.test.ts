@@ -188,6 +188,35 @@ test('logs: latency per stage per cue, no question / answer / pack text (D11)', 
   }
 });
 
+test('ask: cue.latencyMs counts from ask receipt incl. queue, = log ms (D26)', async () => {
+  let open!: () => void;
+  const t = await setup([`- ${ANSWER} ${A1}`], undefined, new Promise<void>((r) => (open = r)));
+  t.send({ t: 'ask', text: QUESTION });
+  setTimeout(open, 80);
+  await vi.waitFor(() => expect(cues(t.msgs).some((c) => !c.partial)).toBe(true));
+  await vi.waitFor(() => expect(out.some((l) => l.includes('cue.latency'))).toBe(true));
+  const lat = JSON.parse(out.find((l) => l.includes('cue.latency')) as string);
+  const final = cues(t.msgs).find((c) => !c.partial);
+  expect(final?.latencyMs).toBeGreaterThanOrEqual(75);
+  expect(Math.abs((final?.latencyMs ?? Number.NaN) - lat.ms)).toBeLessThanOrEqual(20);
+  expect(lat).not.toHaveProperty('serverTotalMs'); // ask has no stt / detector
+});
+
+test('ask queued behind another ask: latencyMs includes the queue wait (D26)', async () => {
+  let open!: () => void;
+  const t = await setup([`- ${ANSWER} ${A1}`], undefined, new Promise<void>((r) => (open = r)));
+  t.send({ t: 'ask', text: QUESTION });
+  t.send({ t: 'ask', text: `${QUESTION} 2` });
+  setTimeout(open, 80);
+  await vi.waitFor(() => expect(cues(t.msgs).filter((c) => !c.partial)).toHaveLength(2));
+  await vi.waitFor(() => expect(out.filter((l) => l.includes('cue.latency'))).toHaveLength(2));
+  const second = JSON.parse(out.filter((l) => l.includes('cue.latency'))[1] as string);
+  expect(second.queueMs).toBeGreaterThan(0);
+  expect(cues(t.msgs).filter((c) => !c.partial)[1]?.latencyMs).toBeGreaterThanOrEqual(
+    second.queueMs,
+  );
+});
+
 test('ask with no brain configured -> LLM_UNAVAILABLE (not PACK_NOT_READY)', async () => {
   app = createApp({
     store: new MemorySessionStore(),

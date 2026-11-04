@@ -17,3 +17,14 @@ export function latencyStats(all: RunResult[]) {
   }
   return out;
 }
+
+/** Cross-check of the wall-clock `total` (BE-126): server-side serverTotalMs p50 / p95 over the cues that have it. */
+export function serverTotalStats(all: RunResult[]) {
+  const v = all.flatMap((r) =>
+    r.cue !== null && r.timings.serverTotal !== undefined ? [r.timings.serverTotal] : [],
+  );
+  return v.length ? { p50: percentile(v, 50), p95: percentile(v, 95) } : undefined;
+}
+
+/** wall-clock vs server total differ by more than this -> warn (network / endpointing / clock problem) */
+export const SERVER_TOTAL_WARN_MS = 500;

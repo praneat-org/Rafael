@@ -29,6 +29,8 @@ Criteria from BE-67 sprint goal (proposed, adjustable before the rounds start). 
 | Rated disruptive (count) | no threshold set | | | | |
 | Cost per pitch hour (measured, STT + LLM) | recorded only | | | | |
 
+Latency gate (p50 / p95) = wall-clock `total` from the audio runner: end of speech -> cue seen, so it includes endpointing and network. Cross-check = `serverTotal` = first-cue `firstCueMs` + `sttFinalMs` from the `cue.latency` log (same moment as `total`; the log's `serverTotalMs` and protocol `cue.latencyMs` of the FINAL cue, D26, are later when partial cues exist; stt + detector + answerer, queue included); the report warns when the two differ by > 500 ms. `ask` (no STT / Detector) counts from ask receipt, so it is not comparable with the speech rows. No `renderMs` ack.
+
 Latency breakdown per stage (find the bottleneck), same rounds:
 
 | Stage | Budget | R1 p50 / p95 | R2 p50 / p95 | R3 p50 / p95 |
