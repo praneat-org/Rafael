@@ -10,7 +10,13 @@ import type { LlmClient } from './llm.js';
 
 /** No pack yet (undefined) -> ask answers PACK_NOT_READY. */
 export type PackProvider = (s: Session) => PackIndex | undefined;
-export type BrainOptions = { llm: LlmClient; config: BrainConfig; getPack?: PackProvider };
+export type BrainOptions = {
+  llm: LlmClient;
+  config: BrainConfig;
+  getPack?: PackProvider;
+  /** Eval harness only (BE-124, synthetic data): sees the question the Detector extracted. Never logged here (D11). */
+  onQuestion?: (cueId: string, question: string) => void;
+};
 export type AskResult = 'ok' | 'no-pack' | 'busy';
 
 const MAX_IN_FLIGHT = 2; // per session (BE-99); extra asks are refused, never queued unbounded
@@ -94,6 +100,7 @@ export function createPipeline(
     if (e.inFlight >= MAX_IN_FLIGHT) return 'busy';
     e.inFlight++;
     const cueId = randomUUID();
+    if (ctx.stage === 'segment') opts.onQuestion?.(cueId, question);
     // answers run in order, the older one is never cancelled
     e.chain = e.chain.then(async () => {
       if (ctx.isPaused?.()) {
