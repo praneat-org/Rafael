@@ -12,7 +12,7 @@ import { parseTimeline, parseWav } from './audio-runner.js';
 const [wav, tl, silence] = process.argv.slice(2);
 if (!wav || !tl || !silence) throw new Error('usage: <wav> <timeline.json> <silenceMs>');
 if (!(Number(silence) > 0))
-  throw new Error(`silenceMs must be a positive number, got "${silence}"`);
+  throw new Error(`silenceMs must be a positive finite number, got "${silence}"`);
 const provider = createGeminiStt({ ...process.env, STT_SILENCE_MS: silence });
 if (!provider) throw new Error('set STT_MODEL + GOOGLE_CLOUD_PROJECT');
 const pcm = parseWav(readFileSync(wav));
