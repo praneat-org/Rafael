@@ -89,7 +89,7 @@ const timeline = {
 describe('audio runner', () => {
   it('replays audio through STT + pipeline, matches cues by timeline, scores and reports', async () => {
     const pack = await buildFixturePack(`${fx}synthetic-deal/pack`);
-    const { results, extraCues, duplicateCues } = await runAudio({
+    const { results, extraCues, duplicateCues, latency } = await runAudio({
       llm: fakeLlm(),
       config,
       pack,
@@ -112,6 +112,10 @@ describe('audio runner', () => {
       // from the pipeline's real `cue.latency` log (serverTotalMs), next to wall-clock total
       expect(r.timings.serverTotal).toBeGreaterThan(0);
       expect(r.timings.serverTotal).toBeGreaterThanOrEqual(r.timings.stt + r.timings.detector);
+      // serverTotal comes from THIS result's cue: first cue + stt
+      const l = latency[i];
+      expect(l).toBeDefined();
+      expect(r.timings.serverTotal).toBe((l?.firstCueMs ?? 0) + (l?.sttFinalMs ?? 0));
       expect(r.usage.cacheReadTokens).toBe(90);
     });
     const base = buildReport(

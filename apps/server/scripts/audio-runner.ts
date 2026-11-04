@@ -126,6 +126,8 @@ export async function runAudio(o: AudioRunOptions): Promise<{
   results: RunResult[];
   extraCues: number;
   duplicateCues: number;
+  /** per result (same order): the matched cue's `cue.latency` numbers, undefined when no cue */
+  latency: ({ firstCueMs?: number; sttFinalMs?: number } | undefined)[];
   trace?: Trace;
 }> {
   const frameMs = o.frameMs ?? 100;
@@ -238,7 +240,10 @@ export async function runAudio(o: AudioRunOptions): Promise<{
           detector: Number(x?.l.detectorMs ?? 0),
           answererFirstToken: Number(x?.a?.firstTokenMs ?? 0),
           total,
-          ...(x?.l.serverTotalMs !== undefined && { serverTotal: Number(x.l.serverTotalMs) }),
+          // first cue (same moment `total` measures), not the final cue that serverTotalMs logs
+          ...(x?.l.firstCueMs !== undefined && {
+            serverTotal: Number(x.l.firstCueMs) + Number(x.l.sttFinalMs ?? 0),
+          }),
         },
         usage: {
           inputTokens: Number(x?.a?.inputTokens ?? 0),
@@ -267,7 +272,16 @@ export async function runAudio(o: AudioRunOptions): Promise<{
           }),
         }
       : undefined;
-    return { results, extraCues: extra, duplicateCues: dup, trace };
+    const latency = qs.map((_, i) => {
+      const l = lat.get(slot.get(i)?.cueId ?? '')?.l;
+      return (
+        l && {
+          firstCueMs: l.firstCueMs as number | undefined,
+          sttFinalMs: l.sttFinalMs as number | undefined,
+        }
+      );
+    });
+    return { results, extraCues: extra, duplicateCues: dup, latency, trace };
   } finally {
     console.log = realLog;
     store.end(session.id, 'ended'); // D21: disposes the Answerer / CachedContent
