@@ -272,10 +272,33 @@ test('hints: file names first, capitalised / acronym words, capped', async () =>
     'x',
     { maxHints: 4 },
   );
-  expect(p.hints).toEqual(['Praneat', 'Proposal', 'Kubernetes', 'SLA']);
+  expect(p.hints).toEqual(['Praneat Proposal', 'Praneat', 'Proposal', 'Kubernetes']);
+});
+
+test('hints: multi-word names kept as a phrase before single words (BE-125)', async () => {
+  const p = await buildPack(
+    provider([F('1', 'deal')], {
+      '1': doc('Siam Kitchen Group ใช้แล้ว. Northern Logistics go-live 10 สัปดาห์'),
+    }),
+    'x',
+  );
+  expect(p.hints.slice(0, 2)).toEqual(['Northern Logistics', 'Siam Kitchen Group']);
+  expect(p.hints).toEqual(expect.arrayContaining(['Siam', 'Kitchen', 'Northern']));
 });
 
 const mk = (t: string) => buildPack(provider([F('1', 'A')], { '1': doc(t) }), 'x');
+
+test('hints: name wrapped across lines still a phrase; file-name words survive the cap (BE-125)', async () => {
+  const content = Array.from({ length: 5 }, (_, i) => `Aa${i} Bb${i}`).join(' and ');
+  const p = await buildPack(
+    provider([F('1', 'Praneat')], { '1': doc(`Siam\nKitchen Group ${content}`) }),
+    'x',
+    { maxHints: 3 },
+  );
+  expect(p.hints[0]).toBe('Praneat');
+  const q = await buildPack(provider([F('1', 'deal')], { '1': doc('Siam\n  Kitchen Group') }), 'x');
+  expect(q.hints[0]).toBe('Siam Kitchen Group');
+});
 
 test('PackStore: set/get/clear (end deletes)', async () => {
   const s = new PackStore();

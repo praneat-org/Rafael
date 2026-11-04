@@ -1,7 +1,8 @@
 import type { SttProvider, SttStream } from './provider.js';
 
 export type RollingOptions = {
-  hints: readonly string[];
+  /** read at every (re)open, so a pack that finished loading later reaches the next stream (BE-125) */
+  hints: () => readonly string[];
   /** open a new stream before the provider's per-stream limit (Chirp 5 min) */
   rolloverMs: number;
   /** audio replayed into the new stream so no word falls between two streams */
@@ -23,6 +24,7 @@ type Gen = {
   stream: SttStream;
   frames: number;
   retired: boolean;
+  hinted: boolean; // opened with a non-empty hint list
   dedupe: boolean; // opened with replayed audio: its first finals repeat text already emitted
   held: { text: string; speaker?: string; frames: number }[] | null; // events parked until the old stream flushed
   buf: { text: string; speaker?: string } | null; // finals waiting for overlap alignment
@@ -95,7 +97,9 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
   }
 
   function open(replay: Int16Array[], hold: boolean): Gen {
+    const hints = o.hints();
     const g: Gen = {
+      hinted: hints.length > 0,
       stream: undefined as unknown as SttStream,
       frames: 0,
       retired: false,
@@ -103,7 +107,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       held: hold ? [] : null,
       buf: null,
     };
-    g.stream = provider.start(o.hints, {
+    g.stream = provider.start(hints, {
       onPartial: (text, speaker) => {
         if (closed || g !== cur || g.held || g.buf) return;
         o.onPartial({ segId: `seg-${seg}`, text, speaker });
@@ -177,6 +181,17 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
   }
 
   return {
+    /** hints became available after the stream opened without them: roll over (overlap replayed) so the new stream gets them */
+    hintsReady() {
+      const g = cur;
+      if (!g || g.hinted || closing || closed || o.hints().length === 0) return;
+      try {
+        rollover(g);
+      } catch {
+        // keep the current stream; the next natural rollover picks the hints up
+        g.retired = false;
+      }
+    },
     push(pcm: Int16Array) {
       if (closed || closing) return;
       ring.push(pcm);
