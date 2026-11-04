@@ -15,7 +15,7 @@ Rationale (<= 5 lines, fill after the 3 rounds): TBD
 
 ## 2. Go / No-go criteria and results (REAL rounds only)
 
-Criteria from BE-67 sprint goal (proposed, adjustable before the rounds start). Source for each cell: eval harness report (`bench/eval`) for the round + server latency log (no content).
+Criteria from BE-67 sprint goal (proposed, adjustable before the rounds start). Source for each cell: eval harness report (`bench/eval`) for the round + server latency log (no content). Rows the harness cannot grade (QA hand count): QA judgment log, by path or link (no content).
 
 | Criterion | Threshold | R1 quiet room | R2 noisy room | R3 Google Meet | Pass? |
 | -- | -- | -- | -- | -- | -- |
