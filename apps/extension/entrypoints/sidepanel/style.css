@@ -159,7 +159,7 @@ html {
 .latest .question {
   flex: none;
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -314,10 +314,12 @@ input[type="checkbox"] {
 .latestwrap {
   display: block;
   flex: none;
-  min-height: 230px; /* ~1 typical cue; the card top never moves, history may shift below */
+  height: 340px; /* fixed: history below never moves while a cue streams; longer cues scroll inside */
 }
 .latest {
-  box-shadow: 0 0 10px 0 var(--glow);
+  max-height: 100%;
+  overflow-y: auto;
+  box-shadow: 0 0 8px 0 var(--glow);
 }
 .announce-head {
   display: flex;
@@ -358,7 +360,7 @@ input[type="checkbox"] {
 }
 .qlabel {
   margin-right: 4px;
-  font-size: 11px;
+  font-size: 12px;
   opacity: 0.85;
 }
 .prev .question {
@@ -369,10 +371,10 @@ input[type="checkbox"] {
 }
 @keyframes arrive {
   0% {
-    box-shadow: 0 0 22px 4px var(--glow);
+    box-shadow: 0 0 16px 2px var(--glow);
   }
   100% {
-    box-shadow: 0 0 10px 0 var(--glow);
+    box-shadow: 0 0 8px 0 var(--glow);
   }
 }
 /* live header */

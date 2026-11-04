@@ -29,11 +29,11 @@ function CueBody({ cue, big }: { cue: Cue; big: boolean }) {
       </p>
       <div className="cuebody">
         {cue.notFound ? (
-          <p className="notfound">ไม่พบใน pack</p>
+          <p className="notfound">ไม่มีข้อมูลนี้ในเอกสาร</p>
         ) : (
           <ul className={big ? 'bullets big' : 'bullets'}>
             {cue.bullets.map((b) => (
-              <li key={b}>{stripInlineAnchor(b)}</li>
+              <li key={b}>{stripInlineAnchor(b, cue.sources)}</li>
             ))}
           </ul>
         )}
