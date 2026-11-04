@@ -38,31 +38,26 @@ Env: `STT_MODEL` (empty = no STT), `STT_LOCATION` (default `global`), optional `
 
 ### STT_SILENCE_MS sweep (BE-116, SYNTHETIC audio, not for Go/No-go)
 
-STT only, real Vertex (`gemini-3.5-transcribe-live`), real-time 100 ms frames, 20 questions per wav, one run per cell.
-Latency = last final in the question window minus question `endMs`; "finals/Q>1" = questions whose window got more than one final
-(the window also holds the pitcher's non-question speech, so ~13/20 is the baseline, not a bug). Re-run:
+STT only, real Vertex (`gemini-3.5-transcribe-live`), real-time 100 ms frames, 20 questions per wav, runs sequential.
+Latency = first final at/after the question `endMs` (finals bucketed by arrival into [startMs_i, startMs_i+1)).
+"finals/Q>1" = windows with more than one final; the window also holds the pitcher's non-question speech, so ~13/20 is the
+baseline. Watchdog/onError fires = 0 and rollovers = 1 in every run. Re-run:
 `GOOGLE_CLOUD_PROJECT=.. STT_MODEL=.. pnpm --filter server exec tsx scripts/stt-silence-tune.ts <wav> <timeline.json> <silenceMs>`.
 
-| wav | ms | p50 | p95 | total finals | finals/Q>1 |
-| -- | -- | -- | -- | -- | -- |
-| quiet | 100 | 783 | 1058 | 34 | 14 |
-| quiet | 200 | 917 | 1129 | 33 | 13 |
-| quiet | 300 | 1073 | 1264 | 33 | 13 |
-| meet | 100 | 799 | 12781 | 41 | 17 |
-| meet | 200 | 868 | 10907 | 37 | 15 |
-| meet | 300 | 996 | 1161 | 33 | 13 |
+| wav | ms | run | p50 | p95 | finals | windows with >1 final |
+| -- | -- | -- | -- | -- | -- | -- |
+| meet | 200 | 1 | 871 | 1236 | 37 | 15 |
+| meet | 200 | 2 | 852 | 1216 | 37 | 15 |
+| meet | 300 | 1 | 990 | 1151 | 33 | 13 |
+| meet | 300 | 2 | 1013 | 2937 | 33 | 13 |
+| quiet | 200 | 1 | 919 | 1163 | 33 | 13 |
+| quiet | 300 | 1 | 1053 | 1277 | 33 | 13 |
 
-Default stays 300 pending a re-run: 200 looked ~150 ms faster at p50 with no extra splits on quiet, but the meet 11-13 s outliers at 100/200 are unexplained and CER was not measured.
+Earlier numbers (a first sweep incl. 100 ms, and a meet re-run) used the LAST final in the window as latency. That includes the
+pitcher's later narration and produced a spurious ~10.9 s "outlier" at 200 (more finals -> a later narration final); it was a metric
+bug, not an STT stall. Those tables were removed. The first sweep with the old metric only showed 100 ms was fastest (p50 ~0.8 s) with
+more finals on meet (41 vs 33); it was not re-measured.
 
-Re-run (meet.wav, sequential, interleaved, 3 runs each; watchdog/onError fires = 0 and rollovers = 1 in every run):
-
-| ms | run | p50 | p95 (= max) | finals | questions with >1 final |
-| -- | -- | -- | -- | -- | -- |
-| 200 | 1 | 887 | 10919 | 37 | 15 |
-| 200 | 2 | 856 | 10878 | 37 | 15 |
-| 200 | 3 | 861 | 10865 | 37 | 15 |
-| 300 | 1 | 995 | 1140 | 33 | 13 |
-| 300 | 2 | 998 | 1159 | 32 | 12 |
-| 300 | 3 | 968 | 1164 | 33 | 13 |
-
-The ~10.9 s outlier at 200 is deterministic (not a stall, no watchdog fire): one question's final lands ~10.9 s late every time. Cause not yet found; default stays 300.
+Reading: 200 is ~120-140 ms faster at p50 than 300 on both wavs (p50 ~0.86-0.92 s, still above the 800 ms budget) with similar p95.
+Cost: meet gets 4 more finals (37 vs 33, 2 more windows with >1 final); quiet is unchanged. CER not measured. Default stays 300
+in this PR; 200 is the recommended follow-up once CER / real BE-72 audio confirm no split-sentence harm.
