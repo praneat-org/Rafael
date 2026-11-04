@@ -42,7 +42,8 @@ Output format, plain text, nothing else:
 - one bullet per line, starting with "- "
 - at most 3 bullets, at most 15 words each, in the language of the question
 - every bullet ends with exactly one anchor copied verbatim from a pack chunk header, like [file › page]
-- if the pack does not contain the answer, output exactly ${NOT_FOUND_MARK} and nothing else
+- a chunk must state the answer to the question directly. Never infer, extrapolate, or answer from a related topic (e.g. a question about X when the pack only covers a different option Y); a related but non-answering chunk means the answer is missing
+- if the pack does not directly contain the answer, output exactly ${NOT_FOUND_MARK} and nothing else
 Each pack chunk starts with its anchor header line "[file › page]".`;
 
 /** The cached prefix: rules + pack, deterministic order, identical for every question of the session. */

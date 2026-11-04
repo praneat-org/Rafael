@@ -1,5 +1,7 @@
 # Customer notice, no-use conditions, DPO data-flow brief (BE-98, CAR-3824 AC 6, 7)
 
+> **Status columns below are as of 2026-10-24 and are superseded by [`dpo-review-pack.md`](dpo-review-pack.md) (2026-11-04, checked against code).** Where they differ, the pack wins. Sections 1 and 2 (customer notice, no-use conditions) still apply.
+
 DRAFT for human / DPO review. Facts come from `docs/privacy/providers.md` (BE-93, checked 2026-10-24). Claims about what our code does are limited to D11/D21 as written in the Decision log; implementing PRs must be linked before this goes to the DPO (see section 5).
 
 ## 1. Customer notice at meeting start
@@ -43,7 +45,7 @@ Rep mic + tab audio -> Chrome extension -> WSS -> Cloud Run asia-southeast1 (con
 
 Processors and regions: Google Workspace / Drive API (reader merged in BE-90 #16 but not yet wired into the session flow, so no pack is read on develop today; it will read the pack with the user's `drive.readonly` token; governed by the Google API Services User Data Policy; whether Praneat's Google agreement/DPA covers Drive is UNVERIFIED, see Q0), Google Cloud (Cloud Run; Vertex Gemini planned, not called by develop yet, asia-southeast1 Singapore, no in-region ML processing guarantee) plus STT: Google Chirp 3 (asia-southeast1 unconfirmed; `us`/`eu` documented) or Deepgram (EU endpoint verified; US UNVERIFIED; no Asia endpoint found). Per provider: Vertex Gemini asia-southeast1 (no Thailand region, so outside Thailand); Drive region UNVERIFIED; Chirp 3 asia-southeast1 UNVERIFIED (`us`/`eu` documented); Deepgram EU (or US, UNVERIFIED).
 
-Audit log (planned, BE-97, not built): session start/end, email hash, error codes, token usage; no audio / transcript / cue content by design. Retention: not decided (UNVERIFIED).
+Audit log (built, `apps/server/src/audit.ts`): session start/end/expired, pack build/refresh, auth denied; stores the employee email in full (general logs use a hash) and the Drive folder name; no audio / transcript / cue content. Retention: not decided (UNVERIFIED). See `dpo-review-pack.md`.
 
 ## 4. Questions for the DPO
 

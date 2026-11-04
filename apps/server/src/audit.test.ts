@@ -66,7 +66,7 @@ test('real session: start, end, expiry and denied auth are audited, no token in 
   const store = new MemorySessionStore(60_000, 30);
   const app = createApp({
     store,
-    verifier: async (t) => (t === 'good' ? { email: 'a@praneat.com' } : null),
+    verifier: async (t) => (t === 'ya29.ok' ? { email: 'a@praneat.com' } : null),
     allowedOrigins: ['chrome-extension://x'],
   });
   app.listen(0);
@@ -79,14 +79,14 @@ test('real session: start, end, expiry and denied auth are audited, no token in 
     then?.(ws);
     await closed;
   };
-  await open('bad');
-  await open('good', (ws) => {
+  await open('ya29.no');
+  await open('ya29.ok', (ws) => {
     ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'p' }));
     // wait for the server's ack instead of a timer: no dependence on load
     ws.once('message', () => ws.send(JSON.stringify({ v: 1, t: 'session.end' })));
   });
   // second session: drop the socket, grace (30 ms) expires it
-  await open('good', (ws) => {
+  await open('ya29.ok', (ws) => {
     ws.send(JSON.stringify({ v: 1, t: 'session.start', packId: 'ราคา ลูกค้า' }));
     ws.once('message', () => ws.close());
   });
@@ -102,7 +102,7 @@ test('real session: start, end, expiry and denied auth are audited, no token in 
     'session.start',
     'session.expired',
   ]);
-  expect(out.join('\n')).not.toMatch(/ya29|good|bad|ราคา/);
+  expect(out.join('\n')).not.toMatch(/ya29|ราคา/);
   // packId = Drive folder id: logged when Drive-id-shaped, omitted (event still fires) otherwise
   const starts = out.map((l) => JSON.parse(l)).filter((l) => l.event === 'session.start');
   expect(starts[0].folderId).toBe('p');
