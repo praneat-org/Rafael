@@ -111,13 +111,19 @@ export interface Timeline {
   questions: { id: string; text: string; startMs: number; endMs: number }[];
 }
 
-/** Concatenate segments with `gapMs` of silence around each; question start/end = speech only (no padding). */
+/** Concatenate segments with `gapMs` of silence around each (+ pad after questions so next question start - end >= minQuestionGapMs); question start/end = speech only. */
+export const minQuestionGap = (t: Timeline): number =>
+  Math.min(...t.questions.slice(1).map((q, i) => q.startMs - t.questions[i]!.endMs));
+
 export function assemble(
   segs: Segment[],
   gapMs = 600,
   fs = SAMPLE_RATE,
+  minQuestionGapMs = 8000,
 ): { audio: Float32Array; timeline: Timeline } {
   const gap = silence(gapMs, fs);
+  // consumers match a cue to [start_i, start_{i+1}); keep >= minQuestionGapMs (p95 budget 5 s + margin) after every question
+  const qPad = silence(Math.max(0, minQuestionGapMs - gapMs), fs);
   const parts: Float32Array[] = [];
   const questions: Timeline['questions'] = [];
   let n = 0;
@@ -133,6 +139,10 @@ export function assemble(
       });
     parts.push(s.audio);
     n += s.audio.length;
+    if (s.kind === 'question') {
+      parts.push(qPad);
+      n += qPad.length;
+    }
   }
   parts.push(gap);
   const audio = new Float32Array(n + gap.length);

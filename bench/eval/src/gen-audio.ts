@@ -10,6 +10,7 @@ import {
   bandLimit,
   encodeWav,
   makeNoise,
+  minQuestionGap,
   mixAtSnr,
   resample,
   SAMPLE_RATE,
@@ -115,6 +116,7 @@ const variants = {
   noisy: mixAtSnr(audio, makeNoise(audio.length), 10),
   meet: bandLimit(mixAtSnr(audio, makeNoise(audio.length, SAMPLE_RATE, 2), 30)),
 };
+if (minQuestionGap(timeline) < 8000) throw new Error('questions closer than 8 s apart');
 // contract: timeline.questions == key.csv rows, same order, same count (consumers match by position)
 if (
   timeline.questions.length !== rows.length ||

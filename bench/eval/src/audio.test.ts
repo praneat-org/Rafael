@@ -5,6 +5,7 @@ import {
   encodeWav,
   fromPcm16,
   makeNoise,
+  minQuestionGap,
   mixAtSnr,
   resample,
   rms,
@@ -79,7 +80,7 @@ describe('assemble timeline', () => {
       audio: silence(secs * 1000),
     });
     const nar = { kind: 'narration' as const, text: 'n', audio: silence(2000) };
-    const { audio, timeline } = assemble([nar, q('q01', 1), q('q02', 0.5)], 500);
+    const { audio, timeline } = assemble([nar, q('q01', 1), q('q02', 0.5)], 500, 16000, 0);
     expect(timeline.synthetic).toBe(true);
     expect(timeline.sampleRate).toBe(16000);
     // gap .5 + nar 2 + gap .5 -> q01 starts 3.0 ends 4.0; gap .5 -> q02 4.5..5.0
@@ -88,5 +89,11 @@ describe('assemble timeline', () => {
       { id: 'q02', text: 'q02', startMs: 4500, endMs: 5000 },
     ]);
     expect(audio.length).toBe(Math.round(5.5 * 16000)); // trailing gap
+  });
+
+  it('keeps >= 8000 ms between adjacent questions by default', () => {
+    const q = (id: string) => ({ kind: 'question' as const, id, text: id, audio: silence(1000) });
+    const { timeline } = assemble([q('a'), q('b'), q('c')]);
+    expect(minQuestionGap(timeline)).toBeGreaterThanOrEqual(8000);
   });
 });
