@@ -89,7 +89,7 @@ const timeline = {
 describe('audio runner', () => {
   it('replays audio through STT + pipeline, matches cues by timeline, scores and reports', async () => {
     const pack = await buildFixturePack(`${fx}synthetic-deal/pack`);
-    const { results, extraCues } = await runAudio({
+    const { results, extraCues, duplicateCues } = await runAudio({
       llm: fakeLlm(),
       config,
       pack,
@@ -102,6 +102,7 @@ describe('audio runner', () => {
       idleMs: 300,
     });
     expect(extraCues).toBe(0);
+    expect(duplicateCues).toBe(0);
     expect(results).toHaveLength(3);
     results.forEach((r, i) => {
       expect(r.cue?.notFound).toBe(false);
@@ -118,7 +119,14 @@ describe('audio runner', () => {
       parsePrices(readFileSync(`${fx}prices.json`, 'utf8')),
     );
     expect(base).toContain('| out-of-source | 0 |');
-    const md = auditReport({ base, ids: ['q1', 'q2', 'q3'], results, extraCues, synthetic: true });
+    const md = auditReport({
+      base,
+      ids: ['q1', 'q2', 'q3'],
+      results,
+      extraCues,
+      duplicateCues,
+      synthetic: true,
+    });
     expect(md).toContain('NOT FOR GO/NO-GO');
     expect(md).toContain('| q3 |');
   }, 20_000);

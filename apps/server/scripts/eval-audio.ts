@@ -43,7 +43,14 @@ const pack = await buildFixturePack(need('pack'));
 
 const synthetic = timeline.synthetic === true;
 if (synthetic) console.error('*** SYNTHETIC audio/timeline: result is NOT for Go/No-go ***');
-const { results, extraCues } = await runAudio({ llm, config, pack, stt, pcm, timeline });
+const { results, extraCues, duplicateCues } = await runAudio({
+  llm,
+  config,
+  pack,
+  stt,
+  pcm,
+  timeline,
+});
 if (dump) dumpResults(dump, results);
 
 const seconds = Math.round(pcm.length / 16000);
@@ -59,6 +66,7 @@ const md = auditReport({
   ids: timeline.questions.map((q) => q.id),
   results,
   extraCues,
+  duplicateCues,
   synthetic,
 });
 if (out) writeFileSync(assertOutsideRepo(out, '--out'), md);
