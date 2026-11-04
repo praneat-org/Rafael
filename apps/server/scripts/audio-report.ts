@@ -24,7 +24,7 @@ export function auditReport(o: {
     ...rows,
     '',
     `Cues not matched to a question window: ${o.extraCues}`,
-    `Duplicate cues (emitted before the question ended): ${o.duplicateCues ?? 0}`,
+    `Duplicate cues (emitted before the endMs of the question whose window they fall in, i.e. stale cue of an earlier question): ${o.duplicateCues ?? 0}`,
     '',
   ].join('\n');
 }

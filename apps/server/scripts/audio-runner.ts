@@ -185,6 +185,7 @@ export async function runAudio(
     for (const c of [...outs.values()].sort((a, b) => a.at - b.at)) {
       const ms = ((c.at - t0) * 100) / frameMs;
       const i = qs.reduce((a, q, k) => (q.startMs <= ms ? k : a), -1);
+      // (i = 0 has no previous question, still counted: nothing may answer before the first question ends)
       // a cue before the question ends cannot answer it (stale cue of the previous one, BE-122)
       if (i >= 0 && ms < (qs[i]?.endMs ?? 0)) {
         extra++;

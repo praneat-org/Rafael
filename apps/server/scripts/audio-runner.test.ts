@@ -131,6 +131,36 @@ describe('audio runner', () => {
     expect(md).toContain('| q3 |');
   }, 20_000);
 
+  it("a cue before its question endMs is a duplicate, not that question's cue (BE-122)", async () => {
+    const pack = await buildFixturePack(`${fx}synthetic-deal/pack`);
+    // q2 is "spoken" until 7000 ms; its own question (spoken 4000) is answered ~5 s -> before endMs -> duplicate.
+    // The next utterance (7500, answered ~8.6 s) lands in q2's window after endMs -> fills q2's slot.
+    const tl = {
+      ...timeline,
+      questions: [
+        { id: 'q1', text: 'x', startMs: 0, endMs: 1000 },
+        { id: 'q2', text: 'x', startMs: 4000, endMs: 7000 },
+        { id: 'q3', text: 'x', startMs: 9000, endMs: 9500 },
+      ],
+    };
+    const { results, extraCues, duplicateCues } = await runAudio({
+      llm: fakeLlm(),
+      config,
+      pack,
+      stt: fakeStt(keys.map((k) => k.question)),
+      pcm: speech([0, 4000, 7500]),
+      timeline: tl,
+      frameMs: 20,
+      warmMs: 0,
+      tailMs: 1000,
+      idleMs: 300,
+    });
+    expect(duplicateCues).toBe(1);
+    expect(extraCues).toBe(1);
+    expect(results[1]?.cue?.sources).toEqual([keys[2]?.anchor]);
+    expect(results[1]?.timings.total).toBeGreaterThanOrEqual(0);
+  }, 20_000);
+
   it('a question STT never finalises gets no cue (null, total 0)', async () => {
     const pack = await buildFixturePack(`${fx}synthetic-deal/pack`);
     const { results } = await runAudio({
