@@ -95,6 +95,7 @@ export type AudioRunOptions = {
   tailMs?: number; // silence streamed after the audio so the last question can finalise
   idleMs?: number; // after the audio: stop when the pipeline logged nothing for this long
   maxDrainMs?: number;
+  trace?: boolean; // BE-124: also return STT finals / detected questions (synthetic only, see assertSyntheticDump)
   warmMs?: number; // wait after the pack is handed over, before the audio clock starts
 };
 
@@ -105,9 +106,28 @@ export type AudioRunOptions = {
  * ponytail: a cue slower than the gap to the next question lands in the next window (reads as missed +
  * extra); real pitches have multi-second gaps, tighten only if the BE-121 timeline has none.
  */
-export async function runAudio(
-  o: AudioRunOptions,
-): Promise<{ results: RunResult[]; extraCues: number; duplicateCues: number }> {
+export type Trace = {
+  finals: { atMs: number; text: string }[];
+  perQuestion: {
+    id: string;
+    reference: string;
+    detected: { atMs: number; text: string }[];
+    cueQuestion: string | null; // the question the Detector extracted for the cue that was scored
+    cue: { notFound: boolean; bullets: string[]; sources: string[] } | null;
+  }[];
+};
+
+/** D11: transcripts / detected questions / cues may be dumped for SYNTHETIC audio only. */
+export function assertSyntheticDump(t: Timeline, flag: string) {
+  if (t.synthetic !== true) throw new Error(`${flag} needs timeline.synthetic === true (D11)`);
+}
+
+export async function runAudio(o: AudioRunOptions): Promise<{
+  results: RunResult[];
+  extraCues: number;
+  duplicateCues: number;
+  trace?: Trace;
+}> {
   const frameMs = o.frameMs ?? 100;
   const store = new MemorySessionStore();
   const session = store.create('eval@local', 'eval');
@@ -115,9 +135,18 @@ export async function runAudio(
   const cueLat: PipeLog[] = [];
   const ansLog: PipeLog[] = [];
   let lastActivity = performance.now();
+  const rawFinals: { at: number; text: string }[] = [];
+  const rawQs: { at: number; cueId: string; text: string }[] = [];
 
   const pipeline = createPipeline(
-    { llm: o.llm, config: o.config, getPack: () => o.pack.chunks },
+    {
+      llm: o.llm,
+      config: o.config,
+      getPack: () => o.pack.chunks,
+      onQuestion: o.trace
+        ? (cueId, text) => void rawQs.push({ at: performance.now(), cueId, text })
+        : undefined,
+    },
     store,
   );
   const send = (m: unknown) => {
@@ -142,7 +171,10 @@ export async function runAudio(
   const stt = createSttService(
     {
       provider: o.stt,
-      onFinal: (s, seg, snd, meta) => void pipeline.onFinalSegment(s, seg, snd, meta.sttFinalMs),
+      onFinal: (s, seg, snd, meta) => {
+        if (o.trace) rawFinals.push({ at: performance.now(), text: seg.text });
+        void pipeline.onFinalSegment(s, seg, snd, meta.sttFinalMs);
+      },
     },
     store,
   );
@@ -214,7 +246,26 @@ export async function runAudio(
         },
       };
     });
-    return { results, extraCues: extra, duplicateCues: dup };
+    const ms = (at: number) => Math.round(((at - t0) * 100) / frameMs);
+    const trace: Trace | undefined = o.trace
+      ? {
+          finals: rawFinals.map((f) => ({ atMs: ms(f.at), text: f.text })),
+          perQuestion: qs.map((q, i) => {
+            const next = qs[i + 1]?.startMs ?? Infinity;
+            const c = slot.get(i);
+            return {
+              id: q.id,
+              reference: q.text,
+              detected: rawQs
+                .map((d) => ({ atMs: ms(d.at), text: d.text }))
+                .filter((d) => d.atMs >= q.startMs && d.atMs < next),
+              cueQuestion: rawQs.find((d) => d.cueId === c?.cueId)?.text ?? null,
+              cue: c ? { notFound: c.notFound, bullets: c.bullets, sources: c.sources } : null,
+            };
+          }),
+        }
+      : undefined;
+    return { results, extraCues: extra, duplicateCues: dup, trace };
   } finally {
     console.log = realLog;
     store.end(session.id, 'ended'); // D21: disposes the Answerer / CachedContent

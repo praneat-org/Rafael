@@ -7,7 +7,7 @@ import { loadBrainConfig } from '../src/brain/config.js';
 import type { LlmClient } from '../src/brain/llm.js';
 import type { SttProvider } from '../src/stt/provider.js';
 import { auditReport } from './audio-report.js';
-import { parseTimeline, parseWav, runAudio } from './audio-runner.js';
+import { assertSyntheticDump, parseTimeline, parseWav, runAudio } from './audio-runner.js';
 import { buildFixturePack } from './text-runner.js';
 
 const fx = new URL('../../../bench/eval/fixtures/', import.meta.url).pathname;
@@ -179,6 +179,65 @@ describe('audio runner', () => {
     expect(results[1]?.cue).toBeNull();
     expect(results[1]?.timings.total).toBe(0);
   }, 20_000);
+});
+
+describe('trace / text dump (BE-124)', () => {
+  it('trace returns STT finals, detected question and cue per timeline question', async () => {
+    const pack = await buildFixturePack(`${fx}synthetic-deal/pack`);
+    const { trace } = await runAudio({
+      llm: fakeLlm(),
+      config,
+      pack,
+      stt: fakeStt(keys.map((k) => k.question)),
+      pcm: speech([0, 4000, 8000]),
+      timeline,
+      frameMs: 20,
+      warmMs: 0,
+      tailMs: 1000,
+      idleMs: 300,
+      trace: true,
+    });
+    expect(trace?.finals.map((f) => f.text)).toEqual(keys.map((k) => k.question));
+    expect(trace?.perQuestion.map((q) => q.cueQuestion)).toEqual(keys.map((k) => k.question));
+    expect(trace?.perQuestion[0]?.detected).toHaveLength(1);
+    expect(trace?.perQuestion[2]?.cue?.notFound).toBe(false);
+  }, 20_000);
+
+  it('no trace unless asked', async () => {
+    const pack = await buildFixturePack(`${fx}synthetic-deal/pack`);
+    const r = await runAudio({
+      llm: fakeLlm(),
+      config,
+      pack,
+      stt: fakeStt([]),
+      pcm: speech([]),
+      timeline,
+      frameMs: 20,
+      warmMs: 0,
+      tailMs: 500,
+      idleMs: 100,
+    });
+    expect(r.trace).toBeUndefined();
+  }, 20_000);
+
+  it('--dump-text refuses unless timeline.synthetic === true', () => {
+    expect(() => assertSyntheticDump({ ...timeline, synthetic: false }, '--dump-text')).toThrow(
+      /D11/,
+    );
+    expect(() => assertSyntheticDump({ ...timeline, synthetic: undefined }, '--dump-text')).toThrow(
+      /D11/,
+    );
+    expect(() => assertSyntheticDump(timeline, '--dump-text')).not.toThrow();
+  });
+
+  it('report shows STT quality; word list only for synthetic', () => {
+    const q = { cer: 0.123, recall: 0.5, total: 4, missing: ['kitchen'] };
+    const base = { base: 'B', ids: [], results: [], extraCues: 0 };
+    expect(auditReport({ ...base, synthetic: true, sttQuality: q })).toContain('Missing: kitchen');
+    const real = auditReport({ ...base, synthetic: false, sttQuality: q });
+    expect(real).toContain('CER 12.3%');
+    expect(real).not.toContain('kitchen');
+  });
 });
 
 describe('wav / timeline parsing', () => {

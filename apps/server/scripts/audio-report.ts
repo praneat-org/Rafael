@@ -8,6 +8,7 @@ export function auditReport(o: {
   extraCues: number;
   duplicateCues?: number;
   synthetic: boolean;
+  sttQuality?: { cer: number; recall: number; total: number; missing: string[] };
 }): string {
   const banner = o.synthetic
     ? ['> **SYNTHETIC audio / timeline: NOT FOR GO/NO-GO.** Numbers only validate the harness.', '']
@@ -23,6 +24,16 @@ export function auditReport(o: {
     '| -- | -- |',
     ...rows,
     '',
+    ...(o.sttQuality
+      ? [
+          '## STT quality vs reference (finals joined)',
+          `CER ${(o.sttQuality.cer * 100).toFixed(1)}%`,
+          `Latin-term recall ${(o.sttQuality.recall * 100).toFixed(0)}% of ${o.sttQuality.total} distinct words`,
+          // the word list is reference content: shown for SYNTHETIC audio only (D11)
+          ...(o.synthetic ? [`Missing: ${o.sttQuality.missing.join(', ') || '-'}`] : []),
+          '',
+        ]
+      : []),
     `Cues not matched to a question window: ${o.extraCues}`,
     `Duplicate cues (emitted before the endMs of the question whose window they fall in, i.e. stale cue of an earlier question): ${o.duplicateCues ?? 0}`,
     '',
