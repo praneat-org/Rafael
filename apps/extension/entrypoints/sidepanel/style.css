@@ -314,7 +314,7 @@ input[type="checkbox"] {
 .latestwrap {
   display: block;
   flex: none;
-  min-height: calc(var(--cue) + 140px);
+  min-height: 230px; /* ~1 typical cue; the card top never moves, history may shift below */
 }
 .latest {
   box-shadow: 0 0 10px 0 var(--glow);
@@ -325,9 +325,8 @@ input[type="checkbox"] {
   gap: 8px;
   flex: none;
   margin: 0 0 6px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.14em;
   color: var(--accent);
 }
 .announce-head.nf .label {
@@ -360,7 +359,6 @@ input[type="checkbox"] {
 .qlabel {
   margin-right: 4px;
   font-size: 11px;
-  letter-spacing: 0.04em;
   opacity: 0.85;
 }
 .prev .question {
