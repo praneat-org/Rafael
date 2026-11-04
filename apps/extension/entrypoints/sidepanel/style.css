@@ -9,6 +9,8 @@
   --accent: #0e7490;
   --on-accent: #ffffff;
   --glow: rgb(14 116 144 / 0.35);
+  --edge: #9fd0dc;
+  --chip: #eef7f9;
   --ok: #15683a;
   --warn: #8a5a00;
   --bad: #b42318;
@@ -25,6 +27,8 @@
     --accent: #22d3ee;
     --on-accent: #06202b;
     --glow: rgb(34 211 238 / 0.45);
+    --edge: #1f5f78;
+    --chip: #0f2a45;
     --ok: #4ade80;
     --warn: #fbbf24;
     --bad: #f87171;
@@ -40,6 +44,8 @@
   --accent: #22d3ee;
   --on-accent: #06202b;
   --glow: rgb(34 211 238 / 0.45);
+  --edge: #1f5f78;
+  --chip: #0f2a45;
   --ok: #4ade80;
   --warn: #fbbf24;
   --bad: #f87171;
@@ -140,11 +146,9 @@ html {
 .latest {
   display: flex;
   flex-direction: column;
-  flex: none;
-  min-height: calc(var(--cue) + 140px); /* slot reserved even before the first cue */
-  padding: 8px 10px;
-  border: 1px solid var(--accent);
-  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 14px;
   background: var(--surface);
   overflow-wrap: break-word;
   transition: opacity 150ms;
@@ -154,8 +158,8 @@ html {
 }
 .latest .question {
   flex: none;
-  margin: 0 0 6px;
-  font-size: 14px;
+  margin: 0 0 8px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -164,8 +168,6 @@ html {
 /* bullets grow downward inside their own scroll area; the Q line and anchors stay put */
 .latest .cuebody {
   flex: none;
-  /* reserve the max cue (3 bullets x ~15 words at 24px, 360px wide) so nothing moves or scrolls */
-  min-height: var(--cue);
 }
 .bullets {
   margin: 0;
@@ -185,15 +187,19 @@ html {
   color: var(--text);
 }
 .anchors {
-  flex: none;
-  margin: 4px 0 0;
-  min-height: 54px; /* reserve 3 sources up front */
-  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.chip {
+  padding: 2px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  font-size: 12px;
   line-height: 18px;
   color: var(--accent);
-}
-.anchors span {
-  display: block;
+  background: var(--chip);
 }
 .previous {
   flex: 1 1 0;
@@ -303,27 +309,62 @@ input[type="checkbox"] {
   color: var(--muted);
 }
 
-/* announcement header 《ตอบ》 / 《ไม่พบในเอกสาร》 */
-.announce-head {
+/* ---- round 2 ---- */
+/* reserved slot: invisible (no border/background), card inside hugs its content */
+.latestwrap {
+  display: block;
   flex: none;
-  margin: 0 0 4px;
-  font-size: 12px;
+  min-height: calc(var(--cue) + 140px);
+}
+.latest {
+  box-shadow: 0 0 10px 0 var(--glow);
+}
+.announce-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin: 0 0 6px;
+  font-size: 15px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.14em;
   color: var(--accent);
 }
-.announce-head.nf {
+.announce-head.nf .label {
   color: var(--muted);
 }
+.announce-head .glyph {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  box-shadow: 0 0 6px var(--glow);
+}
+.announce-head .glyph::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.announce-head .rule {
+  flex: 1;
+  height: 1px;
+  background: var(--edge);
+}
 .prev .announce-head {
-  margin: 0;
+  font-size: 12px;
+  margin: 0 0 2px;
 }
-/* arrival: one short glow pulse, then settles; never loops */
-.latest {
-  box-shadow: 0 0 6px 0 var(--glow);
+.qlabel {
+  margin-right: 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
 }
-.latestwrap {
-  display: contents;
+.prev .question {
+  font-weight: 400;
 }
 .latest.arrive {
   animation: arrive 1.2s ease-out 1;
@@ -333,11 +374,88 @@ input[type="checkbox"] {
     box-shadow: 0 0 22px 4px var(--glow);
   }
   100% {
-    box-shadow: 0 0 6px 0 var(--glow);
+    box-shadow: 0 0 10px 0 var(--glow);
   }
 }
+/* live header */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status.live .dot {
+  animation: dot 1.6s ease-out 1;
+}
+@keyframes dot {
+  0% {
+    box-shadow: 0 0 0 0 var(--glow);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+button.ghost,
+button.danger {
+  background: transparent;
+  font-size: 13px;
+}
+button.ghost {
+  border-color: transparent;
+  color: var(--muted);
+}
+button.danger {
+  color: var(--bad);
+  border-color: var(--bad);
+  font-weight: 600;
+}
+/* setup */
+.brand h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 26px;
+  letter-spacing: 0.02em;
+}
+.mark {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--glow);
+  background: radial-gradient(circle, var(--accent) 0 30%, transparent 32%);
+}
+.tagline {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.row.dev {
+  font-size: 12px;
+  color: var(--muted);
+}
+.view > button.primary {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  font-size: 15px;
+}
 @media (prefers-reduced-motion: reduce) {
-  .latest.arrive {
+  .latest.arrive,
+  .status.live .dot {
     animation: none;
   }
   .latest {

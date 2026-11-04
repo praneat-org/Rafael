@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Cue, SessionState } from '../../src/session';
+import { stripInlineAnchor } from '../../src/strip-anchor';
 import { PackBuildFailed } from './PackBuildFailed';
 import { PackStatus, PackTooLarge } from './PackStatus';
 
@@ -19,28 +20,33 @@ function CueBody({ cue, big }: { cue: Cue; big: boolean }) {
   return (
     <>
       <p className={cue.notFound ? 'announce-head nf' : 'announce-head'}>
-        {cue.notFound ? '《ไม่พบในเอกสาร》' : '《ตอบ》'}
+        <span className="glyph" aria-hidden="true" />
+        <span className="label">{cue.notFound ? '《ไม่พบในเอกสาร》' : '《ตอบ》'}</span>
+        <span className="rule" aria-hidden="true" />
       </p>
-      <p className="question">Q: {cue.question}</p>
+      <p className="question">
+        <span className="qlabel">ลูกค้าถาม</span> {cue.question}
+      </p>
       <div className="cuebody">
         {cue.notFound ? (
           <p className="notfound">ไม่พบใน pack</p>
         ) : (
           <ul className={big ? 'bullets big' : 'bullets'}>
             {cue.bullets.map((b) => (
-              <li key={b}>{b}</li>
+              <li key={b}>{stripInlineAnchor(b)}</li>
             ))}
           </ul>
         )}
       </div>
-      {/* always rendered (reserved row) so partial -> final does not move anything */}
-      <p className="anchors">
-        {cue.sources.map((x) => (
-          <span key={`${x.fileId}${x.locator}`}>
-            ↳ {x.file} › {x.locator}
-          </span>
-        ))}
-      </p>
+      {cue.sources.length > 0 && (
+        <p className="anchors">
+          {cue.sources.map((x) => (
+            <span className="chip" key={`${x.fileId}${x.locator}`}>
+              {x.file} › {x.locator}
+            </span>
+          ))}
+        </p>
+      )}
     </>
   );
 }
@@ -84,17 +90,23 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
           role="status"
           className={`status ${state.paused && state.status === 'live' ? 'paused' : state.status}`}
         >
+          <span className="dot" aria-hidden="true" />
           {state.paused
             ? `หยุดชั่วคราว (ไม่ส่งเสียง)${state.status === 'live' ? '' : ` · ${STATUS_TEXT[state.status]}`}`
             : STATUS_TEXT[state.status]}
         </span>
         <span className="actions">
-          <button type="button" onClick={() => send({ k: state.paused ? 'resume' : 'pause' })}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => send({ k: state.paused ? 'resume' : 'pause' })}
+          >
             {state.paused ? 'ต่อ' : 'หยุดชั่วคราว'}
           </button>
           {/* leaving Live needs one confirm; End is the only way out */}
           <button
             type="button"
+            className="danger"
             onClick={() => {
               if (!confirming) return setConfirming(true);
               send({ k: 'end' });
@@ -124,7 +136,7 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
         state.error && <p className="note">ผิดพลาด: {state.error}</p>
       )}
       {/* fixed-height slot: any cue (partial or final) fits without moving the rest */}
-      <section className="latestwrap" aria-live="polite">
+      <section className="latestwrap slot" aria-live="polite">
         <div
           key={latest?.cueId}
           className={`latest${latest?.partial ? ' partial' : ''}${latest ? ' arrive' : ''}`}
