@@ -124,6 +124,20 @@ describe('detector', () => {
     expect(s.reqs[1]?.user).toContain('Premium onboarding ราคาเท่าไรครับ\nแล้วอันนั้นล่ะครับ');
   });
 
+  it('BE-123: ALREADY ANSWERED lists several entries and drops them after dedupeMs', async () => {
+    const s = setup([q('คำถามหนึ่ง ราคา'), q('คำถามสอง สลา'), no, no]);
+    s.at(0);
+    await s.d.onFinalSegment({ text: 'l1' });
+    s.at(2_000);
+    await s.d.onFinalSegment({ text: 'l2' });
+    s.at(4_000);
+    await s.d.onFinalSegment({ text: 'l3' });
+    expect(s.reqs[2]?.user).toContain('- คำถามหนึ่ง ราคา\n- คำถามสอง สลา');
+    s.at(2_000 + config.detector.dedupeMs + 1);
+    await s.d.onFinalSegment({ text: 'l4' });
+    expect(s.reqs[3]?.user).not.toContain('ALREADY ANSWERED');
+  });
+
   it('different question within 60 s is not a duplicate', async () => {
     const s = setup([q('ระบบรองรับผู้ใช้พร้อมกันกี่คน'), q('ราคาต่อเดือนเท่าไหร่')]);
     await s.d.onFinalSegment({ text: 'a' });

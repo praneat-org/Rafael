@@ -9,7 +9,12 @@ import { createGeminiClient } from '../src/brain/gemini.js';
 type Case = {
   id: string;
   segments: { atMs: number; text: string }[];
-  expect: { segment: number; kind: 'question' | 'none'; mustMatch?: string }[];
+  expect: {
+    segment: number;
+    kind: 'question' | 'none';
+    mustMatch?: string | string[];
+    mustNotMatch?: string;
+  }[];
 };
 const file = optArg(
   process.argv,
@@ -30,10 +35,12 @@ for (const c of cases) {
     t = s.atMs;
     const r = await d.onFinalSegment({ text: s.text });
     const e = c.expect.find((x) => x.segment === i);
+    const q = r.kind === 'question' ? r.question : '';
     const ok =
       !e ||
       (r.kind === e.kind &&
-        (!e.mustMatch || (r.kind === 'question' && new RegExp(e.mustMatch, 'i').test(r.question))));
+        [e.mustMatch ?? []].flat().every((m) => new RegExp(m, 'i').test(q)) &&
+        !(e.mustNotMatch && new RegExp(e.mustNotMatch, 'i').test(q)));
     got.push(`${i}:${r.kind}${ok ? '' : ':FAIL'}`);
     if (!ok) failed++;
   }

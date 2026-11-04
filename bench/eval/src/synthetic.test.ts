@@ -41,9 +41,13 @@ describe('synthetic-deal fixture', () => {
   it('followups.json (BE-123 pronoun golden) is well-formed', () => {
     const cases = JSON.parse(read('followups.json')) as {
       segments: unknown[];
-      expect: { segment: number }[];
+      expect: { segment: number; mustMatch?: string | string[]; mustNotMatch?: string }[];
     }[];
     expect(cases.length).toBeGreaterThan(0);
-    for (const c of cases) for (const e of c.expect) expect(c.segments[e.segment]).toBeDefined();
+    for (const c of cases)
+      for (const e of c.expect) {
+        expect(c.segments[e.segment]).toBeDefined();
+        for (const m of [e.mustMatch ?? [], e.mustNotMatch ?? []].flat()) new RegExp(m, 'i');
+      }
   });
 });

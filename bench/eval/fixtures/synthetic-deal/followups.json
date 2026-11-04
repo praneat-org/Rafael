@@ -10,7 +10,12 @@
     "expect": [
       { "segment": 0, "kind": "question", "mustMatch": "AI Assist|add-on" },
       { "segment": 1, "kind": "none" },
-      { "segment": 2, "kind": "question", "mustMatch": "AI Assist|add-on" }
+      {
+        "segment": 2,
+        "kind": "question",
+        "mustMatch": ["AI Assist|add-on", "agent|แยก"],
+        "mustNotMatch": "เท่าไร|how much"
+      }
     ]
   }
 ]
