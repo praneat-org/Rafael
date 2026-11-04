@@ -16,6 +16,15 @@ if (!provider) throw new Error('set STT_MODEL + GOOGLE_CLOUD_PROJECT');
 const pcm = parseWav(readFileSync(wav));
 const qs = parseTimeline(readFileSync(tl, 'utf8')).questions;
 
+// counts only: stt.error = onError (watchdog fire or dead stream), stt.rollover = stream rolled
+const ev = { sttError: 0, rollover: 0 };
+const realLog = console.log;
+console.log = (...a: unknown[]) => {
+  const m = String(a[0]);
+  if (m.includes('"stt.error"')) ev.sttError++;
+  else if (m.includes('"stt.rollover"')) ev.rollover++;
+  else realLog(...a);
+};
 const store = new MemorySessionStore();
 const session = store.create('tune@local', 'tune');
 const finalsAt: number[] = [];
@@ -46,8 +55,10 @@ qs.forEach((q, i) => {
 });
 const pct = (p: number) =>
   [...lat].sort((a, b) => a - b)[Math.min(lat.length - 1, Math.floor(p * lat.length))];
+console.log = realLog;
 console.log(
   JSON.stringify({
+    ...ev,
     silenceMs: Number(silence),
     questions: qs.length,
     answered: lat.length,
