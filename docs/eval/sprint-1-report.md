@@ -82,7 +82,7 @@ Synthetic fictional deal pack (`bench/eval/fixtures/synthetic-deal/`), **text in
 
 | Item | Result | Note |
 | -- | -- | -- |
-| Correct (fact-checked) | 19/20 (as reported by the requester) | QA comment on BE-101 for PR #57 @ 3ebcd68 recorded 18/20 (16 correct + 2 not-found-correct). Confirm which run the 19/20 comes from and the command before this goes into a review. |
+| Correct (fact-checked) | 19/20 (16 correct + 3 not-found-correct; q6 wrong-fact, key too strict) | Measured with the BE-119 Answerer fix (PR #59, not yet merged). Develop before #59 (PR #57 @ 3ebcd68): 18/20 (16 correct + 2 not-found-correct; q6 wrong-fact, q19 wrong). Command: `pnpm --filter server eval:text` with gemini-3.5-flash. |
 | Not-found-correct | 3/3 | |
 | q6 | wrong-fact | Key too strict (required a region code the question did not ask for). QA judged this a key problem, not a model error. |
 | q19 (not in source) | model answered by inference instead of notFound in the QA run | Follow-up: tune Answerer prompt (BE-101 comment). |
