@@ -196,6 +196,32 @@ test('latency log per cue: sttFinalMs / detectorMs / serverTotalMs, no text (D11
   expect(out.join('\n')).not.toMatch(/SECRET/);
 });
 
+test('cue.latencyMs covers stt + detector + answerer = serverTotalMs (D26)', async () => {
+  const STT = 40;
+  const DET = 60;
+  const ANS = 80;
+  let clock = 0;
+  // FakeSttProvider: voice 1 frame ago -> sttFinalMs = (now at final) - (now at voiced frame)
+  const t = await setup(undefined, {
+    now: () => {
+      clock += STT; // each STT clock read advances: last voiced frame -> final = STT
+      return clock;
+    },
+  });
+  t.gates.detector = new Promise((r) => setTimeout(r, DET));
+  t.gates.answerer = new Promise((r) => setTimeout(r, DET + ANS)); // timers start together: Answerer opens ANS after the Detector
+  t.ws.send(frame(1));
+  await vi.waitFor(() => expect(t.cues().some((c) => !c.partial)).toBe(true));
+  await vi.waitFor(() => expect(out.some((l) => l.includes('"cue.latency"'))).toBe(true));
+  const lat = JSON.parse(out.find((l) => l.includes('"cue.latency"')) as string);
+  const final = t.cues().find((c) => !c.partial);
+  expect(lat.sttFinalMs).toBeGreaterThan(0);
+  expect(final?.latencyMs).toBe(lat.serverTotalMs);
+  // all three stages inside the number, not just the Answerer
+  expect(final?.latencyMs).toBeGreaterThanOrEqual(lat.sttFinalMs + DET + ANS - 10);
+  expect(final?.latencyMs).toBeGreaterThan(lat.detectorMs);
+});
+
 function gate() {
   let open!: () => void;
   const p = new Promise<void>((r) => {

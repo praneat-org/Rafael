@@ -41,6 +41,7 @@ transcript (จาก STT) → **Detector** → คำถาม → **Answerer**
 | Detector | ≤ 600 ms |
 | Answerer first token | ≤ 1200 ms |
 | รวม (ลูกค้าพูดจบ → cue แรกขึ้น) | p50 ≤ 3 s · p95 ≤ 5 s |
+- **`cue.latencyMs` (D26)** = เสียงพูดจบ → cue ถูกส่ง = `serverTotalMs` (stt + detector + answerer, รวมเวลาคิว) · pipeline เป็นคนใส่ค่านี้ตอนส่ง ไม่ใช่ Answerer · path `ask` (ไม่มี STT / Detector) นับจากรับ `ask` · partial cue แต่ละอันนับถึงตอนที่ส่งอันนั้น · ไม่มี `renderMs` ack ใน protocol
 - log ต่อคำถาม: `{ sessionId, stage, ms, model, inputTokens, cacheReadTokens, outputTokens }` — **ไม่มีข้อความคำถาม / คำตอบ** (D11)
 - วัดด้วย `performance.now()` ฝั่ง server · เกินงบ → log warn พร้อม stage
 

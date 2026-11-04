@@ -24,6 +24,8 @@ Criteria from BE-67 sprint goal (proposed, adjustable before the rounds start). 
 | Cue makes a claim the cited source does not support (QA counts by hand, harness has no grader yet; BE-67) | = 0 | | | | |
 | Latency total (speaker done to first cue) p50 | <= 3 s | | | | |
 | Latency total p95 | <= 5 s | | | | |
+
+Latency total = `cue.latency` log `serverTotalMs` = protocol `cue.latencyMs` of the cue (D26): end of speech -> cue emitted (stt + detector + answerer, queue included). `ask` (no STT / Detector) counts from ask receipt, so it is not comparable with the speech rows. No `renderMs` ack.
 | Rated helpful (count) | no threshold set | | | | |
 | Rated neutral (count) | no threshold set | | | | |
 | Rated disruptive (count) | no threshold set | | | | |

@@ -12,6 +12,7 @@ export type CueOut = {
   question: string;
   bullets: string[];
   sources: { file: string; fileId: string; locator: string }[];
+  /** Answerer-local (answer start -> emit). The pipeline overwrites it with end-of-speech -> emit (D26) before sending. */
   latencyMs: number;
   partial: boolean;
   notFound: boolean;

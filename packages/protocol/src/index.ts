@@ -79,6 +79,7 @@ export const ServerMessage = z.discriminatedUnion('t', [
       question: z.string(),
       bullets: z.array(z.string()).max(3),
       sources: z.array(Source),
+      // D26: end of speech -> this cue emitted (= serverTotalMs); `ask` counts from ask receipt
       latencyMs: z.number().int().nonnegative(),
       partial: z.boolean(),
       notFound: z.boolean(),

@@ -111,13 +111,17 @@ export function createPipeline(
       const startedAt = perf();
       let firstCueMs: number | undefined;
       let dropped = false;
+      let lastLatencyMs: number | undefined;
       const emit = (c: CueOut) => {
         if (ctx.isPaused?.()) {
           dropped = true;
           return;
         }
         firstCueMs ??= Math.round(perf() - receivedAt);
-        send({ v: PROTOCOL_VERSION, t: 'cue', ...c });
+        // D26: cue.latencyMs = end of speech -> this cue emitted (stt + detector + answerer; queue included).
+        // ask path has no STT / Detector: counts from ask receipt. Overrides the Answerer-local value.
+        lastLatencyMs = Math.round(perf() - receivedAt) + (ctx.sttFinalMs ?? 0);
+        send({ v: PROTOCOL_VERSION, t: 'cue', ...c, latencyMs: lastLatencyMs });
       };
       let final: CueOut;
       try {
@@ -143,7 +147,7 @@ export function createPipeline(
         ...(ctx.stage === 'segment' && {
           sttFinalMs: ctx.sttFinalMs,
           detectorMs: ctx.detectorMs,
-          serverTotalMs: Math.round(perf() - receivedAt) + (ctx.sttFinalMs ?? 0),
+          serverTotalMs: lastLatencyMs ?? Math.round(perf() - receivedAt) + (ctx.sttFinalMs ?? 0),
         }),
         bullets: final.bullets.length,
         outcome: dropped ? 'paused' : final.notFound ? 'notFound' : 'answered',
