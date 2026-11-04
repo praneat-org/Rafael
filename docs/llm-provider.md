@@ -29,9 +29,35 @@ Verified 2026-10-29 (BE-114): `asia-southeast1` serves only `gemini-3.5-flash` f
 
 ## STT (BE-89): Gemini Live transcription via Vertex
 `apps/server/src/stt/gemini.ts` implements `SttProvider` on `ai.live.connect` (`inputAudioTranscription`, `responseModalities: TEXT`).
-Env: `STT_MODEL` (empty = no STT), `STT_LOCATION` (default `global`), optional `STT_SILENCE_MS` (VAD end-of-speech silence, default 300), optional `STT_WATCHDOG_MS` (BE-116: speech pushed but no partial/final within this many ms -> stream error and rolling reopen; default 8000, `0` = off, invalid value = default). Auth = ADC, no key (D22).
+Env: `STT_MODEL` (empty = no STT), `STT_LOCATION` (default `global`), optional `STT_SILENCE_MS` (VAD end-of-speech silence, default 300; BE-116 sweep below), optional `STT_WATCHDOG_MS` (BE-116: speech pushed but no partial/final within this many ms -> stream error and rolling reopen; default 8000, `0` = off, invalid value = default). Auth = ADC, no key (D22).
 - **Region deviation:** `gemini-3.5-transcribe-live` / `gemini-3.5-transcribe` answer only at `global` (404 in asia-southeast1 and us-central1, checked 2026-10-29), so STT has its own location while the brain stays on `GOOGLE_CLOUD_LOCATION`. Audio therefore leaves asia-southeast1; confirm this is acceptable for D11 / data-residency before prod.
-- Mapping: `interimInputTranscription` -> `onPartial` (replaces the open segment), `inputTranscription` -> `onFinal`. Hints -> `customVocabulary`, but only when `STT_HINTS=1` (BE-115); default is an empty list because hints surfaced names before they were spoken and raised q-price CER to 0.21. Make it the default only after an A/B on real audio shows an improvement. `close()` always sends `audioStreamEnd`, then waits for the last final (<= 2 s if a partial is open; <= 500 ms if audio was pushed since the last final but no partial yet; no wait if idle), flushes any leftover partial as final, then closes.
+- Mapping: `interimInputTranscription` -> `onPartial` (replaces the open segment), `inputTranscription` -> `onFinal`. Hints -> `customVocabulary`, but only when `STT_HINTS=1` (BE-115); default is an empty list because hints surfaced names before they were spoken and raised q-price CER to 0.21. BE-125: hints = `pack.hints` (multi-word names as phrases first, then capitalised / acronym words, pack cap 100, STT cap 60), wired in `ws/server.ts` and `audio-runner.ts`, never logged (D11). SYNTHETIC quiet run with `STT_HINTS=1`: q14 / q15 now correct (names heard as Siam Kitchen / Northern Logistics), 18/20 vs 16/20 (the 2 wrong, q06 and q12, are BE-122 duplicate-cue artefacts: develop lacks the fix, so the SSO cue repeats at q06 and the service-credit cue at q12; outcome `wrong` with no missing facts, not a strict key). Make it the default only after an A/B on real audio shows an improvement. `close()` always sends `audioStreamEnd`, then waits for the last final (<= 2 s if a partial is open; <= 500 ms if audio was pushed since the last final but no partial yet; no wait if idle), flushes any leftover partial as final, then closes.
 - Unexpected socket close / error -> `onError()` (rolling reopens). SDK errors are never logged or passed on (D11).
 - Session limit: not measured here (longest real run 135 s). Vertex Live sessions are documented as limited to roughly 10 minutes per connection, which is above the 270 s rollover, so no conflict expected; re-check with a >5 min smoke before go-live.
 - Check: `pnpm --filter server gen:stt-audio` (Gemini TTS, writes only to gitignored `STT_AUDIO_DIR`, default `apps/server/.stt-audio`) then `pnpm --filter server smoke:stt` (real-time frames; prints CER, partial count, ms from last voiced frame to final; no text).
+
+### STT_SILENCE_MS sweep (BE-116, SYNTHETIC audio, not for Go/No-go)
+
+STT only, real Vertex (`gemini-3.5-transcribe-live`), real-time 100 ms frames, 20 questions per wav, runs sequential.
+Latency = first final at/after the question `endMs` (finals bucketed by arrival into [startMs_i, startMs_i+1)).
+"finals/Q>1" = windows with more than one final; the window also holds the pitcher's non-question speech, so ~13/20 is the
+baseline. Watchdog/onError fires = 0 and rollovers = 1 in every run. Re-run:
+`GOOGLE_CLOUD_PROJECT=.. STT_MODEL=.. pnpm --filter server exec tsx scripts/stt-silence-tune.ts <wav> <timeline.json> <silenceMs>`.
+
+| wav | ms | run | p50 | p95 | finals | windows with >1 final |
+| -- | -- | -- | -- | -- | -- | -- |
+| meet | 200 | 1 | 871 | 1236 | 37 | 15 |
+| meet | 200 | 2 | 852 | 1216 | 37 | 15 |
+| meet | 300 | 1 | 990 | 1151 | 33 | 13 |
+| meet | 300 | 2 | 1013 | 2937 | 33 | 13 |
+| quiet | 200 | 1 | 919 | 1163 | 33 | 13 |
+| quiet | 300 | 1 | 1053 | 1277 | 33 | 13 |
+
+Earlier numbers (a first sweep incl. 100 ms, and a meet re-run) used the LAST final in the window as latency. That includes the
+pitcher's later narration and produced a spurious ~10.9 s "outlier" at 200 (more finals -> a later narration final); it was a metric
+bug, not an STT stall. Those tables were removed. The first sweep with the old metric only showed 100 ms was fastest (p50 ~0.8 s) with
+more finals on meet (41 vs 33); it was not re-measured.
+
+Reading: 200 is ~120-140 ms faster at p50 than 300 on both wavs (p50 ~0.86-0.92 s, still above the 800 ms budget) with similar p95.
+Cost: meet gets 4 more finals (37 vs 33, 2 more windows with >1 final); quiet is unchanged. CER not measured. Default stays 300
+in this PR; 200 is the recommended follow-up once CER / real BE-72 audio confirm no split-sentence harm.

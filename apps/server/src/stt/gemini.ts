@@ -181,7 +181,7 @@ export function createGeminiStt(env: Record<string, string | undefined>): SttPro
   return createGeminiSttProvider({
     model,
     watchdogMs: parseWatchdogMs(env.STT_WATCHDOG_MS),
-    silenceMs: Number(env.STT_SILENCE_MS) || 300, // measured: default VAD ~1.4-2.8 s to final, 300 ~1.0 s, 100 ~0.8 s
+    silenceMs: Number(env.STT_SILENCE_MS) || 300, // BE-116 sweep (SYNTHETIC): 200 looked faster but outliers unexplained, no CER; default kept (docs/llm-provider.md)
     connect: ({ model, config, callbacks }) =>
       ai.live.connect({ model, config, callbacks } as any) as Promise<LiveSessionLike>,
   });

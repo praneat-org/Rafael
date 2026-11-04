@@ -108,6 +108,14 @@ test('hints: empty unless STT_HINTS=1 (BE-115)', async () => {
   expect(t.provider.starts).toEqual([[]]);
 });
 
+test('hints: capped at 60 (BE-125)', async () => {
+  vi.stubEnv('STT_HINTS', '1');
+  const t = await setup({ getHints: () => Array.from({ length: 200 }, (_, i) => `N${i}`) });
+  t.audio(1, 1);
+  await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
+  expect(t.provider.starts[0]).toEqual(Array.from({ length: 60 }, (_, i) => `N${i}`));
+});
+
 test('final segments reach the Brain callback with the session', async () => {
   vi.stubEnv('STT_HINTS', '1');
   const seen: string[] = [];

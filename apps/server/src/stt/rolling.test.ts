@@ -14,7 +14,7 @@ function run(provider: FakeSttProvider, extra: object = {}) {
   const partials: string[] = [];
   const errors: boolean[] = [];
   const r = createRollingStt(provider, {
-    hints: ['Praneat', 'SSO'],
+    hints: () => ['Praneat', 'SSO'],
     rolloverMs: 2000, // 20 frames
     overlapMs: 500, // 5 frames
     onPartial: (m) => partials.push(m.text),
@@ -54,6 +54,20 @@ test('hints are passed to every stream (also after rollover)', async () => {
   await r.close();
   expect(p.starts.length).toBeGreaterThanOrEqual(3);
   for (const h of p.starts) expect(h).toEqual(['Praneat', 'SSO']);
+});
+
+test('hintsReady: stream opened without hints rolls over to one with hints (BE-125)', async () => {
+  const p = new FakeSttProvider();
+  let ready = false;
+  const { r } = run(p, { hints: () => (ready ? ['Siam Kitchen'] : []) });
+  for (let i = 1; i <= 3; i++) r.push(frame(i));
+  r.hintsReady(); // nothing yet: no change
+  expect(p.starts).toEqual([[]]);
+  ready = true;
+  r.hintsReady();
+  r.hintsReady(); // already hinted: no second rollover
+  await r.close();
+  expect(p.starts).toEqual([[], ['Siam Kitchen']]);
 });
 
 test('partials come from the live stream and share the segId of the open segment', async () => {

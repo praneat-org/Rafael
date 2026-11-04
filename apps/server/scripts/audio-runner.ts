@@ -171,6 +171,7 @@ export async function runAudio(o: AudioRunOptions): Promise<{
   const stt = createSttService(
     {
       provider: o.stt,
+      getHints: () => o.pack.hints,
       onFinal: (s, seg, snd, meta) => {
         if (o.trace) rawFinals.push({ at: performance.now(), text: seg.text });
         void pipeline.onFinalSegment(s, seg, snd, meta.sttFinalMs);

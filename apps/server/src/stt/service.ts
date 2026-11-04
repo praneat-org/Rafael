@@ -30,6 +30,8 @@ export type SttOptions = {
 const VOICED_PEAK = 800; // ponytail: peak threshold, not a VAD. Quiet speakers / loud rooms skew sttFinalMs only (a metric).
 const peakVoiced = (pcm: Int16Array) => pcm.some((x) => x > VOICED_PEAK || x < -VOICED_PEAK);
 
+const MAX_STT_HINTS = 60; // phrases + words; long lists dilute the bias
+
 const RUN_END_FRAMES = 3; // 3 x 100 ms of silence ends a speech run
 
 type Entry = {
@@ -68,7 +70,9 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
     const out = (m: ServerMessage) => e.send(m);
     e.rolling = createRollingStt(opts.provider, {
       // BE-115: hints off unless STT_HINTS=1 (no A/B evidence they help; CER 0.21 on q-price)
-      hints: process.env.STT_HINTS === '1' ? (opts.getHints?.(s) ?? []) : [],
+      // BE-125: capped; D11: never logged
+      hints: () =>
+        process.env.STT_HINTS === '1' ? (opts.getHints?.(s) ?? []).slice(0, MAX_STT_HINTS) : [],
       rolloverMs: opts.rolloverMs ?? 270_000,
       overlapMs: opts.overlapMs ?? 2000,
       voiced,
@@ -115,6 +119,8 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
      * after `resume` opens a new one. Finals the flush produces still go out.
      */
     pause: end,
+    /** BE-125: the pack finished loading; a stream opened before that gets the hints via rollover */
+    hintsReady: (s: Session) => entries.get(s.id)?.rolling.hintsReady(),
     /** One audio frame of a live session. Frames for an ended session are dropped. */
     push(s: Session, pcm: Int16Array, send: Entry['send']) {
       let e = entries.get(s.id);
