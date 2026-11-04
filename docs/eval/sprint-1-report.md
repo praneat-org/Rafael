@@ -24,12 +24,12 @@ Criteria from BE-67 sprint goal (proposed, adjustable before the rounds start). 
 | Cue makes a claim the cited source does not support (QA counts by hand, harness has no grader yet; BE-67) | = 0 | | | | |
 | Latency total (speaker done to first cue) p50 | <= 3 s | | | | |
 | Latency total p95 | <= 5 s | | | | |
-
-Latency total = `cue.latency` log `serverTotalMs` = protocol `cue.latencyMs` of the cue (D26): end of speech -> cue emitted (stt + detector + answerer, queue included). `ask` (no STT / Detector) counts from ask receipt, so it is not comparable with the speech rows. No `renderMs` ack.
 | Rated helpful (count) | no threshold set | | | | |
 | Rated neutral (count) | no threshold set | | | | |
 | Rated disruptive (count) | no threshold set | | | | |
 | Cost per pitch hour (measured, STT + LLM) | recorded only | | | | |
+
+Latency gate (p50 / p95) = wall-clock `total` from the audio runner: end of speech -> cue seen, so it includes endpointing and network. Cross-check = `serverTotal` (`cue.latency` log `serverTotalMs` = protocol `cue.latencyMs` of the cue, D26: stt + detector + answerer, queue included); the report warns when the two differ by > 500 ms. `ask` (no STT / Detector) counts from ask receipt, so it is not comparable with the speech rows. No `renderMs` ack.
 
 Latency breakdown per stage (find the bottleneck), same rounds:
 

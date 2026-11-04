@@ -238,6 +238,7 @@ export async function runAudio(o: AudioRunOptions): Promise<{
           detector: Number(x?.l.detectorMs ?? 0),
           answererFirstToken: Number(x?.a?.firstTokenMs ?? 0),
           total,
+          ...(x?.l.serverTotalMs !== undefined && { serverTotal: Number(x.l.serverTotalMs) }),
         },
         usage: {
           inputTokens: Number(x?.a?.inputTokens ?? 0),

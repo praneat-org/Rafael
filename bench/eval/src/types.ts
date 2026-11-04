@@ -28,7 +28,8 @@ export interface Usage {
 
 export interface RunResult {
   cue: Cue | null; // null = no cue appeared
-  timings: Record<Stage, number>; // ms
+  /** ms. `total` = wall clock (speech end -> cue seen by the runner; gate). `serverTotal` = pipeline `serverTotalMs` (cross-check, audio mode only). */
+  timings: Record<Stage, number> & { serverTotal?: number };
   usage: Usage;
 }
 

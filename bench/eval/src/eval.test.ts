@@ -199,6 +199,24 @@ describe('gates one by one (boundaries)', () => {
     });
     return buildReport(keys, results, anchors, 120, prices);
   };
+  it('serverTotal (BE-126): extra column + p50/p95 row, gate stays wall-clock total, WARN when > 500 ms apart', () => {
+    const mk = (serverTotal: number) =>
+      keys.map((k) => ({
+        cue: { notFound: false, bullets: ['12'], sources: [k.anchor as string] },
+        timings: { stt: 1, detector: 1, answererFirstToken: 1, total: 1000, serverTotal },
+        usage,
+      }));
+    const close = buildReport(keys, mk(900), anchors, 120, prices);
+    expect(close).toContain('| serverTotal (cross-check) | 900 | 900 |');
+    expect(close).toContain('| total ms | serverTotal ms |');
+    expect(close).not.toContain('WARN');
+    const far = buildReport(keys, mk(100), anchors, 120, prices);
+    expect(far).toContain('WARN: wall-clock total and serverTotal differ');
+    expect(far).toContain('100 WARN');
+    expect(gate(far, 'total p50')).toBe('PASS'); // gate reads total (1000), not serverTotal
+    // no serverTotal (text mode) -> report unchanged
+    expect(run({})).not.toContain('serverTotal');
+  });
   const gate = (md: string, label: string) =>
     new RegExp(`\\| ${label}[^\\n]*\\| (PASS|FAIL) \\|`).exec(md)?.[1];
   const correctGate = (o: Opts) => gate(run(o), 'correct');

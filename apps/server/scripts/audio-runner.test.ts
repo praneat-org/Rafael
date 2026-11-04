@@ -109,6 +109,9 @@ describe('audio runner', () => {
       expect(r.cue?.sources).toEqual([keys[i]?.anchor]);
       expect(r.timings.total).toBeGreaterThanOrEqual(0);
       expect(r.timings.total).toBeLessThan(1500);
+      // from the pipeline's real `cue.latency` log (serverTotalMs), next to wall-clock total
+      expect(r.timings.serverTotal).toBeGreaterThan(0);
+      expect(r.timings.serverTotal).toBeGreaterThanOrEqual(r.timings.stt + r.timings.detector);
       expect(r.usage.cacheReadTokens).toBe(90);
     });
     const base = buildReport(
