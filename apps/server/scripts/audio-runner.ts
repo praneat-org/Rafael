@@ -167,13 +167,13 @@ export async function runAudio(
     for (let i = 0, f = 0; i < total; i += FRAME, f++) {
       const fr = new Int16Array(FRAME);
       fr.set(o.pcm.subarray(i, i + FRAME));
+      await sleep(Math.max(0, t0 + (f + 1) * frameMs - performance.now())); // frame f ends at (f+1)*frameMs: push only then
       stt.push(session, fr, send);
-      await sleep(Math.max(0, t0 + (f + 1) * frameMs - performance.now()));
     }
     await stt.end(session); // flush the last finals
-    const drainEnd = performance.now() + (o.maxDrainMs ?? 20_000);
+    const drainEnd = performance.now() + (o.maxDrainMs ?? 30_000);
     lastActivity = performance.now();
-    while (performance.now() < drainEnd && performance.now() - lastActivity < (o.idleMs ?? 4000))
+    while (performance.now() < drainEnd && performance.now() - lastActivity < (o.idleMs ?? 6000))
       await sleep(100);
 
     // bucket cues by the audio clock

@@ -139,6 +139,7 @@ describe('audio runner', () => {
     });
     expect(results[0]?.cue).not.toBeNull();
     expect(results[1]?.cue).toBeNull();
+    expect(results[1]?.timings.total).toBe(0);
   }, 20_000);
 });
 

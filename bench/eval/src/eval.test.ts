@@ -8,7 +8,7 @@ import { assertOutsideRepo } from './outside.js';
 import { buildReport, GATES } from './report.js';
 import { fakeRunner } from './runner.js';
 import { factsOf, missingFacts, scoreOne } from './score.js';
-import { percentile } from './stats.js';
+import { latencyStats, percentile } from './stats.js';
 import { type Cue, type KeyRow, type RunResult, sourceAnchor } from './types.js';
 
 const pack = new Set(['[a › 1]', '[b › 2]']);
@@ -260,5 +260,19 @@ describe('optArg', () => {
     expect(optArg(['--out=--report.md'], 'out', 'd')).toBe('--report.md');
     expect(optArg(['--out=r.md', '--key', 'k'], 'out', 'd')).toBe('r.md');
     expect(() => optArg(['--out='], 'out', 'd')).toThrow(/needs a value/);
+  });
+});
+
+describe('latencyStats', () => {
+  it('ignores missed questions (cue null) instead of counting them as 0 ms', () => {
+    const r = (cue: Cue | null, total: number): RunResult => ({
+      cue,
+      timings: { stt: total, detector: total, answererFirstToken: total, total },
+      usage: { inputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 },
+    });
+    const cue: Cue = { notFound: true, bullets: [], sources: [] };
+    const s = latencyStats([r(null, 0), r(null, 0), r(cue, 2000), r(cue, 4000)]);
+    expect(s.total).toEqual({ p50: 2000, p95: 4000 });
+    expect(Number.isNaN(latencyStats([r(null, 0)]).total.p50)).toBe(true);
   });
 });
