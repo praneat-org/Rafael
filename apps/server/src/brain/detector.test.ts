@@ -97,7 +97,7 @@ describe('detector', () => {
     expect((await s.d.onFinalSegment({ text: 'c' })).kind).toBe('question');
   });
 
-  it('BE-122: A -> cue -> narration -> B: A is extracted once, later prompts do not contain A', async () => {
+  it('BE-122/123: A -> cue -> narration -> B: A extracted once; later prompts list A as answered, window kept', async () => {
     const s = setup([q('ราคา add-on เท่าไหร่'), no, q('onboarding นานแค่ไหน')]);
     s.at(0);
     expect((await s.d.onFinalSegment({ text: 'A-line' })).kind).toBe('question');
@@ -105,8 +105,37 @@ describe('detector', () => {
     await s.d.onFinalSegment({ text: 'narration' });
     s.at(9_000);
     await s.d.onFinalSegment({ text: 'B-line' });
-    expect(s.reqs[1]?.user).toBe('narration');
-    expect(s.reqs[2]?.user).toBe('narration\nB-line');
+    expect(s.reqs[0]?.user).toBe('A-line');
+    expect(s.reqs[1]?.user).toBe(
+      'ALREADY ANSWERED:\n- ราคา add-on เท่าไหร่\n\nTRANSCRIPT:\nA-line\nnarration',
+    );
+    expect(s.reqs[2]?.user).toContain('- ราคา add-on เท่าไหร่');
+    expect(s.reqs[2]?.user).toContain('A-line\nnarration\nB-line');
+  });
+
+  it('BE-123: pronoun follow-up after A is extracted with A as referent in the prompt', async () => {
+    const s = setup([q('Premium onboarding ราคาเท่าไร'), q('AI Assist ราคาเท่าไร')]);
+    s.at(0);
+    await s.d.onFinalSegment({ text: 'Premium onboarding ราคาเท่าไรครับ' });
+    s.at(4_000);
+    const r = await s.d.onFinalSegment({ text: 'แล้วอันนั้นล่ะครับ' });
+    expect(r).toEqual({ kind: 'question', question: 'AI Assist ราคาเท่าไร' });
+    expect(s.reqs[1]?.user).toContain('ALREADY ANSWERED:\n- Premium onboarding ราคาเท่าไร');
+    expect(s.reqs[1]?.user).toContain('Premium onboarding ราคาเท่าไรครับ\nแล้วอันนั้นล่ะครับ');
+  });
+
+  it('BE-123: ALREADY ANSWERED lists several entries and drops them after dedupeMs', async () => {
+    const s = setup([q('คำถามหนึ่ง ราคา'), q('คำถามสอง สลา'), no, no]);
+    s.at(0);
+    await s.d.onFinalSegment({ text: 'l1' });
+    s.at(2_000);
+    await s.d.onFinalSegment({ text: 'l2' });
+    s.at(4_000);
+    await s.d.onFinalSegment({ text: 'l3' });
+    expect(s.reqs[2]?.user).toContain('- คำถามหนึ่ง ราคา\n- คำถามสอง สลา');
+    s.at(2_000 + config.detector.dedupeMs + 1);
+    await s.d.onFinalSegment({ text: 'l4' });
+    expect(s.reqs[3]?.user).not.toContain('ALREADY ANSWERED');
   });
 
   it('different question within 60 s is not a duplicate', async () => {

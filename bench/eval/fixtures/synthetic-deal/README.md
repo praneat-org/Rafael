@@ -13,3 +13,4 @@ customer data. Safe to commit. Replace with the real BD-prepared set (BE-68) whe
 - Fake-runner run: `pnpm --filter @rafael/eval eval --key fixtures/synthetic-deal/key.csv`.
 - No audio here (D11). TTS audio generation is not done yet: Cloud TTS API is not enabled in rafael-512903.
 - Reports (`--out`) and cue dumps of a REAL deal must never be stored in the repo (D11): `--out` / `--dump` refuse repo paths; stdout is unrestricted.
+- Detector pronoun follow-up golden (BE-123): `followups.json` (kept out of key.csv so the 20-row audio timeline stays valid). Run: `pnpm --filter server eval:followup` (real Vertex, Detector only).

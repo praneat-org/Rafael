@@ -11,6 +11,7 @@
     "smoke:llm": "tsx scripts/smoke-llm.ts",
     "eval:text": "tsx scripts/eval-text.ts",
     "eval:audio": "tsx scripts/eval-audio.ts",
+    "eval:followup": "tsx scripts/eval-followup.ts",
     "gen:stt-audio": "tsx scripts/gen-stt-audio.ts",
     "smoke:stt": "tsx scripts/smoke-stt.ts",
     "test": "pnpm run build && vitest run"
