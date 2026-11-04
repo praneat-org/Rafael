@@ -21,6 +21,7 @@ Criteria from BE-67 sprint goal (proposed, adjustable before the rounds start). 
 | -- | -- | -- | -- | -- | -- |
 | Cue correct per source | >= 16/20 | | | | |
 | Cue cites outside source (D10, counted apart from "wrong") | = 0 | | | | |
+| Cue makes a claim the cited source does not support (QA counts by hand, harness has no grader yet; BE-67) | = 0 | | | | |
 | Latency total (speaker done to first cue) p50 | <= 3 s | | | | |
 | Latency total p95 | <= 5 s | | | | |
 | Rated helpful (count) | no threshold set | | | | |
