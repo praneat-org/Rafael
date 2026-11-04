@@ -83,7 +83,11 @@ importers:
         specifier: 0.28.2
         version: 0.28.2
 
-  bench/eval: {}
+  bench/eval:
+    dependencies:
+      '@google/genai':
+        specifier: 2.31.0
+        version: 2.31.0
 
   packages/protocol:
     dependencies:

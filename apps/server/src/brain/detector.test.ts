@@ -97,6 +97,18 @@ describe('detector', () => {
     expect((await s.d.onFinalSegment({ text: 'c' })).kind).toBe('question');
   });
 
+  it('BE-122: A -> cue -> narration -> B: A is extracted once, later prompts do not contain A', async () => {
+    const s = setup([q('ราคา add-on เท่าไหร่'), no, q('onboarding นานแค่ไหน')]);
+    s.at(0);
+    expect((await s.d.onFinalSegment({ text: 'A-line' })).kind).toBe('question');
+    s.at(5_000);
+    await s.d.onFinalSegment({ text: 'narration' });
+    s.at(9_000);
+    await s.d.onFinalSegment({ text: 'B-line' });
+    expect(s.reqs[1]?.user).toBe('narration');
+    expect(s.reqs[2]?.user).toBe('narration\nB-line');
+  });
+
   it('different question within 60 s is not a duplicate', async () => {
     const s = setup([q('ระบบรองรับผู้ใช้พร้อมกันกี่คน'), q('ราคาต่อเดือนเท่าไหร่')]);
     await s.d.onFinalSegment({ text: 'a' });
