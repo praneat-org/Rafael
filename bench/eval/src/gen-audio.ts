@@ -83,7 +83,9 @@ async function synth(text: string, voice: string): Promise<Float32Array> {
         SAMPLE_RATE,
       );
     } catch (e) {
-      if (attempt >= 3) throw e;
+      const status = (e as { status?: number }).status;
+      // 4xx (bad request/auth/quota-config) won't fix itself; 429 can
+      if (attempt >= 3 || (status && status >= 400 && status < 500 && status !== 429)) throw e;
       await new Promise((r) => setTimeout(r, 2000 * attempt));
     }
   }

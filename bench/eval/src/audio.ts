@@ -82,9 +82,24 @@ export function makeNoise(len: number, fs = SAMPLE_RATE, seed = 1): Float32Array
   return n;
 }
 
-/** signal + noise scaled so that rms(signal)/rms(noise) = snrDb. Clips to [-1,1]. */
+/** RMS over active speech only: 20 ms frames with frame rms > thresh (silence pads would otherwise lower it). */
+export function speechRms(x: Float32Array, fs = SAMPLE_RATE, thresh = 0.01): number {
+  const f = Math.round(fs * 0.02);
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i + f <= x.length; i += f) {
+    const fr = x.subarray(i, i + f);
+    if (rms(fr) > thresh) {
+      for (const v of fr) sum += v * v;
+      n += f;
+    }
+  }
+  return n ? Math.sqrt(sum / n) : rms(x);
+}
+
+/** signal + noise scaled so that speechRms(signal)/rms(noise) = snrDb. Clips to [-1,1]. */
 export function mixAtSnr(sig: Float32Array, noise: Float32Array, snrDb: number): Float32Array {
-  const g = rms(sig) / (rms(noise) || 1) / 10 ** (snrDb / 20);
+  const g = speechRms(sig) / (rms(noise) || 1) / 10 ** (snrDb / 20);
   return Float32Array.from(sig, (v, i) =>
     Math.max(-1, Math.min(1, v + g * (noise[i % noise.length] ?? 0))),
   );
@@ -111,10 +126,11 @@ export interface Timeline {
   questions: { id: string; text: string; startMs: number; endMs: number }[];
 }
 
-/** Concatenate segments with `gapMs` of silence around each (+ pad after questions so next question start - end >= minQuestionGapMs); question start/end = speech only. */
+/** Smallest end-to-start gap between consecutive questions (ms). */
 export const minQuestionGap = (t: Timeline): number =>
   Math.min(...t.questions.slice(1).map((q, i) => q.startMs - t.questions[i]!.endMs));
 
+/** Concatenate segments with `gapMs` of silence around each (+ pad after questions so next question start - end >= minQuestionGapMs); question start/end = speech only. */
 export function assemble(
   segs: Segment[],
   gapMs = 600,

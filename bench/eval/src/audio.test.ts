@@ -10,6 +10,7 @@ import {
   resample,
   rms,
   silence,
+  speechRms,
   toPcm16,
 } from './audio.js';
 
@@ -58,6 +59,16 @@ describe('mix / band-limit', () => {
     const mixed = mixAtSnr(s, n, 10);
     const resid = Float32Array.from(mixed, (v, i) => v - s[i]!);
     expect(20 * Math.log10(rms(s) / rms(resid))).toBeCloseTo(10, 1);
+  });
+  it('SNR is measured on speech only, not silence pads', () => {
+    const speech = sine(300, 16000, 1);
+    const padded = new Float32Array(16000 * 4);
+    padded.set(speech, 16000 * 2); // 1 s speech inside 4 s file
+    expect(speechRms(padded)).toBeCloseTo(rms(speech), 2);
+    const n = makeNoise(padded.length);
+    const mixed = mixAtSnr(padded, n, 10);
+    const resid = Float32Array.from(mixed, (v, i) => v - padded[i]!);
+    expect(20 * Math.log10(speechRms(padded) / rms(resid))).toBeCloseTo(10, 1);
   });
   it('makeNoise is deterministic per seed', () => {
     expect(makeNoise(100, 16000, 3)).toEqual(makeNoise(100, 16000, 3));
