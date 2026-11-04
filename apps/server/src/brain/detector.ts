@@ -30,6 +30,7 @@ Decide whether the newest segment contains a real question that the CUSTOMER ask
 Reply with JSON only: {"isQuestion": boolean, "question": string, "fromCustomer": boolean}
 - question: the customer's question rewritten as one clear, self-contained sentence in the original language (use earlier lines to resolve "it", "that"). Empty string if isQuestion is false.
 - fromCustomer: true if a customer / prospect asks; false if the presenter / pitcher speaks.
+- The input may start with "ALREADY ANSWERED:" (questions the presenter already answered), then "TRANSCRIPT:". Never return a question that is the same as, or a rewording of, an already-answered one, even if its lines are still in the transcript. A NEW question that refers back to one ("what about that one?", "แล้วอันนั้นล่ะ") IS a question: resolve the pronoun using the already-answered question and the transcript, and write it self-contained.
 - Statements, thanks, small talk, and filler are not questions.
 - RHETORICAL questions by the presenter are NOT questions: no answer is expected from the other side.
 Negative examples (isQuestion=false):
@@ -92,7 +93,7 @@ export function createDetector(deps: DetectorDeps) {
   const perf = deps.perf ?? (() => performance.now());
   const cfg = config.detector;
   let window: { at: number; seg: Segment }[] = [];
-  let asked: { at: number; norm: string }[] = [];
+  let asked: { at: number; norm: string; text: string }[] = [];
 
   async function callOnce(user: string) {
     const ac = new AbortController();
@@ -127,9 +128,13 @@ export function createDetector(deps: DetectorDeps) {
     window = window.filter((w) => t - w.at <= cfg.windowMs);
     asked = asked.filter((a) => t - a.at < cfg.dedupeMs);
 
-    const user = window
+    const transcript = window
       .map((w) => (w.seg.speaker ? `[${w.seg.speaker}] ` : '') + w.seg.text)
       .join('\n');
+    // BE-123: keep the full window (pronoun follow-ups need it) but tell the model what is already answered.
+    const user = asked.length
+      ? `ALREADY ANSWERED:\n${asked.map((a) => `- ${a.text}`).join('\n')}\n\nTRANSCRIPT:\n${transcript}`
+      : transcript;
     const t0 = perf();
     let res: Awaited<ReturnType<typeof callOnce>> | undefined;
     let attempts = 0;
@@ -168,10 +173,6 @@ export function createDetector(deps: DetectorDeps) {
     if (!parsed.isQuestion || !question) return done({ kind: 'none', reason: 'not-question' });
     if (!parsed.fromCustomer) return done({ kind: 'none', reason: 'not-customer' });
 
-    // BE-122: the question is consumed. Keeping it in the window made the model re-extract it
-    // (reworded, so Dice dedupe missed) on every later segment, firing a stale cue mid-next-question.
-    window = [];
-
     const norm = normalizeQuestion(question);
     if (
       asked.some(
@@ -180,7 +181,7 @@ export function createDetector(deps: DetectorDeps) {
     ) {
       return done({ kind: 'none', reason: 'duplicate' });
     }
-    asked.push({ at: t, norm });
+    asked.push({ at: t, norm, text: question });
     return done({ kind: 'question', question });
   }
 

@@ -38,4 +38,12 @@ describe('synthetic-deal fixture', () => {
     expect(md).toContain('| correct (fact-checked + not-found-correct) | 20/20');
     expect(md).not.toContain('FAIL');
   });
+  it('followups.json (BE-123 pronoun golden) is well-formed', () => {
+    const cases = JSON.parse(read('followups.json')) as {
+      segments: unknown[];
+      expect: { segment: number }[];
+    }[];
+    expect(cases.length).toBeGreaterThan(0);
+    for (const c of cases) for (const e of c.expect) expect(c.segments[e.segment]).toBeDefined();
+  });
 });

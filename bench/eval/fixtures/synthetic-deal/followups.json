@@ -1,0 +1,16 @@
+[
+  {
+    "id": "f01-pronoun-addon",
+    "note": "SYNTHETIC. Detector-level golden: pronoun follow-up must resolve to the earlier answered question; A must not be re-extracted.",
+    "segments": [
+      { "atMs": 0, "text": "ส่วน AI Assist add-on คิดเพิ่มเท่าไรครับ" },
+      { "atMs": 6000, "text": "ตัว add-on นี้เปิดใช้เป็นรายทีมได้ ผมจะอธิบายต่อ" },
+      { "atMs": 12000, "text": "แล้วอันนั้นต้องจ่ายแยกต่อ agent ไหมครับ" }
+    ],
+    "expect": [
+      { "segment": 0, "kind": "question", "mustMatch": "AI Assist|add-on" },
+      { "segment": 1, "kind": "none" },
+      { "segment": 2, "kind": "question", "mustMatch": "AI Assist|add-on" }
+    ]
+  }
+]
