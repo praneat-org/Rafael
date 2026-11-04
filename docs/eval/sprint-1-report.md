@@ -71,9 +71,9 @@ Only what is documented. Sources: `docs/research/market-tools.md` (BE-69 desk re
 | Source = Google Drive folder with anchor | Yes by design (Session Pack) | Not found in official docs (upload or web URL KB) | Not found | Not found |
 | Bot-free real-time | Yes (listens only) | Live Assist yes, Google Meet on Chrome only; Sales Assist needs a bot | Not stated | No real-time found |
 | Triggers on customer question automatically | Yes by design | No, user asks (D17) | TBD | TBD |
-| Thai | Tested only on synthetic/recorded audio (`docs/llm-provider.md`) | Not specified | TBD | TBD |
+| Thai | Not measured on Thai speech yet (BE-72 audio + BE-77 benchmark pending) | Not specified | TBD | TBD |
 | Data region | Vertex asia-southeast1; STT `global` (D24, Q6 open) | US | US | US |
-| Trains on our data | Not per `docs/privacy/providers.md` (re-check) | No (F3) | Policy says yes (O1) | Default yes, opt-out (T1) |
+| Trains on our data (source labels F*/O*/T* = refs in `docs/research/market-tools.md`) | Not per `docs/privacy/providers.md` (re-check) | No (F3) | Policy says yes (O1) | Default yes, opt-out (T1) |
 | Price (3-5 seats) | see Section 3 | ~$30-50 (Pro) to $57-95 (Business) per month, list, plus AI credits (blog 2026-07-10) | Live Assist enterprise only, price not found | no real-time plan |
 
 ## 5. SYNTHETIC (not for Go/No-go)
@@ -82,12 +82,12 @@ Synthetic fictional deal pack (`bench/eval/fixtures/synthetic-deal/`), **text in
 
 | Item | Result | Note |
 | -- | -- | -- |
-| Correct (fact-checked) | 19/20 (16 correct + 3 not-found-correct; q6 wrong-fact, key too strict) | Measured with the BE-119 Answerer fix (PR #59, not yet merged). Develop before #59 (PR #57 @ 3ebcd68): 18/20 (16 correct + 2 not-found-correct; q6 wrong-fact, q19 wrong). Command: `pnpm --filter server eval:text` with gemini-3.5-flash. |
+| Correct (fact-checked) | 19/20 (16 correct + 3 not-found-correct; q6 wrong-fact, key too strict) | Measured with the BE-119 Answerer fix (PR #59). Develop before #59 (PR #57 @ 3ebcd68): 18/20 (16 correct + 2 not-found-correct; q6 wrong-fact, q19 wrong). Command: `pnpm --filter server eval:text` with gemini-3.5-flash. |
 | Not-found-correct | 3/3 | |
 | q6 | wrong-fact | Key too strict (required a region code the question did not ask for). QA judged this a key problem, not a model error. |
-| q19 (not in source) | model answered by inference instead of notFound in the QA run | Follow-up: tune Answerer prompt (BE-101 comment). |
+| q19 (not in source) | at #57: wrong (answered by inference instead of notFound) · with #59: notFound-correct | Fixed by BE-119 (PR #59). |
 | Outside-source | 0 | |
-| Latency (QA run, text only) | total p50 553 ms / p95 718 ms; answerer first token p50 470 / p95 607 ms | Not comparable to real rounds (no STT/Detector). |
+| Latency (PR #57 QA run @ 3ebcd68, text only) | total p50 553 ms / p95 718 ms; answerer first token p50 470 / p95 607 ms | Not comparable to real rounds (no STT/Detector). |
 
 Re-run: `pnpm --filter @rafael/eval eval` flags per `bench/eval/src/cli.ts`; text runner `apps/server/scripts/eval-text.ts` (needs Vertex ADC; keep `--out` outside the repo, D11).
 
@@ -100,7 +100,7 @@ Audio synthetic rows (TTS replay through the full pipeline): TBD. Pending BE-121
 
 ## 6. Next-sprint backlog (only if Go)
 
-Order by measured impact once Section 2 is filled. Candidates named in BE-67: retrieval, mobile/iPad viewer (FE-41), Answerer prompt tuning for not-found (q19 pattern), STT region (Q6). Not ranked yet.
+Order by measured impact once Section 2 is filled. Candidates named in BE-67: retrieval, mobile/iPad viewer (FE-41), STT region (Q6). Not ranked yet.
 
 ## 7. Open items before this report can be final
 
