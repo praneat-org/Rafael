@@ -7,7 +7,9 @@ export function percentile(values: number[], p: number): number {
   return s[Math.max(0, Math.ceil((p / 100) * s.length) - 1)] as number;
 }
 
-export function latencyStats(results: RunResult[]) {
+/** Missed questions (cue null) have no latency: counting their 0 would let p50 pass while most are missed. */
+export function latencyStats(all: RunResult[]) {
+  const results = all.filter((r) => r.cue !== null);
   const out = {} as Record<Stage, { p50: number; p95: number }>;
   for (const st of STAGES) {
     const v = results.map((r) => r.timings[st]);
