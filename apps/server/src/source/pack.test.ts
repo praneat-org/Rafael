@@ -288,6 +288,18 @@ test('hints: multi-word names kept as a phrase before single words (BE-125)', as
 
 const mk = (t: string) => buildPack(provider([F('1', 'A')], { '1': doc(t) }), 'x');
 
+test('hints: name wrapped across lines still a phrase; file-name words survive the cap (BE-125)', async () => {
+  const content = Array.from({ length: 5 }, (_, i) => `Aa${i} Bb${i}`).join(' and ');
+  const p = await buildPack(
+    provider([F('1', 'Praneat')], { '1': doc(`Siam\nKitchen Group ${content}`) }),
+    'x',
+    { maxHints: 3 },
+  );
+  expect(p.hints[0]).toBe('Praneat');
+  const q = await buildPack(provider([F('1', 'deal')], { '1': doc('Siam\n  Kitchen Group') }), 'x');
+  expect(q.hints[0]).toBe('Siam Kitchen Group');
+});
+
 test('PackStore: set/get/clear (end deletes)', async () => {
   const s = new PackStore();
   const p = await mk('x');

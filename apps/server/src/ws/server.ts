@@ -85,7 +85,11 @@ export function attachWs(http: Server, opts: WsOptions) {
       store,
     );
   packs =
-    opts.pack && createPackService(opts.pack, store, (s, p) => pipeline?.packReady(s, p.chunks));
+    opts.pack &&
+    createPackService(opts.pack, store, (s, p) => {
+      pipeline?.packReady(s, p.chunks);
+      stt?.hintsReady(s);
+    });
 
   http.on('upgrade', (req: IncomingMessage, socket: Duplex, head) => {
     const path = (req.url ?? '').split('?')[0];

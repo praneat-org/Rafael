@@ -113,7 +113,7 @@ test('hints: capped at 60 (BE-125)', async () => {
   const t = await setup({ getHints: () => Array.from({ length: 200 }, (_, i) => `N${i}`) });
   t.audio(1, 1);
   await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
-  expect(t.provider.starts[0]).toHaveLength(60);
+  expect(t.provider.starts[0]).toEqual(Array.from({ length: 60 }, (_, i) => `N${i}`));
 });
 
 test('final segments reach the Brain callback with the session', async () => {

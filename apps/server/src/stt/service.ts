@@ -71,7 +71,7 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
     e.rolling = createRollingStt(opts.provider, {
       // BE-115: hints off unless STT_HINTS=1 (no A/B evidence they help; CER 0.21 on q-price)
       // BE-125: capped; D11: never logged
-      hints:
+      hints: () =>
         process.env.STT_HINTS === '1' ? (opts.getHints?.(s) ?? []).slice(0, MAX_STT_HINTS) : [],
       rolloverMs: opts.rolloverMs ?? 270_000,
       overlapMs: opts.overlapMs ?? 2000,
@@ -119,6 +119,8 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
      * after `resume` opens a new one. Finals the flush produces still go out.
      */
     pause: end,
+    /** BE-125: the pack finished loading; a stream opened before that gets the hints via rollover */
+    hintsReady: (s: Session) => entries.get(s.id)?.rolling.hintsReady(),
     /** One audio frame of a live session. Frames for an ended session are dropped. */
     push(s: Session, pcm: Int16Array, send: Entry['send']) {
       let e = entries.get(s.id);

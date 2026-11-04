@@ -63,6 +63,17 @@ test('default getHints: pack not loaded yet -> provider.start gets []', async ()
   expect(t.provider.starts).toEqual([[]]);
 });
 
+test('stream opened while the pack loads is reopened with hints once the pack is ready', async () => {
+  let release = () => {};
+  const t = await setup(new Promise<void>((r) => (release = r)));
+  t.audio();
+  await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
+  expect(t.provider.starts[0]).toEqual([]);
+  release();
+  await vi.waitFor(() => expect(t.provider.starts.length).toBe(2));
+  expect(t.provider.starts[1]?.slice(0, 2)).toEqual(['Lumora Desk', 'Siam Kitchen Group']);
+});
+
 test('default getHints: pack loaded -> provider.start gets pack.hints', async () => {
   const t = await setup(Promise.resolve());
   await vi.waitFor(() =>
@@ -72,5 +83,5 @@ test('default getHints: pack loaded -> provider.start gets pack.hints', async ()
   await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
   const h = t.provider.starts[0] ?? [];
   expect(h.slice(0, 2)).toEqual(['Lumora Desk', 'Siam Kitchen Group']);
-  expect(h).toEqual(expect.arrayContaining(['Siam', 'Kitchen', 'Lumora']));
+  expect(h).toEqual(expect.arrayContaining(['Siam', 'Kitchen', 'Lumora', 'Desk', 'Group']));
 });
