@@ -141,6 +141,7 @@ export async function runAudio(
   const stt = createSttService(
     {
       provider: o.stt,
+      getHints: () => o.pack.hints,
       onFinal: (s, seg, snd, meta) => void pipeline.onFinalSegment(s, seg, snd, meta.sttFinalMs),
     },
     store,

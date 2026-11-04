@@ -104,16 +104,18 @@ function labels(files: DriveFile[]): Map<string, string> {
 }
 
 const HINT = /\b(?:[A-Z][A-Za-z0-9]+|[A-Z0-9]{2,})\b/g;
+// BE-125: multi-word names ("Siam Kitchen Group") as one phrase: STT biases better on the whole name
+const PHRASE = /\b[A-Z][A-Za-z0-9]+(?: [A-Z][A-Za-z0-9]+)+\b/g;
 // ponytail: latin-only heuristic (Thai has no case); add a Thai proper-noun pass if STT misses names
 function hintsFrom(names: string[], texts: string[], max: number): string[] {
-  const freq = new Map<string, number>();
-  for (const n of names)
-    for (const w of n.match(HINT) ?? []) freq.set(w, (freq.get(w) ?? 0) + 1000);
-  for (const t of texts) for (const w of t.match(HINT) ?? []) freq.set(w, (freq.get(w) ?? 0) + 1);
-  return [...freq]
-    .sort((a, b) => b[1] - a[1] || cmp(a[0], b[0]))
-    .slice(0, max)
-    .map(([w]) => w);
+  const rank = (re: RegExp) => {
+    const freq = new Map<string, number>();
+    for (const n of names)
+      for (const w of n.match(re) ?? []) freq.set(w, (freq.get(w) ?? 0) + 1000);
+    for (const t of texts) for (const w of t.match(re) ?? []) freq.set(w, (freq.get(w) ?? 0) + 1);
+    return [...freq].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([w]) => w);
+  };
+  return [...new Set([...rank(PHRASE), ...rank(HINT)])].slice(0, max);
 }
 
 export async function buildPack(

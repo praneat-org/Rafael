@@ -71,6 +71,8 @@ export function attachWs(http: Server, opts: WsOptions) {
     createSttService(
       {
         ...opts.stt,
+        // BE-125: Session Pack names/terms bias recognition; the pack may still be loading -> []
+        getHints: opts.stt.getHints ?? ((s) => packs?.get(s.id)?.hints ?? []),
         onFinal: (s, seg, send, meta) => {
           opts.stt?.onFinal?.(s, seg, send, meta);
           // a final that was already in the provider when pause arrived must not start a cue
