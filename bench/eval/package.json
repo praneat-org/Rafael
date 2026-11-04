@@ -1,10 +1,14 @@
 {
   "name": "@rafael/eval",
   "version": "0.0.0",
+  "dependencies": {
+    "@google/genai": "2.31.0"
+  },
   "private": true,
   "type": "module",
   "scripts": {
     "eval": "tsx src/cli.ts",
+    "gen:audio": "tsx src/gen-audio.ts",
     "typecheck": "tsc -p .",
     "test": "vitest run",
     "build": "tsc -p ."
