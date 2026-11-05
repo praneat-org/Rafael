@@ -7,7 +7,8 @@ export type SttHandlers = {
   /** a finished segment */
   onFinal(text: string, speaker?: string): void;
   /** stream died; the caller closes it and opens a new one */
-  onError(): void;
+  /** `soft` = stream went quiet (watchdog), not a connect/socket failure: reopen, but never an outage */
+  onError(soft?: boolean): void;
 };
 
 export interface SttStream {

@@ -17,6 +17,7 @@ export type RollingOptions = {
   onFinal(m: { segId: string; text: string; speaker?: string }): void;
   /** every failure; the stream is reopened unless retries ran out (then `gaveUp` is true) */
   onError(gaveUp: boolean): void;
+  // soft errors (watchdog) reopen but never count toward gaveUp
   onRollover?(): void;
 };
 
@@ -96,6 +97,11 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
     return undefined;
   }
 
+  /** a retired stream is done: finals still parked for overlap alignment will never be completed, emit them now */
+  function flushBuf(g: Gen) {
+    if (g.buf && !closed) emit(g, '', undefined, true);
+  }
+
   function open(replay: Int16Array[], hold: boolean): Gen {
     const hints = o.hints();
     const g: Gen = {
@@ -117,12 +123,15 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
         if (g.held) g.held.push({ text, speaker, frames: g.frames });
         else if (g === cur || g.retired) emit(g, text, speaker);
       },
-      onError: () => {
+      onError: (soft) => {
         if (closed || closing || g !== cur) return;
         cur = undefined;
         g.retired = true; // keep the finals it flushes on close
-        void g.stream.close().catch(() => {});
-        fail();
+        void g.stream
+          .close()
+          .catch(() => {})
+          .then(() => flushBuf(g));
+        fail(soft);
       },
     });
     for (const f of replay) {
@@ -132,9 +141,9 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
     return g;
   }
 
-  function fail() {
+  function fail(soft = false) {
     if (closing || closed) return;
-    const gaveUp = attempts >= maxRetries;
+    const gaveUp = !soft && attempts >= maxRetries;
     if (gaveUp) {
       // report once per outage, then probe slowly (push() waits for the cooldown)
       if (!reportedGaveUp) o.onError(true);
@@ -143,7 +152,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       return;
     }
     o.onError(false);
-    attempts++;
+    if (!soft) attempts++;
     retryTimer = setTimeout(
       () => {
         retryTimer = undefined;
@@ -154,7 +163,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
           fail();
         }
       },
-      (o.retryDelayMs ?? 1000) * attempts,
+      (o.retryDelayMs ?? 1000) * Math.max(1, attempts),
     );
     retryTimer.unref();
   }
@@ -168,6 +177,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       .close()
       .catch(() => {})
       .then(() => {
+        flushBuf(old);
         // old stream flushed its finals: now the new one may speak, in order
         const held = next.held ?? [];
         next.held = null;

@@ -216,3 +216,35 @@ test('stream that errors: what it flushes on close is kept', async () => {
     vi.useRealTimers();
   }
 });
+
+// BE-89 field failure: partial shown, stream dies (watchdog), the flushed interim never reached onFinal
+test('reopened stream (dedupe on) that dies keeps its flushed interim as a final', async () => {
+  const p = new FakeSttProvider({ word: () => undefined }); // we drive the handlers by hand
+  const { r, finals, errors } = run(p, { retryDelayMs: 1 });
+  r.push(frame(1)); // voiced audio in the ring -> the reopened stream replays it (dedupe on)
+  p.failLast();
+  await new Promise((res) => setTimeout(res, 20));
+  r.push(frame(2));
+  expect(p.handlers.length).toBe(2);
+  p.handlers[1]?.onPartial('where is the pricing');
+  p.failLast(); // watchdog: gemini closes and flushes the interim as a final
+  p.handlers[1]?.onFinal('where is the pricing');
+  await new Promise((res) => setTimeout(res, 5));
+  expect(finals.map((f) => f.text)).toEqual(['where is the pricing']);
+  expect(errors).toEqual([false, false]);
+  await r.close();
+});
+
+test('soft (watchdog) errors reopen but never count toward gave-up', async () => {
+  const p = new FakeSttProvider({ word: () => undefined });
+  const { r, errors } = run(p, { retryDelayMs: 1, maxRetries: 3 });
+  r.push(frame(1));
+  for (let i = 0; i < 6; i++) {
+    p.handlers.at(-1)?.onError(true);
+    await new Promise((res) => setTimeout(res, 15));
+    r.push(frame(1));
+  }
+  expect(p.handlers.length).toBe(7);
+  expect(errors.every((g) => g === false)).toBe(true);
+  await r.close();
+});

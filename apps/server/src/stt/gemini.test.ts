@@ -117,7 +117,7 @@ describe('gemini stt watchdog (BE-116)', () => {
   async function wd(ms: number | undefined) {
     vi.useFakeTimers();
     let cb: any;
-    const errors = { n: 0 };
+    const errors: { n: number; soft?: boolean } = { n: 0 };
     const stt = createGeminiSttProvider({
       model: 'm',
       watchdogMs: ms,
@@ -125,7 +125,14 @@ describe('gemini stt watchdog (BE-116)', () => {
         cb = p.callbacks;
         return { sendRealtimeInput: () => {}, close: () => {} };
       },
-    }).start([], { onPartial() {}, onFinal() {}, onError: () => errors.n++ });
+    }).start([], {
+      onPartial() {},
+      onFinal() {},
+      onError: (soft) => {
+        errors.n += 1;
+        errors.soft = soft;
+      },
+    });
     await vi.advanceTimersByTimeAsync(0);
     return { stt, errors, msg: (c: any) => cb.onmessage({ serverContent: c }) };
   }
@@ -137,6 +144,7 @@ describe('gemini stt watchdog (BE-116)', () => {
     expect(t.errors.n).toBe(0);
     await vi.advanceTimersByTimeAsync(2);
     expect(t.errors.n).toBe(1);
+    expect(t.errors.soft).toBe(true); // watchdog = soft: never an outage
     await vi.advanceTimersByTimeAsync(5000);
     expect(t.errors.n).toBe(1);
   });
