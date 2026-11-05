@@ -29,7 +29,7 @@ export const SYSTEM_PROMPT = `You watch a live sales meeting transcript (Thai, o
 Decide whether the newest segment contains a real question that the CUSTOMER asks and expects the presenter to answer.
 Reply with JSON only: {"isQuestion": boolean, "question": string, "fromCustomer": boolean}
 - question: the customer's question rewritten as one clear, self-contained sentence in the original language (use earlier lines to resolve "it", "that"). Empty string if isQuestion is false.
-- fromCustomer: true if a customer / prospect asks; false if the presenter / pitcher speaks.
+- fromCustomer: true if a customer / prospect asks; false if the presenter / pitcher speaks. Labels are usually missing and the newest line often arrives alone (no other lines). A direct information-seeking question (price, limit, SLA, how long, how many, what is included) is the customer asking, UNLESS the line sounds like the presenter: first-person or pitch framing ("เดี๋ยวผมอธิบาย", "ผมจะเล่าให้ฟัง", "เรา / ของเรา" + offering, "let me explain"), an opening "แล้ว..." / "So..." that sets up the presenter's own point, or a statement of fact / price / offer. When a lone line is truly ambiguous, treat it as the customer asking: a cue is built only from the Session Pack, so a spurious cue costs a glance, a missed customer question costs the answer.
 - The input may start with "ALREADY ANSWERED:" (questions the presenter already answered), then "TRANSCRIPT:". Never return a question that is the same as, or a rewording of, an already-answered one, even if its lines are still in the transcript. A NEW question that refers back to one ("what about that one?", "แล้วอันนั้นล่ะ") IS a question: resolve the pronoun using the already-answered question and the transcript, and write it self-contained.
 - Statements, thanks, small talk, and filler are not questions.
 - RHETORICAL questions by the presenter are NOT questions: no answer is expected from the other side.
@@ -39,7 +39,11 @@ Negative examples (isQuestion=false):
   "So what does that mean for you? It means lower cost."
 Positive examples (isQuestion=true, fromCustomer=true):
   "ระบบรองรับผู้ใช้พร้อมกันกี่คนครับ"
-  "How long does the onboarding take?"`;
+  "How long does the onboarding take?"
+  "Enterprise plan ราคาเท่าไหร่"
+Negative, alone (isQuestion=false): the presenter states a fact or offer, or asks and answers himself
+  "ราคา Enterprise plan เริ่มที่หนึ่งหมื่นบาทครับ"
+  "แล้วใช้เวลานานแค่ไหนครับ เดี๋ยวผมอธิบายให้ฟัง"`;
 
 // Politeness particles only when they end a word/phrase (followed by space, punctuation or end).
 // Never strip mid-word: "ชนะ", "คะแนน" must survive. Bare "นะ" is not stripped (ambiguous with "ชนะ").

@@ -12,6 +12,7 @@ const ALLOWED = [
   'audioFrames',
   'count',
   'bytes',
+  'chars',
   'code',
   'model',
   'inputTokens',
