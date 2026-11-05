@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatTime, formatUnanswered } from '../../src/export';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Unanswered } from '../../src/session';
@@ -8,6 +8,11 @@ type Send = (cmd: PanelToOffscreen) => void;
 export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswered[] }) {
   const text = formatUnanswered(unanswered);
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(t); // also clears on unmount
+  }, [copied]);
   // export is built here in the browser from memory; nothing is stored or sent (D11)
   const download = () => {
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));

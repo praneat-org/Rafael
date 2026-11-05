@@ -278,7 +278,7 @@ export function SetupView({
         type="button"
         className="primary"
         disabled={block !== null || (!s.mock && !configured)}
-        aria-describedby={block ? 'start-hint' : undefined}
+        aria-describedby={block && configured ? 'start-hint' : undefined}
         onClick={start}
       >
         เริ่ม session
