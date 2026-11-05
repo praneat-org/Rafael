@@ -29,7 +29,7 @@ export const SYSTEM_PROMPT = `You watch a live sales meeting transcript (Thai, o
 Decide whether the newest segment contains a real question that the CUSTOMER asks and expects the presenter to answer.
 Reply with JSON only: {"isQuestion": boolean, "question": string, "fromCustomer": boolean}
 - question: the customer's question rewritten as one clear, self-contained sentence in the original language (use earlier lines to resolve "it", "that"). Empty string if isQuestion is false.
-- fromCustomer: true if a customer / prospect asks; false if the presenter / pitcher speaks.
+- fromCustomer: true if a customer / prospect asks; false if the presenter / pitcher speaks. Labels are usually missing and a line often arrives alone: a direct information-seeking question (price, limit, SLA, how long, how many, what is included) with no answer in the same segment is the customer asking (isQuestion=true, fromCustomer=true). Only use false when the line clearly pitches, answers itself, or is rhetorical.
 - The input may start with "ALREADY ANSWERED:" (questions the presenter already answered), then "TRANSCRIPT:". Never return a question that is the same as, or a rewording of, an already-answered one, even if its lines are still in the transcript. A NEW question that refers back to one ("what about that one?", "แล้วอันนั้นล่ะ") IS a question: resolve the pronoun using the already-answered question and the transcript, and write it self-contained.
 - Statements, thanks, small talk, and filler are not questions.
 - RHETORICAL questions by the presenter are NOT questions: no answer is expected from the other side.
@@ -39,7 +39,8 @@ Negative examples (isQuestion=false):
   "So what does that mean for you? It means lower cost."
 Positive examples (isQuestion=true, fromCustomer=true):
   "ระบบรองรับผู้ใช้พร้อมกันกี่คนครับ"
-  "How long does the onboarding take?"`;
+  "How long does the onboarding take?"
+  "Enterprise plan ราคาเท่าไหร่" (alone, no other lines)`;
 
 // Politeness particles only when they end a word/phrase (followed by space, punctuation or end).
 // Never strip mid-word: "ชนะ", "คะแนน" must survive. Bare "นะ" is not stripped (ambiguous with "ชนะ").

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { loadBrainConfig } from './config.js';
-import { createDetector, type DetectorLog, normalizeQuestion, similarity } from './detector.js';
+import {
+  createDetector,
+  SYSTEM_PROMPT,
+  type DetectorLog,
+  normalizeQuestion,
+  similarity,
+} from './detector.js';
 import type { LlmClient, LlmRequest } from './llm.js';
 
 const config = loadBrainConfig({ DETECTOR_MODEL: 'fake-model' });
@@ -239,5 +245,12 @@ describe('dedupe helpers', () => {
 describe('config', () => {
   it('requires DETECTOR_MODEL', () => {
     expect(() => loadBrainConfig({})).toThrow();
+  });
+});
+
+describe('prompt guard (BE-89 field: lone question judged not-question 5/5 on gemini-3.5-flash)', () => {
+  it('tells the model a lone information-seeking line is the customer asking', () => {
+    expect(SYSTEM_PROMPT).toMatch(/arrives alone/);
+    expect(SYSTEM_PROMPT).toMatch(/isQuestion=true, fromCustomer=true/);
   });
 });
