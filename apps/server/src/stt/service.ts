@@ -69,10 +69,10 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
     // the socket may be replaced after resume: always send through the latest one
     const out = (m: ServerMessage) => e.send(m);
     e.rolling = createRollingStt(opts.provider, {
-      // BE-115: hints off unless STT_HINTS=1 (no A/B evidence they help; CER 0.21 on q-price)
+      // D34: hints on by default; STT_HINTS=0 turns them off (A/B: CER 7.9->5.4%, term recall 78->89%)
       // BE-125: capped; D11: never logged
       hints: () =>
-        process.env.STT_HINTS === '1' ? (opts.getHints?.(s) ?? []).slice(0, MAX_STT_HINTS) : [],
+        process.env.STT_HINTS !== '0' ? (opts.getHints?.(s) ?? []).slice(0, MAX_STT_HINTS) : [],
       rolloverMs: opts.rolloverMs ?? 270_000,
       overlapMs: opts.overlapMs ?? 2000,
       voiced,
