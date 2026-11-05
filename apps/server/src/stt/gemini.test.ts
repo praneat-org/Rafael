@@ -149,6 +149,25 @@ describe('gemini stt watchdog (BE-116)', () => {
     expect(t.errors.n).toBe(1);
   });
 
+  it('watchdog before the session is connected is a hard error', async () => {
+    vi.useFakeTimers();
+    let soft: boolean | undefined;
+    const stt = createGeminiSttProvider({
+      model: 'm',
+      watchdogMs: 1000,
+      connect: () => new Promise(() => {}), // never connects
+    }).start([], {
+      onPartial() {},
+      onFinal() {},
+      onError: (s) => {
+        soft = s;
+      },
+    });
+    stt.push(new Int16Array(1600).fill(5000));
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(soft).toBe(false);
+  });
+
   it('a partial or final disarms it; silence frames never arm it', async () => {
     const t = await wd(1000);
     t.stt.push(new Int16Array(1600));

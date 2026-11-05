@@ -128,7 +128,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
           if (dead || closing) return;
           pushed = true;
           if (watchMs && !watch && isSpeech(pcm)) {
-            watch = setTimeout(() => fail(true), watchMs);
+            watch = setTimeout(() => fail(session !== undefined), watchMs); // still connecting = connect failure, hard
             watch.unref();
           }
           if (session) return send(session, pcm);

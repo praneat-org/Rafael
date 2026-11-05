@@ -34,6 +34,7 @@ type Gen = {
 const FRAME_MS = 100;
 const MIN_OVERLAP_CHARS = 3; // ponytail: char-level (Thai has no spaces); a shorter repeat slips through as a duplicate. Word timestamps would be exact.
 const TAIL_CHARS = 2000;
+const MAX_SOFT = 10; // consecutive soft errors with no partial/final (~90 s): a hung stream is an outage
 
 /**
  * One logical STT stream on top of provider streams: rollover with replayed overlap + text dedupe,
@@ -48,6 +49,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
   let seg = 0;
   let cur: Gen | undefined;
   let attempts = 0;
+  let softRun = 0; // consecutive soft errors without any text
   let reportedGaveUp = false;
   let cooldownUntil = 0;
   const voiced = o.voiced ?? ((f: Int16Array) => f.some((x) => x !== 0));
@@ -62,6 +64,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
     tail = `${tail} ${out.text}`.slice(-TAIL_CHARS);
     o.onFinal({ segId: `seg-${seg++}`, text: out.text, speaker: out.speaker });
     attempts = 0;
+    softRun = 0;
     reportedGaveUp = false;
   }
 
@@ -116,6 +119,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
     g.stream = provider.start(hints, {
       onPartial: (text, speaker) => {
         if (closed || g !== cur || g.held || g.buf) return;
+        softRun = 0;
         o.onPartial({ segId: `seg-${seg}`, text, speaker });
       },
       onFinal: (text, speaker) => {
@@ -143,7 +147,8 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
 
   function fail(soft = false) {
     if (closing || closed) return;
-    const gaveUp = !soft && attempts >= maxRetries;
+    if (soft && ++softRun > MAX_SOFT) attempts = maxRetries; // cap hit: count as hard
+    const gaveUp = (!soft || softRun > MAX_SOFT) && attempts >= maxRetries;
     if (gaveUp) {
       // report once per outage, then probe slowly (push() waits for the cooldown)
       if (!reportedGaveUp) o.onError(true);
@@ -187,6 +192,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
           emit(next, h.text, h.speaker);
           next.frames = saved;
         }
+        if (next.retired) flushBuf(next); // next died before the old stream flushed: its parked final would be lost
       });
   }
 

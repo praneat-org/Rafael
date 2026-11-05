@@ -245,6 +245,26 @@ test('soft (watchdog) errors reopen but never count toward gave-up', async () =>
     r.push(frame(1));
   }
   expect(p.handlers.length).toBe(7);
-  expect(errors.every((g) => g === false)).toBe(true);
+  expect(errors).toEqual([false, false, false, false, false, false]);
+  await r.close();
+});
+
+test('soft errors with no text for too long become gave-up; a partial resets the count', async () => {
+  const p = new FakeSttProvider({ word: () => undefined });
+  const { r, errors } = run(p, { retryDelayMs: 1 });
+  r.push(frame(1));
+  const soft = async (n: number) => {
+    for (let i = 0; i < n; i++) {
+      p.handlers.at(-1)?.onError(true);
+      await new Promise((res) => setTimeout(res, 8));
+      r.push(frame(1));
+    }
+  };
+  await soft(10);
+  p.handlers.at(-1)?.onPartial('hello'); // text arrived: run resets
+  await soft(10);
+  expect(errors.includes(true)).toBe(false);
+  await soft(1);
+  expect(errors.at(-1)).toBe(true);
   await r.close();
 });
