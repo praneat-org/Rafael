@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import { FakeSttProvider } from './fake.js';
+import type { SttHandlers, SttProvider } from './provider.js';
 import { createRollingStt } from './rolling.js';
 
 const frame = (id: number) => {
@@ -266,5 +267,31 @@ test('soft errors with no text for too long become gave-up; a partial resets the
   expect(errors.includes(true)).toBe(false);
   await soft(1);
   expect(errors.at(-1)).toBe(true);
+  await r.close();
+});
+
+test('new stream dies before the old one finished closing: its held, parked final is still emitted', async () => {
+  const hs: SttHandlers[] = [];
+  let releaseOld!: () => void;
+  const provider: SttProvider = {
+    start: (_hints, h) => {
+      hs.push(h);
+      const first = hs.length === 1;
+      return {
+        push() {},
+        close: () => (first ? new Promise<void>((r) => (releaseOld = r)) : Promise.resolve()),
+      };
+    },
+  };
+  const { r, finals } = run(provider as unknown as FakeSttProvider, { retryDelayMs: 1 });
+  for (let i = 1; i <= 20; i++) r.push(frame(i)); // 20th frame rolls over; old close hangs
+  expect(hs.length).toBe(2);
+  hs[1]?.onFinal('brand new question'); // held: old stream has not flushed yet
+  hs[1]?.onError(); // new stream dies and closes first
+  await new Promise((res) => setTimeout(res, 5));
+  expect(finals).toEqual([]);
+  releaseOld(); // held final is replayed through align() (no overlap match -> parked), then must be flushed
+  await new Promise((res) => setTimeout(res, 5));
+  expect(finals.map((f) => f.text)).toEqual(['brand new question']);
   await r.close();
 });
