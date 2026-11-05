@@ -76,7 +76,8 @@ export function attachWs(http: Server, opts: WsOptions) {
         onFinal: (s, seg, send, meta) => {
           opts.stt?.onFinal?.(s, seg, send, meta);
           // a final that was already in the provider when pause arrived must not start a cue
-          if (paused.has(s)) return;
+          if (paused.has(s))
+            return void log('cue.dropped', { sessionId: s.id, reason: 'paused-final' });
           const epoch = pauseEpoch.get(s) ?? 0;
           const isPaused = () => paused.has(s) || (pauseEpoch.get(s) ?? 0) !== epoch;
           void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs, isPaused);
@@ -250,12 +251,14 @@ export function attachWs(http: Server, opts: WsOptions) {
         case 'pause':
           if (!session) return fail('SESSION_NOT_FOUND');
           paused.add(session);
+          log('session.pause', { sessionId: session.id });
           pauseEpoch.set(session, (pauseEpoch.get(session) ?? 0) + 1);
           await stt?.pause(session).catch(() => {});
           return;
         case 'resume':
           if (!session) return fail('SESSION_NOT_FOUND');
           paused.delete(session);
+          log('session.resume', { sessionId: session.id });
           return;
       }
     }
