@@ -101,7 +101,16 @@ test('rollover over the socket: every word once, in order', async () => {
   expect(ids).toEqual(Array.from({ length: ids.length }, (_, i) => i + 1));
 });
 
-test('hints: empty unless STT_HINTS=1 (BE-115)', async () => {
+test('hints: on by default when STT_HINTS is unset (D34)', async () => {
+  vi.stubEnv('STT_HINTS', undefined);
+  const t = await setup({ getHints: () => ['Praneat'] });
+  t.audio(1, 1);
+  await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
+  expect(t.provider.starts).toEqual([['Praneat']]);
+});
+
+test('hints: empty when STT_HINTS=0 (D34)', async () => {
+  vi.stubEnv('STT_HINTS', '0');
   const t = await setup({ getHints: () => ['Praneat'] });
   t.audio(1, 1);
   await vi.waitFor(() => expect(t.provider.starts.length).toBe(1));
