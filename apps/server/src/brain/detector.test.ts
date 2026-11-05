@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { loadBrainConfig } from './config.js';
 import {
   createDetector,
-  SYSTEM_PROMPT,
   type DetectorLog,
   normalizeQuestion,
+  SYSTEM_PROMPT,
   similarity,
 } from './detector.js';
 import type { LlmClient, LlmRequest } from './llm.js';
