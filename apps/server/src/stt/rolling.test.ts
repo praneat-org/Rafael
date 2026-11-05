@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import { FakeSttProvider } from './fake.js';
+import type { SttHandlers, SttProvider } from './provider.js';
 import { createRollingStt } from './rolling.js';
 
 const frame = (id: number) => {
@@ -215,4 +216,82 @@ test('stream that errors: what it flushes on close is kept', async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+// BE-89 field failure: partial shown, stream dies (watchdog), the flushed interim never reached onFinal
+test('reopened stream (dedupe on) that dies keeps its flushed interim as a final', async () => {
+  const p = new FakeSttProvider({ word: () => undefined }); // we drive the handlers by hand
+  const { r, finals, errors } = run(p, { retryDelayMs: 1 });
+  r.push(frame(1)); // voiced audio in the ring -> the reopened stream replays it (dedupe on)
+  p.failLast();
+  await new Promise((res) => setTimeout(res, 20));
+  r.push(frame(2));
+  expect(p.handlers.length).toBe(2);
+  p.handlers[1]?.onPartial('where is the pricing');
+  p.failLast(); // watchdog: gemini closes and flushes the interim as a final
+  p.handlers[1]?.onFinal('where is the pricing');
+  await new Promise((res) => setTimeout(res, 5));
+  expect(finals.map((f) => f.text)).toEqual(['where is the pricing']);
+  expect(errors).toEqual([false, false]);
+  await r.close();
+});
+
+test('soft (watchdog) errors reopen but never count toward gave-up', async () => {
+  const p = new FakeSttProvider({ word: () => undefined });
+  const { r, errors } = run(p, { retryDelayMs: 1, maxRetries: 3 });
+  r.push(frame(1));
+  for (let i = 0; i < 6; i++) {
+    p.handlers.at(-1)?.onError(true);
+    await new Promise((res) => setTimeout(res, 15));
+    r.push(frame(1));
+  }
+  expect(p.handlers.length).toBe(7);
+  expect(errors).toEqual([false, false, false, false, false, false]);
+  await r.close();
+});
+
+test('soft errors with no text for too long become gave-up; a partial resets the count', async () => {
+  const p = new FakeSttProvider({ word: () => undefined });
+  const { r, errors } = run(p, { retryDelayMs: 1 });
+  r.push(frame(1));
+  const soft = async (n: number) => {
+    for (let i = 0; i < n; i++) {
+      p.handlers.at(-1)?.onError(true);
+      await new Promise((res) => setTimeout(res, 8));
+      r.push(frame(1));
+    }
+  };
+  await soft(10);
+  p.handlers.at(-1)?.onPartial('hello'); // text arrived: run resets
+  await soft(10);
+  expect(errors.includes(true)).toBe(false);
+  await soft(1);
+  expect(errors.at(-1)).toBe(true);
+  await r.close();
+});
+
+test('new stream dies before the old one finished closing: its held, parked final is still emitted', async () => {
+  const hs: SttHandlers[] = [];
+  let releaseOld!: () => void;
+  const provider: SttProvider = {
+    start: (_hints, h) => {
+      hs.push(h);
+      const first = hs.length === 1;
+      return {
+        push() {},
+        close: () => (first ? new Promise<void>((r) => (releaseOld = r)) : Promise.resolve()),
+      };
+    },
+  };
+  const { r, finals } = run(provider as unknown as FakeSttProvider, { retryDelayMs: 1 });
+  for (let i = 1; i <= 20; i++) r.push(frame(i)); // 20th frame rolls over; old close hangs
+  expect(hs.length).toBe(2);
+  hs[1]?.onFinal('brand new question'); // held: old stream has not flushed yet
+  hs[1]?.onError(); // new stream dies and closes first
+  await new Promise((res) => setTimeout(res, 5));
+  expect(finals).toEqual([]);
+  releaseOld(); // held final is replayed through align() (no overlap match -> parked), then must be flushed
+  await new Promise((res) => setTimeout(res, 5));
+  expect(finals.map((f) => f.text)).toEqual(['brand new question']);
+  await r.close();
 });

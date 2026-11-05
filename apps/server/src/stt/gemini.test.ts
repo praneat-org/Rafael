@@ -117,7 +117,7 @@ describe('gemini stt watchdog (BE-116)', () => {
   async function wd(ms: number | undefined) {
     vi.useFakeTimers();
     let cb: any;
-    const errors = { n: 0 };
+    const errors: { n: number; soft?: boolean } = { n: 0 };
     const stt = createGeminiSttProvider({
       model: 'm',
       watchdogMs: ms,
@@ -125,7 +125,14 @@ describe('gemini stt watchdog (BE-116)', () => {
         cb = p.callbacks;
         return { sendRealtimeInput: () => {}, close: () => {} };
       },
-    }).start([], { onPartial() {}, onFinal() {}, onError: () => errors.n++ });
+    }).start([], {
+      onPartial() {},
+      onFinal() {},
+      onError: (soft) => {
+        errors.n += 1;
+        errors.soft = soft;
+      },
+    });
     await vi.advanceTimersByTimeAsync(0);
     return { stt, errors, msg: (c: any) => cb.onmessage({ serverContent: c }) };
   }
@@ -137,8 +144,28 @@ describe('gemini stt watchdog (BE-116)', () => {
     expect(t.errors.n).toBe(0);
     await vi.advanceTimersByTimeAsync(2);
     expect(t.errors.n).toBe(1);
+    expect(t.errors.soft).toBe(true); // watchdog = soft: never an outage
     await vi.advanceTimersByTimeAsync(5000);
     expect(t.errors.n).toBe(1);
+  });
+
+  it('watchdog before the session is connected is a hard error', async () => {
+    vi.useFakeTimers();
+    let soft: boolean | undefined;
+    const stt = createGeminiSttProvider({
+      model: 'm',
+      watchdogMs: 1000,
+      connect: () => new Promise(() => {}), // never connects
+    }).start([], {
+      onPartial() {},
+      onFinal() {},
+      onError: (s) => {
+        soft = s;
+      },
+    });
+    stt.push(new Int16Array(1600).fill(5000));
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(soft).toBe(false);
   });
 
   it('a partial or final disarms it; silence frames never arm it', async () => {

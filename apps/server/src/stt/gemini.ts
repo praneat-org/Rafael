@@ -67,11 +67,11 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
         clearTimeout(watch);
         watch = undefined;
       };
-      const fail = () => {
+      const fail = (soft = false) => {
         disarm();
         if (dead || closing) return;
         dead = true;
-        h.onError();
+        h.onError(soft);
       };
       const send = (s: LiveSessionLike, pcm: Int16Array) =>
         s.sendRealtimeInput({
@@ -96,8 +96,8 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
           },
           callbacks: {
             onmessage: (m) => onMessage(m, h),
-            onerror: fail,
-            onclose: fail, // our own close() sets `closing` first, so this only fires on stream death
+            onerror: () => fail(),
+            onclose: () => fail(), // our own close() sets `closing` first, so this only fires on stream death
           },
         })
         .then((s) => {
@@ -106,7 +106,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
           for (const f of queue ?? []) send(s, f);
           queue = null;
         })
-        .catch(fail);
+        .catch(() => fail());
 
       function onMessage(m: any, hh: SttHandlers) {
         const c = m?.serverContent;
@@ -128,7 +128,7 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
           if (dead || closing) return;
           pushed = true;
           if (watchMs && !watch && isSpeech(pcm)) {
-            watch = setTimeout(fail, watchMs);
+            watch = setTimeout(() => fail(session !== undefined), watchMs); // still connecting = connect failure, hard
             watch.unref();
           }
           if (session) return send(session, pcm);
