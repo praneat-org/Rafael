@@ -19,6 +19,8 @@ export type RollingOptions = {
   onError(gaveUp: boolean): void;
   // soft errors (watchdog) reopen but never count toward gaveUp
   onRollover?(): void;
+  /** content-free diagnostics (D11): event + char count */
+  trace?(ev: string, chars: number): void;
 };
 
 type Gen = {
@@ -60,7 +62,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
 
   function emit(g: Gen, text: string, speaker?: string, end = false) {
     const out = g.dedupe ? align(g, text, speaker, g.frames, end) : { text, speaker };
-    if (!out || !out.text.trim()) return;
+    if (!out || !out.text.trim()) return void o.trace?.('drop.empty', text.length);
     tail = `${tail} ${out.text}`.slice(-TAIL_CHARS);
     o.onFinal({ segId: `seg-${seg++}`, text: out.text, speaker: out.speaker });
     attempts = 0;
@@ -123,10 +125,11 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
         o.onPartial({ segId: `seg-${seg}`, text, speaker });
       },
       onFinal: (text, speaker) => {
-        if (closed) return;
+        if (closed) return void o.trace?.('drop.closed', text.length);
         if (g.held) g.held.push({ text, speaker, frames: g.frames });
         else if (g === cur || g.retired) emit(g, text, speaker);
       },
+      trace: o.trace,
       onError: (soft) => {
         if (closed || closing || g !== cur) return;
         cur = undefined;

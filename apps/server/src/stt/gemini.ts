@@ -112,11 +112,16 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
         const c = m?.serverContent;
         if (c?.inputTranscription?.text || c?.interimInputTranscription?.text) disarm();
         const speaker = c?.inputTranscription?.speakerLabel;
-        if (c?.inputTranscription?.text) {
+        const fin: string | undefined = c?.inputTranscription?.text;
+        if (fin?.trim()) {
           interim = '';
           pushed = false;
-          hh.onFinal(c.inputTranscription.text, speaker);
+          hh.trace?.('final.model', fin.length);
+          hh.onFinal(fin, speaker);
           gotFinal?.();
+        } else if (fin) {
+          // BE-89: a blank final must not wipe the open partial (it would never reach the Detector)
+          hh.trace?.('drop.blank', fin.length);
         } else if (c?.interimInputTranscription?.text) {
           interim = c.interimInputTranscription.text;
           hh.onPartial(interim, c.interimInputTranscription.speakerLabel);
@@ -159,7 +164,10 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
             // socket already gone: fall through to the interim flush
           }
         }
-        if (interim) h.onFinal(interim); // no final arrived in time: keep the words rather than drop them
+        if (interim) {
+          h.trace?.('final.flush', interim.length);
+          h.onFinal(interim); // no final arrived in time: keep the words rather than drop them
+        }
         interim = '';
         try {
           session?.close();

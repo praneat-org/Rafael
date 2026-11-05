@@ -108,6 +108,8 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
         if (gaveUp) out({ v: PROTOCOL_VERSION, t: 'error', code: 'STT_UNAVAILABLE' });
       },
       onRollover: () => log('stt.rollover', { sessionId: s.id }),
+      // D11: event + char count only. source = model | flush; drop.* = a final that never reached the Brain
+      trace: (ev, chars) => log('stt.final', { sessionId: s.id, outcome: ev, chars }),
     });
     entries.set(s.id, e);
     return e;
