@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import type { Session } from '../session/store.js';
 import { FakeSttProvider } from './fake.js';
 import { createSttService } from './service.js';
@@ -70,4 +70,32 @@ test('speech with pauses inside a sentence: sttFinalMs stays small, no backlog d
   }
   expect(metas).toHaveLength(20);
   expect(Math.max(...metas)).toBeLessThan(800);
+});
+
+test('BE-89: a retry stays silent for the client; an outage sends STT_UNAVAILABLE once', async () => {
+  vi.useFakeTimers();
+  try {
+    const p = new FakeSttProvider({ finalEvery: 99 });
+    const s = { id: 's1' } as Session;
+    const svc = createSttService({ provider: p }, { onEnd() {}, get: () => s });
+    const sent: { t: string; code?: string }[] = [];
+    const push = () => svc.push(s, frame(1), (m) => sent.push(m));
+    push();
+    p.failLast(); // watchdog-style stream death: reopen succeeds
+    await vi.advanceTimersByTimeAsync(1000);
+    push();
+    expect(p.handlers).toHaveLength(2);
+    expect(sent.filter((m) => m.t === 'error')).toEqual([]);
+    p.failStarts = 99; // real outage: retries run out
+    p.failLast();
+    for (let i = 0; i < 20; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      push();
+    }
+    expect(sent.filter((m) => m.t === 'error')).toEqual([
+      expect.objectContaining({ code: 'STT_UNAVAILABLE' }),
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
 });
