@@ -250,7 +250,8 @@ describe('config', () => {
 
 describe('prompt guard (BE-89 field: lone question judged not-question 5/5 on gemini-3.5-flash)', () => {
   it('tells the model a lone information-seeking line is the customer asking', () => {
-    expect(SYSTEM_PROMPT).toMatch(/arrives alone/);
-    expect(SYSTEM_PROMPT).toMatch(/isQuestion=true, fromCustomer=true/);
+    expect(SYSTEM_PROMPT).toMatch(
+      /direct information-seeking question \([^)]*\) is the customer asking/,
+    );
   });
 });

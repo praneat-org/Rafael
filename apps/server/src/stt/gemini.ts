@@ -110,7 +110,8 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
 
       function onMessage(m: any, hh: SttHandlers) {
         const c = m?.serverContent;
-        if (c?.inputTranscription?.text || c?.interimInputTranscription?.text) disarm();
+        // a blank final is not text: it must not disarm the watchdog that flushes the open partial
+        if (c?.inputTranscription?.text?.trim() || c?.interimInputTranscription?.text) disarm();
         const speaker = c?.inputTranscription?.speakerLabel;
         const fin: string | undefined = c?.inputTranscription?.text;
         if (fin?.trim()) {

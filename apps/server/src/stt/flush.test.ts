@@ -89,8 +89,8 @@ describe('retry stream flush', () => {
     cbs[0].onmessage({
       serverContent: { interimInputTranscription: { text: 'Premium ราคาเท่าไหร่' } },
     });
-    cbs[0].onmessage({ serverContent: { inputTranscription: { text: ' ' } } });
-    rolling.push(speech);
+    rolling.push(speech); // arms the watchdog
+    cbs[0].onmessage({ serverContent: { inputTranscription: { text: ' ' } } }); // must neither wipe nor disarm
     await vi.advanceTimersByTimeAsync(9000);
     expect(finals).toEqual(['Premium ราคาเท่าไหร่']);
   });

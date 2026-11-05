@@ -62,7 +62,8 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
 
   function emit(g: Gen, text: string, speaker?: string, end = false) {
     const out = g.dedupe ? align(g, text, speaker, g.frames, end) : { text, speaker };
-    if (!out || !out.text.trim()) return void o.trace?.('drop.empty', text.length);
+    if (!out) return; // parked in g.buf for overlap alignment: flushBuf / next align emits it
+    if (!out.text.trim()) return void o.trace?.('drop.empty', text.length);
     tail = `${tail} ${out.text}`.slice(-TAIL_CHARS);
     o.onFinal({ segId: `seg-${seg++}`, text: out.text, speaker: out.speaker });
     attempts = 0;
