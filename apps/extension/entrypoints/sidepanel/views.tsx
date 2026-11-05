@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { formatTime, formatUnanswered } from '../../src/export';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Unanswered } from '../../src/session';
@@ -6,6 +7,7 @@ type Send = (cmd: PanelToOffscreen) => void;
 
 export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswered[] }) {
   const text = formatUnanswered(unanswered);
+  const [copied, setCopied] = useState(false);
   // export is built here in the browser from memory; nothing is stored or sent (D11)
   const download = () => {
     const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
@@ -34,9 +36,14 @@ export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswer
         <button
           type="button"
           disabled={!unanswered.length}
-          onClick={() => navigator.clipboard.writeText(text).catch(() => {})}
+          onClick={() =>
+            navigator.clipboard.writeText(text).then(
+              () => setCopied(true),
+              () => {},
+            )
+          }
         >
-          Copy
+          {copied ? 'คัดลอกแล้ว' : 'Copy'}
         </button>
         <button type="button" disabled={!unanswered.length} onClick={download}>
           Download .txt

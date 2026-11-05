@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
 import { getAuthToken, isAuthConfigured, refreshAuthToken } from '../../src/auth';
+import { errorText, MIC_DENIED } from '../../src/error-text';
 import { loadNames, shortId } from '../../src/folder-names';
 import { parseFolderId } from '../../src/folder-url';
 import { type PanelToOffscreen, TAB_GRANTED } from '../../src/messages';
@@ -9,7 +10,15 @@ import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
 import { defaultSettings, loadSettings, type Settings, saveSettings } from '../../src/settings';
 import { defaultInputs, startBlock } from '../../src/setup-state';
 
+import { ErrorNote } from './ErrorNote';
+
 type Send = (cmd: PanelToOffscreen) => void;
+
+const BLOCK_HINT = {
+  'not-signed-in': 'ลงชื่อเข้าใช้ด้วย Google ก่อน จึงจะเริ่มได้',
+  'no-folder': 'วางลิงก์โฟลเดอร์ Drive ของ pack ก่อน จึงจะเริ่มได้',
+  'no-input': 'ติ๊กอย่างน้อย 1 แหล่งเสียง (แท็บ Meet หรือไมค์) ก่อน จึงจะเริ่มได้',
+} as const;
 
 function readBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -35,6 +44,7 @@ export function SetupView({
   const [wav, setWav] = useState<File | null>(null);
   const [signedIn, setSignedIn] = useState(false);
   const [signInFailed, setSignInFailed] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
   const [recent, setRecent] = useState<string[]>([]);
   const [names, setNames] = useState<Record<string, string>>({}); // memory only, never stored (D11)
@@ -83,7 +93,9 @@ export function SetupView({
     saveSettings(next).catch(() => {});
   };
   const signIn = async () => {
+    setSigningIn(true);
     const ok = (await getAuthToken(true)) !== null; // token is not kept here (D11)
+    setSigningIn(false);
     setSignedIn(ok);
     setSignInFailed(!ok);
   };
@@ -130,14 +142,8 @@ export function SetupView({
         </h1>
         <p className="tagline">ผู้ช่วยตอบคำถามจากเอกสาร ระหว่างประชุม</p>
       </header>
-      {error === 'SESSION_NOT_FOUND' && (
-        <p className="note">session เดิมหายไปแล้ว (server เริ่มใหม่) — กดเริ่มใหม่อีกครั้ง</p>
-      )}
-      {error === 'CONNECTION_CLOSED' && (
-        <p className="note">
-          การเชื่อมต่อถูกปิด (ยืนยันตัวตนไม่ผ่านหรือ server ปฏิเสธ) — ใช้ได้เฉพาะบัญชี @praneat.com ลองสลับ Chrome
-          profile แล้วลงชื่อเข้าใช้ใหม่
-        </p>
+      {(error === 'SESSION_NOT_FOUND' || error === 'CONNECTION_CLOSED') && (
+        <ErrorNote text={errorText(error)} />
       )}
       <div className="card">
         <label className="row dev">
@@ -168,15 +174,20 @@ export function SetupView({
           </p>
         ) : (
           <>
-            <button type="button" onClick={signIn} disabled={signedIn}>
-              {signedIn ? 'ลงชื่อเข้าใช้แล้ว' : 'ลงชื่อเข้าใช้ด้วย Google'}
+            <button type="button" onClick={signIn} disabled={signedIn || signingIn}>
+              {signedIn ? 'ลงชื่อเข้าใช้แล้ว' : signingIn ? 'กำลังลงชื่อเข้าใช้…' : 'ลงชื่อเข้าใช้ด้วย Google'}
             </button>
-            {signInFailed && <p className="note err">ลงชื่อเข้าใช้ไม่สำเร็จ — ลองสลับ Chrome profile</p>}
+            {signInFailed && (
+              <p className="note err" role="alert">
+                ลงชื่อเข้าใช้ไม่สำเร็จ — ลองสลับ Chrome profile
+              </p>
+            )}
             <label className="field">
               ลิงก์โฟลเดอร์ Drive (pack)
               <input
                 type="text"
                 value={folderUrl}
+                aria-invalid={!!folderUrl && !folderId}
                 placeholder="https://drive.google.com/drive/folders/..."
                 onChange={(e) => setFolderUrl(e.target.value)}
               />
@@ -199,7 +210,9 @@ export function SetupView({
               </select>
             )}
             {folderUrl && !folderId && (
-              <p className="note err">ต้องเป็นลิงก์โฟลเดอร์ Drive (…/drive/folders/…) ไม่ใช่ไฟล์</p>
+              <p className="note err" role="alert">
+                ต้องเป็นลิงก์โฟลเดอร์ Drive (…/drive/folders/…) ไม่ใช่ไฟล์
+              </p>
             )}
             {/* ponytail: search by folder name needs a server API (BE-87); paste URL only for now */}
             <label className="row">
@@ -246,22 +259,35 @@ export function SetupView({
             value={testing ? level : 0}
           />
         </div>
-        {testing && audio?.error && (
-          <p className="note err">
-            {audio.error === 'tab-capture'
-              ? 'จับเสียงแท็บไม่ได้ — กดไอคอน extension (หรือ Alt+Shift+R / คลิกขวาในหน้า Meet › Rafael: จับเสียงแท็บนี้) บนแท็บ Meet ก่อน แล้วลองใหม่'
-              : `เปิดเสียงไม่ได้ (${audio.error})`}
-          </p>
+        {testing && audio?.error === 'tab-capture' && (
+          <div className="note err" role="alert">
+            <p className="err-what">จับเสียงแท็บไม่ได้</p>
+            <ol className="steps">
+              <li>สลับไปที่แท็บ Meet</li>
+              <li>
+                กดไอคอน Rafael บนแถบเครื่องมือ หรือกด <kbd>Alt+Shift+R</kbd>
+              </li>
+              <li>กลับมาที่ panel — แถบเสียงจะขยับเมื่อจับได้</li>
+            </ol>
+            <p className="err-code">หรือคลิกขวาในหน้า Meet › Rafael: จับเสียงแท็บนี้</p>
+          </div>
         )}
+        {testing && audio?.error === 'mic-permission' && <ErrorNote text={MIC_DENIED} />}
       </div>
       <button
         type="button"
         className="primary"
         disabled={block !== null || (!s.mock && !configured)}
+        aria-describedby={block ? 'start-hint' : undefined}
         onClick={start}
       >
         เริ่ม session
       </button>
+      {block && configured && (
+        <p id="start-hint" className="note hint">
+          {BLOCK_HINT[block]}
+        </p>
+      )}
     </main>
   );
 }

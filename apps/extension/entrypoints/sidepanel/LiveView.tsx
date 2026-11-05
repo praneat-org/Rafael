@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { errorText } from '../../src/error-text';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Cue, SessionState } from '../../src/session';
 import { stripInlineAnchor } from '../../src/strip-anchor';
+import { ErrorNote } from './ErrorNote';
 import { PackBuildFailed } from './PackBuildFailed';
 import { PackStatus, PackTooLarge } from './PackStatus';
 
@@ -131,9 +133,9 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
           onRetry={() => send({ k: 'rebuild', exclude: [] })}
         />
       ) : state.error === 'PACK_NOT_READY' && state.pack === 'loading' ? (
-        <p className="note">กำลังเตรียมเอกสาร — รอสักครู่แล้วถามใหม่</p>
+        <ErrorNote text={errorText('PACK_NOT_READY')} />
       ) : (
-        state.error && <p className="note">ผิดพลาด: {state.error}</p>
+        state.error && <ErrorNote code={state.error} />
       )}
       {/* fixed-height slot: any cue (partial or final) fits without moving the rest */}
       <section className="latestwrap slot" aria-live="polite">
