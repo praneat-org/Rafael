@@ -226,7 +226,9 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       if (!cur) return; // between retries: audio is only kept in the ring
       const g = cur;
       g.stream.push(pcm);
-      if (++g.frames >= rolloverFrames) {
+      // a final parked for overlap alignment is released by time, not by the next event (BE-89: cue was 8-10 s late)
+      if (++g.frames > 3 * overlapFrames && g.buf) emit(g, '', undefined, true);
+      if (g.frames >= rolloverFrames) {
         try {
           rollover(g);
         } catch {

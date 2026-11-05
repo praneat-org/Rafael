@@ -295,3 +295,26 @@ test('new stream dies before the old one finished closing: its held, parked fina
   expect(finals.map((f) => f.text)).toEqual(['brand new question']);
   await r.close();
 });
+
+test('BE-89: final parked after a reopen is released by time (frames), not by the next event', async () => {
+  vi.useFakeTimers();
+  try {
+    const p = new FakeSttProvider({ finalEvery: 1000 });
+    const { r, finals } = run(p, { retryDelayMs: 10 });
+    for (let i = 1; i <= 8; i++) r.push(frame(i));
+    p.failLast(); // reopen replays the voiced ring -> dedupe=true
+    await vi.advanceTimersByTimeAsync(20);
+    expect(p.starts.length).toBe(2);
+    const base = finals.length; // old stream flushed its words on close
+    p.handlers.at(-1)?.onFinal('fresh words'); // no overlap with tail: parked
+    expect(finals.length).toBe(base);
+    // overlapFrames=5 -> release after 15 frames of the new stream; 5 were replayed
+    for (let i = 20; i < 29; i++) r.push(frame(i));
+    expect(finals.length).toBe(base);
+    for (let i = 30; i < 33; i++) r.push(frame(i));
+    expect(finals.slice(base).map((f) => f.text)).toEqual(['fresh words']);
+    await r.close();
+  } finally {
+    vi.useRealTimers();
+  }
+});
