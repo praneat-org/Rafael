@@ -104,7 +104,8 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
           code: 'STT_UNAVAILABLE',
           outcome: gaveUp ? 'gave-up' : 'retry',
         });
-        out({ v: PROTOCOL_VERSION, t: 'error', code: 'STT_UNAVAILABLE' });
+        // BE-89: a retry reopens silently (watchdog false alarms on non-speech audio looked like outages)
+        if (gaveUp) out({ v: PROTOCOL_VERSION, t: 'error', code: 'STT_UNAVAILABLE' });
       },
       onRollover: () => log('stt.rollover', { sessionId: s.id }),
     });

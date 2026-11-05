@@ -130,14 +130,14 @@ test('final segments reach the Brain callback with the session', async () => {
   expect(t.provider.starts).toEqual([['Praneat']]);
 });
 
-test('provider down -> error STT_UNAVAILABLE, session stays usable', async () => {
+test('provider start fails once -> no error to client (BE-89), session stays usable', async () => {
   const p = new FakeSttProvider({ word });
   p.failStarts = 1;
   const t = await setup({}, p);
   t.audio(1, 1);
-  await vi.waitFor(() =>
-    expect(t.msgs().find((m) => m.t === 'error')).toMatchObject({ code: 'STT_UNAVAILABLE' }),
-  );
+  // the retry opens a stream after 1 s: the error frame (if any) would have arrived by then
+  await vi.waitFor(() => expect(p.starts.length).toBe(1), { timeout: 3000 });
+  expect(t.msgs().find((m) => m.t === 'error')).toBeUndefined();
   expect(t.ws.readyState).toBe(WebSocket.OPEN);
 });
 
