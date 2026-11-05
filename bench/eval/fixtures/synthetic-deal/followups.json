@@ -3,18 +3,130 @@
     "id": "f01-pronoun-addon",
     "note": "SYNTHETIC. Detector-level golden: pronoun follow-up must resolve to the earlier answered question; A must not be re-extracted.",
     "segments": [
-      { "atMs": 0, "text": "ส่วน AI Assist add-on คิดเพิ่มเท่าไรครับ" },
-      { "atMs": 6000, "text": "ตัว add-on นี้เปิดใช้เป็นรายทีมได้ ผมจะอธิบายต่อ" },
-      { "atMs": 12000, "text": "แล้วอันนั้นต้องจ่ายแยกต่อ agent ไหมครับ" }
+      {
+        "atMs": 0,
+        "text": "ส่วน AI Assist add-on คิดเพิ่มเท่าไรครับ"
+      },
+      {
+        "atMs": 6000,
+        "text": "ตัว add-on นี้เปิดใช้เป็นรายทีมได้ ผมจะอธิบายต่อ"
+      },
+      {
+        "atMs": 12000,
+        "text": "แล้วอันนั้นต้องจ่ายแยกต่อ agent ไหมครับ"
+      }
     ],
     "expect": [
-      { "segment": 0, "kind": "question", "mustMatch": "AI Assist|add-on" },
-      { "segment": 1, "kind": "none" },
+      {
+        "segment": 0,
+        "kind": "question",
+        "mustMatch": "AI Assist|add-on"
+      },
+      {
+        "segment": 1,
+        "kind": "none"
+      },
       {
         "segment": 2,
         "kind": "question",
         "mustMatch": ["AI Assist|add-on", "agent|แยก"],
         "mustNotMatch": "เท่าไร|how much"
+      }
+    ]
+  },
+  {
+    "id": "l01-lone-customer-sla",
+    "note": "SYNTHETIC. Lone-line Detector golden (BE-89): lone customer question -> question",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "SLA ของ Premium Support ตอบกลับภายในกี่ชั่วโมง"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question"
+      }
+    ]
+  },
+  {
+    "id": "l02-lone-customer-export",
+    "note": "SYNTHETIC. Lone-line Detector golden (BE-89): lone customer question -> question",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "ฟีเจอร์ export ข้อมูลรองรับไฟล์อะไรบ้าง"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question"
+      }
+    ]
+  },
+  {
+    "id": "l03-lone-rep-pitch",
+    "note": "SYNTHETIC. Lone-line Detector golden (BE-89): lone rep pitch line -> none",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "แพ็กเกจ Premium เริ่มต้นที่เดือนละห้าพันบาทครับ"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "none"
+      }
+    ]
+  },
+  {
+    "id": "l04-lone-rep-rhetorical",
+    "note": "SYNTHETIC. Lone-line Detector golden (BE-89): lone rep rhetorical + tail -> none",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "แล้วทำไมลูกค้าถึงเลือกเรา เดี๋ยวผมเล่าให้ฟังนะครับ"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "none"
+      }
+    ]
+  },
+  {
+    "id": "l05-lone-rep-rhetorical-bare",
+    "note": "SYNTHETIC. Lone-line Detector golden (BE-89): lone rep rhetorical, truly ambiguous without next line (documented ceiling, default = customer)",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "แล้วต้องใช้เวลานานแค่ไหนครับ"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question"
+      }
+    ]
+  },
+  {
+    "id": "l06-lone-customer-price",
+    "note": "SYNTHETIC. Lone-line Detector golden (BE-89): field regression, product + price question alone -> question",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "Premium Onboarding ราคาเท่าไหร่"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question"
       }
     ]
   }
