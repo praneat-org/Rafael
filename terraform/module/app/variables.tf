@@ -138,6 +138,11 @@ variable "stt_end_sensitivity" {
   description = "STT_END_SENSITIVITY (HIGH|LOW); empty = model default. BE-89 dev field experiment, prod leaves it empty"
   type        = string
   default     = ""
+
+  validation {
+    condition     = contains(["", "HIGH", "LOW"], var.stt_end_sensitivity)
+    error_message = "stt_end_sensitivity must be \"\", \"HIGH\" or \"LOW\"."
+  }
 }
 
 variable "stt_location" {

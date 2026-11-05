@@ -309,9 +309,9 @@ test('BE-89: final parked after a reopen is released by time (frames), not by th
     p.handlers.at(-1)?.onFinal('fresh words'); // no overlap with tail: parked
     expect(finals.length).toBe(base);
     // overlapFrames=5 -> release after 15 frames of the new stream; 5 were replayed
-    for (let i = 20; i < 29; i++) r.push(frame(i));
+    for (let i = 20; i < 30; i++) r.push(frame(i)); // frames = 5 + 10 = 15: not yet (> 15 needed)
     expect(finals.length).toBe(base);
-    for (let i = 30; i < 33; i++) r.push(frame(i));
+    r.push(frame(30)); // frames = 16: released exactly here
     expect(finals.slice(base).map((f) => f.text)).toEqual(['fresh words']);
     await r.close();
   } finally {

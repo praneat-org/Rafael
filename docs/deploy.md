@@ -26,7 +26,7 @@ By hand, in this order (dev project `rafael-512903`):
        gcloud secrets versions add rafael-dev-infra-tfvars --data-file=dev.auto.tfvars --project=rafael-512903
 
 6. App secrets: none (D22, Gemini via Vertex uses the backend SA). If one is ever needed: add its id to `app_secret_ids`, apply, then `gcloud secrets versions add <ID> --data-file=-`.
-7. Prod: copy `terraform/dev` to `terraform/prod` with bucket `terraform-state-rafael-prod`, branch `^main$`, `cloudbuild_approval_required = true`, `cloud_run_service_name = "rafael"`, the prod extension id; leave `stt_end_sensitivity = ""` (HIGH is a dev-only field experiment, BE-89).
+7. Prod: copy `terraform/dev` to `terraform/prod` with bucket `terraform-state-rafael-prod`, branch `^main$`, `cloudbuild_approval_required = true`, `cloud_run_service_name = "rafael"`, the prod extension id, **`stt_end_sensitivity = ""`** (explicit: the dev default is HIGH, a dev-only field experiment, BE-89).
 8. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
 
 If the org policy `iam.allowedPolicyMemberDomains` blocks `allUsers`, `--allow-unauthenticated` fails on deploy: ask the org admin for an exception on this project.
