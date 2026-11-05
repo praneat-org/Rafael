@@ -43,6 +43,7 @@ resource "google_cloudbuild_trigger" "cloudbuild_branch_trigger" {
     _VERTEX_LOCATION       = var.vertex_location
     _STT_MODEL             = var.stt_model
     _STT_LOCATION          = var.stt_location
+    _STT_END_SENSITIVITY   = var.stt_end_sensitivity
     _DETECTOR_MODEL        = var.detector_model
     _ANSWERER_MODEL        = var.answerer_model
     _ALLOWED_EMAILS        = join(",", var.allowed_emails)
