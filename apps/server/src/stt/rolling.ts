@@ -226,6 +226,7 @@ export function createRollingStt(provider: SttProvider, o: RollingOptions) {
       if (!cur) return; // between retries: audio is only kept in the ring
       const g = cur;
       g.stream.push(pcm);
+      // ponytail: ceiling = 3*overlap of audio (~6 s) after reopen; the replayed text can arrive that late, so a smaller bound risks duplicates
       // a final parked for overlap alignment is released by time, not by the next event (BE-89: cue was 8-10 s late)
       if (++g.frames > 3 * overlapFrames && g.buf) emit(g, '', undefined, true);
       if (g.frames >= rolloverFrames) {
