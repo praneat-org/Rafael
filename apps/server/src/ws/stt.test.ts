@@ -135,7 +135,8 @@ test('provider start fails once -> no error to client (BE-89), session stays usa
   p.failStarts = 1;
   const t = await setup({}, p);
   t.audio(1, 1);
-  await vi.waitFor(() => expect(p.failStarts).toBe(0));
+  // the retry opens a stream after 1 s: the error frame (if any) would have arrived by then
+  await vi.waitFor(() => expect(p.starts.length).toBe(1), { timeout: 3000 });
   expect(t.msgs().find((m) => m.t === 'error')).toBeUndefined();
   expect(t.ws.readyState).toBe(WebSocket.OPEN);
 });

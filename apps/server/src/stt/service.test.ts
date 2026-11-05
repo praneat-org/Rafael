@@ -95,6 +95,19 @@ test('BE-89: a retry stays silent for the client; an outage sends STT_UNAVAILABL
     expect(sent.filter((m) => m.t === 'error')).toEqual([
       expect.objectContaining({ code: 'STT_UNAVAILABLE' }),
     ]);
+    p.failStarts = 0; // recovers, a final resets the gave-up report
+    for (let i = 0; i < 20; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      push();
+    }
+    p.handlers.at(-1)?.onFinal('ok');
+    p.failStarts = 99; // second outage is reported again
+    p.failLast();
+    for (let i = 0; i < 20; i++) {
+      await vi.advanceTimersByTimeAsync(1000);
+      push();
+    }
+    expect(sent.filter((m) => m.t === 'error')).toHaveLength(2);
   } finally {
     vi.useRealTimers();
   }
