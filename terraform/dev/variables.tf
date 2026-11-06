@@ -97,6 +97,10 @@ variable "cloudbuild_file_name" {
 variable "cloud_run_service_name" {
   description = "Cloud Run service name"
   type        = string
+  validation {
+    condition     = var.cloud_run_service_name != "rafael"
+    error_message = "rafael is the prod service (same project): dev must not deploy over it."
+  }
 }
 
 variable "min_instance_count" {

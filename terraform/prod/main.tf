@@ -8,7 +8,7 @@ terraform {
     }
   }
 
-  ## Create once before init: gcloud storage buckets create gs://terraform-state-rafael-prod --project=<PROD_PROJECT_ID> --location=asia-southeast1 --uniform-bucket-level-access, then: gcloud storage buckets update gs://terraform-state-rafael-prod --versioning ##
+  ## Create once before init: gcloud storage buckets create gs://terraform-state-rafael-prod --project=rafael-512903 --location=asia-southeast1 --uniform-bucket-level-access, then: gcloud storage buckets update gs://terraform-state-rafael-prod --versioning ##
   backend "gcs" {
     bucket = "terraform-state-rafael-prod"
     prefix = "infra"
@@ -48,6 +48,7 @@ module "app" {
   cloudbuild_file_name           = var.cloudbuild_file_name
   # ---------------- Cloud Run ---------------- #
   cloud_run_service_name = var.cloud_run_service_name
+  artifact_repository_id = var.artifact_repository_id
   min_instance_count     = var.min_instance_count
   max_instance_count     = var.max_instance_count
   allowed_extension_ids  = var.allowed_extension_ids
