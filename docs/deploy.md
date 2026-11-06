@@ -5,7 +5,7 @@ Config only: nothing here has run against GCP yet. Files: `apps/server/Dockerfil
 ## What BE-71 must create (per env: dev, prod)
 
 Terraform in `terraform/` (team convention: `module/app` + one folder per env) creates: enabled APIs, service accounts
-(`rafael-<env>-cloudbuild`, `rafael-<env>-backend`) and their roles, Artifact Registry repo `rafael`, Secret Manager
+(`rafael-<env>-cloudbuild`, `rafael-<env>-backend`) and their roles, Artifact Registry repo (`rafael` for dev, `rafael-prod` for prod), Secret Manager
 secrets (ids only, no values), the GitHub repo link and the Cloud Build trigger with all substitutions. Cloud Run itself
 stays owned by `cloudbuild.deploy.yaml`. Roles: Cloud Build SA = Cloud Run Admin, Artifact Registry Writer, Logs Writer,
 Service Account User on the backend SA only; backend SA = Vertex AI User (Gemini for LLM and STT, D22), Secret Accessor.
@@ -27,14 +27,14 @@ By hand, in this order (dev project `rafael-512903`):
 
 6. App secrets: none (D22, Gemini via Vertex uses the backend SA). If one is ever needed: add its id to `app_secret_ids`, apply, then `gcloud secrets versions add <ID> --data-file=-`.
 7. Prod (BE-127, after Go + DPO): **cutover, not side by side.** `terraform/prod` is ready but not applied. When dev work is done, dev is removed and prod takes its place in the same project `rafael-512903` (second root on the same module). Dev and prod never run together, because the Cloud Build SA roles are project-wide: a `develop` build could otherwise deploy over prod. Locked prod values (a wrong tfvars value fails `terraform plan`): `environment = "prod"`, branch `^main$`, `cloudbuild_approval_required = true`, service `rafael`, repo `rafael-prod`, connection `rafael-prod-github-connection`, `max_instance_count = 1`, `allowed_emails = []`, `stt_end_sensitivity = ""`.
-   1. Save the dev tfvars first (`gcloud secrets versions access latest --secret=rafael-dev-infra-tfvars --project=rafael-512903 > dev.auto.tfvars`), it is the base for prod.
+   1. Save the dev tfvars first, it is the base for prod and `terraform destroy` deletes its secret: from the repo root `gcloud secrets versions access latest --secret=rafael-dev-infra-tfvars --project=rafael-512903 > terraform/dev/dev.auto.tfvars`, check it is not empty (`test -s terraform/dev/dev.auto.tfvars`), then `cp terraform/dev/dev.auto.tfvars terraform/prod/prod.auto.tfvars`. Do not go on if either file is missing.
    2. Remove dev: `cd terraform/dev && terraform destroy` (trigger, repo link, SAs, AR repo `rafael`, secret; APIs stay on), then `gcloud run services delete rafael-dev --region=asia-southeast1 --project=rafael-512903` (Cloud Run is not in Terraform), then delete `rafael-dev-github-connection` in the console.
    3. State bucket `terraform-state-rafael-prod` in `rafael-512903` (same commands as step 1) and GitHub host connection `rafael-prod-github-connection` (the Cloud Build GitHub App is already installed on the org, pick that installation).
    4. OAuth: consent screen to **Internal** (praneat.com only; the Gmail testers are gone with dev), remove the test users. Extension id: keep the current `key` (same id, reuse the existing OAuth client) for a self-hosted build, or a Web Store item (new id, new OAuth client of type Chrome Extension).
-   5. `prod.auto.tfvars` from the saved dev file: keep `project_id`, set `github_connection_name`, `oauth_client_id` and `allowed_extension_ids` (if the id changed). Remove the lines for `environment`, `cloudbuild_trigger_branch_name`, `cloudbuild_approval_required`, `cloud_run_service_name`, `allowed_emails`, `stt_end_sensitivity` (the prod defaults apply).
+   5. Edit `terraform/prod/prod.auto.tfvars` (the copy from 7.1): keep `project_id`, set `github_connection_name`, `oauth_client_id` and `allowed_extension_ids` (if the id changed). Remove the lines for `environment`, `cloudbuild_trigger_branch_name`, `cloudbuild_approval_required`, `cloud_run_service_name`, `allowed_emails`, `stt_end_sensitivity` (the prod defaults apply).
    6. `cd terraform/prod && terraform init && terraform apply`, then `gcloud secrets versions add rafael-prod-infra-tfvars --data-file=prod.auto.tfvars --project=rafael-512903`, and delete both local tfvars.
-   7. Prod extension build: `WXT_SERVER_URL=<rafael Cloud Run url> WXT_OAUTH_CLIENT_ID=<client id> pnpm --filter extension build` (production mode: no mock, no localhost).
-   8. First release: `release/x.y.z` PR into `main`, approve the build in Cloud Build, then check that `/api/health` returns 200. Old dev logs stay in the project until their retention ends (tell the DPO).
+   7. First release: `release/x.y.z` PR into `main`, approve the build in Cloud Build, then check that `/api/health` returns 200. URL: `gcloud run services describe rafael --region=asia-southeast1 --project=rafael-512903 --format="value(status.url)"`.
+   8. Prod extension build with that URL: `WXT_SERVER_URL=<rafael url> WXT_OAUTH_CLIENT_ID=<client id> pnpm --filter extension build` (production mode: no mock, no localhost). Old dev logs stay in the project until their retention ends (tell the DPO).
 8. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
 
 If the org policy `iam.allowedPolicyMemberDomains` blocks `allUsers`, `--allow-unauthenticated` fails on deploy: ask the org admin for an exception on this project.
