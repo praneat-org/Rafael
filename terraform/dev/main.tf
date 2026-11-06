@@ -55,6 +55,7 @@ module "app" {
   vertex_location        = var.vertex_location
   stt_model              = var.stt_model
   stt_location           = var.stt_location
+  stt_end_sensitivity    = var.stt_end_sensitivity
   detector_model         = var.detector_model
   answerer_model         = var.answerer_model
   allowed_emails         = var.allowed_emails

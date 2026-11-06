@@ -136,6 +136,13 @@ variable "stt_model" {
   default     = ""
 }
 
+# DEV ONLY - prod must be "" (BE-89 field experiment; copying terraform/dev to prod must override this)
+variable "stt_end_sensitivity" {
+  description = "STT_END_SENSITIVITY (HIGH|LOW); empty = model default. BE-89 dev field experiment, prod leaves it empty"
+  type        = string
+  default     = "HIGH"
+}
+
 variable "stt_location" {
   description = "Vertex location for STT (STT_LOCATION); the transcribe models only exist at global, unlike vertex_location"
   type        = string

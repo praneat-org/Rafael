@@ -31,6 +31,8 @@ export type GeminiSttOptions = {
   maxQueuedFrames?: number;
   /** end-of-speech silence the server waits before finalising (VAD); unset = model default */
   silenceMs?: number;
+  /** BE-89: end-of-speech sensitivity; Vertex default is LOW (ends the turn less often, slow finals in noise). unset = model default */
+  endSensitivity?: 'HIGH' | 'LOW';
   /** BE-116: speech pushed but no partial/final within this many ms -> onError (rolling reopens). 0 = off */
   watchdogMs?: number;
 };
@@ -85,10 +87,15 @@ export function createGeminiSttProvider(o: GeminiSttOptions): SttProvider {
           model: o.model,
           config: {
             responseModalities: [Modality.TEXT],
-            ...(o.silenceMs
+            ...(o.silenceMs || o.endSensitivity
               ? {
                   realtimeInputConfig: {
-                    automaticActivityDetection: { silenceDurationMs: o.silenceMs },
+                    automaticActivityDetection: {
+                      ...(o.silenceMs ? { silenceDurationMs: o.silenceMs } : {}),
+                      ...(o.endSensitivity
+                        ? { endOfSpeechSensitivity: `END_SENSITIVITY_${o.endSensitivity}` }
+                        : {}),
+                    },
                   },
                 }
               : {}),
@@ -190,6 +197,10 @@ export function createGeminiStt(env: Record<string, string | undefined>): SttPro
   return createGeminiSttProvider({
     model,
     watchdogMs: parseWatchdogMs(env.STT_WATCHDOG_MS),
+    endSensitivity:
+      env.STT_END_SENSITIVITY === 'HIGH' || env.STT_END_SENSITIVITY === 'LOW'
+        ? env.STT_END_SENSITIVITY
+        : undefined, // opt-in A/B (BE-89): default unchanged
     silenceMs: Number(env.STT_SILENCE_MS) || 300, // BE-116 sweep (SYNTHETIC): 200 looked faster but outliers unexplained, no CER; default kept (docs/llm-provider.md)
     connect: ({ model, config, callbacks }) =>
       ai.live.connect({ model, config, callbacks } as any) as Promise<LiveSessionLike>,

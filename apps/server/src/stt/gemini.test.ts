@@ -254,3 +254,32 @@ describe('gemini stt watchdog (BE-116)', () => {
     expect(parseWatchdogMs('3000')).toBe(3000);
   });
 });
+
+describe('gemini stt VAD config (BE-89)', () => {
+  const cfgOf = async (extra: object) => {
+    let cfg: any;
+    const connect: LiveConnect = async (p) => {
+      cfg = p.config;
+      return { sendRealtimeInput: () => {}, close: () => {} };
+    };
+    createGeminiSttProvider({ connect, model: 'm', ...extra }).start([], {
+      onPartial: () => {},
+      onFinal: () => {},
+      onError: () => {},
+    });
+    await tick();
+    return cfg;
+  };
+  it('endSensitivity is opt-in', async () => {
+    expect((await cfgOf({})).realtimeInputConfig).toBeUndefined();
+    expect((await cfgOf({ silenceMs: 300 })).realtimeInputConfig).toEqual({
+      automaticActivityDetection: { silenceDurationMs: 300 },
+    });
+    expect((await cfgOf({ silenceMs: 300, endSensitivity: 'HIGH' })).realtimeInputConfig).toEqual({
+      automaticActivityDetection: {
+        silenceDurationMs: 300,
+        endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
+      },
+    });
+  });
+});
