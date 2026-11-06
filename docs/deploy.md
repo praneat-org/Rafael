@@ -27,11 +27,12 @@ By hand, in this order (dev project `rafael-512903`):
 
 6. App secrets: none (D22, Gemini via Vertex uses the backend SA). If one is ever needed: add its id to `app_secret_ids`, apply, then `gcloud secrets versions add <ID> --data-file=-`.
 7. Prod (BE-127, after Go + DPO): `terraform/prod` already exists. It locks the prod-only values: `environment = "prod"`, branch `^main$`, `cloudbuild_approval_required = true`, service `rafael`, `allowed_emails = []`, `stt_end_sensitivity = ""`. A wrong tfvars value fails `terraform plan`.
-   1. Create the prod GCP project in the same folder as dev (`956387238142`), link billing, then repeat steps 1–2 with `-prod` names (`terraform-state-rafael-prod`, `rafael-prod-github-connection`).
-   2. OAuth consent screen **Internal**. OAuth client type Chrome Extension with the **prod** extension id (Web Store item id, or the id from a prod `key`).
+   1. Create the prod GCP project in the same folder as dev (`gcloud projects describe rafael-512903 --format="value(parent.id)"`), link billing, then repeat steps 1–2 with `-prod` names (`terraform-state-rafael-prod`, `rafael-prod-github-connection`).
+   2. Prod extension id first: it exists only once the Web Store item is created (private to praneat.com), or once a prod `key` replaces the dev `key` in `apps/extension/wxt.config.ts`. Then OAuth consent screen **Internal**, and OAuth client type Chrome Extension with that id.
    3. `prod.auto.tfvars`: start from the dev file (`gcloud secrets versions access latest --secret=rafael-dev-infra-tfvars --project=rafael-512903`) and change `project_id`, `github_connection_name`, `oauth_client_id`, `allowed_extension_ids`. Remove the lines for `environment`, `cloudbuild_trigger_branch_name`, `cloudbuild_approval_required`, `cloud_run_service_name`, `allowed_emails`, `stt_end_sensitivity` (the prod defaults apply).
    4. `cd terraform/prod && terraform init && terraform apply`, then store the file: `gcloud secrets create rafael-prod-infra-tfvars --data-file=prod.auto.tfvars --project=<PROD_PROJECT_ID>` (later changes: `versions add`) and delete the local copy.
-   5. First release: `release/x.y.z` PR into `main`, approve the build in Cloud Build, then check that `/api/health` returns 200.
+   5. Prod extension build: `WXT_SERVER_URL=<prod Cloud Run url> WXT_OAUTH_CLIENT_ID=<prod client id> pnpm --filter extension build` (production mode: no mock, no localhost).
+   6. First release: `release/x.y.z` PR into `main`, approve the build in Cloud Build, then check that `/api/health` returns 200.
 8. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
 
 If the org policy `iam.allowedPolicyMemberDomains` blocks `allUsers`, `--allow-unauthenticated` fails on deploy: ask the org admin for an exception on this project.

@@ -113,6 +113,10 @@ variable "cloud_run_service_name" {
   description = "Cloud Run service name"
   type        = string
   default     = "rafael"
+  validation {
+    condition     = var.cloud_run_service_name == "rafael"
+    error_message = "prod service is rafael (rafael-dev is the dev service)."
+  }
 }
 
 variable "min_instance_count" {
