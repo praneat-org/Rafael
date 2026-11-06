@@ -6,11 +6,12 @@ export async function loadSettings(): Promise<Settings> {
   return normalizeSettings(await browser.storage.local.get(defaultSettings));
 }
 
-export function normalizeSettings(s: Record<string, unknown>): Settings {
+// prod build: mock is forced off, a mock flag left in storage from a dev build must not survive
+export function normalizeSettings(s: Record<string, unknown>, dev = import.meta.env.DEV): Settings {
   const n = Number(s.latencyMs);
   // ?? / finite check, not ||: 0 ms is a valid latency
   return {
-    mock: Boolean(s.mock),
+    mock: dev && Boolean(s.mock),
     latencyMs: s.latencyMs != null && Number.isFinite(n) && n >= 0 ? n : defaultSettings.latencyMs,
   };
 }

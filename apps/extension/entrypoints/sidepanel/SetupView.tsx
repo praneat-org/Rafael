@@ -146,14 +146,16 @@ export function SetupView({
         <ErrorNote text={errorText(error)} />
       )}
       <div className="card">
-        <label className="row dev">
-          <input
-            type="checkbox"
-            checked={s.mock}
-            onChange={(e) => update({ ...s, mock: e.target.checked })}
-          />
-          โหมดจำลอง (mock)
-        </label>
+        {import.meta.env.DEV && (
+          <label className="row dev">
+            <input
+              type="checkbox"
+              checked={s.mock}
+              onChange={(e) => update({ ...s, mock: e.target.checked })}
+            />
+            โหมดจำลอง (mock)
+          </label>
+        )}
         {s.mock ? (
           <label className="row dev">
             latency จำลอง (ms)
@@ -169,8 +171,8 @@ export function SetupView({
           </label>
         ) : !configured ? (
           <p className="note">
-            ยังไม่ได้ตั้งค่า OAuth client (WXT_OAUTH_CLIENT_ID — รอ BE-71) — ลงชื่อเข้าใช้จริงยังไม่ได้
-            ใช้โหมดจำลองไปก่อน
+            ยังไม่ได้ตั้งค่า OAuth client (WXT_OAUTH_CLIENT_ID) — ลงชื่อเข้าใช้จริงยังไม่ได้
+            {import.meta.env.DEV && ' ใช้โหมดจำลองไปก่อน'}
           </p>
         ) : (
           <>
