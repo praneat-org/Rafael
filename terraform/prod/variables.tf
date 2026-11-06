@@ -69,8 +69,12 @@ variable "app_secret_ids" {
 #---------------------------------------------------------------------------------------------------------------------#
 
 variable "github_connection_name" {
-  description = "Cloud Build 2nd gen GitHub host connection, created once in the console"
+  description = "Cloud Build 2nd gen GitHub host connection, created once in the console (prod's own, not dev's)"
   type        = string
+  validation {
+    condition     = var.github_connection_name == "rafael-prod-github-connection"
+    error_message = "prod uses rafael-prod-github-connection (dev connection copied from the dev tfvars?)."
+  }
 }
 
 variable "github_repository" {

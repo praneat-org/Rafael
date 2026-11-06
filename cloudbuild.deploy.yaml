@@ -1,7 +1,7 @@
 # Cloud Build: build -> Artifact Registry -> Cloud Run. Nothing secret in here (names only).
 # dev trigger (push develop): defaults below.
 # prod trigger (push main, with "require approval"): override
-#   _SERVICE=rafael  (and _MIN/_MAX if decided differently); _STT_END_SENSITIVITY stays empty (dev-only experiment)
+#   _SERVICE=rafael, _REPO=rafael-prod  (and _MIN/_MAX if decided differently); _STT_END_SENSITIVITY stays empty (dev-only experiment)
 substitutions:
   _REGION: asia-southeast1
   _SERVICE: rafael-dev
