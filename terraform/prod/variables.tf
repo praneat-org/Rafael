@@ -22,8 +22,12 @@ variable "environment" {
 #---------------------------------------------------------------------------------------------------------------------#
 
 variable "project_id" {
-  description = "GCP Project ID"
+  description = "GCP Project ID (the prod project, never the dev one)"
   type        = string
+  validation {
+    condition     = var.project_id != "rafael-512903"
+    error_message = "rafael-512903 is the dev project: set the prod project id (tfvars copied from dev?)."
+  }
 }
 
 variable "region" {
@@ -127,6 +131,11 @@ variable "min_instance_count" {
 variable "max_instance_count" {
   description = "Cloud Run max instances (Q2 proposal: 1, >1 breaks resume)"
   type        = number
+  # ponytail: SessionStore is in memory, so resume needs one instance; lift with a shared store
+  validation {
+    condition     = var.max_instance_count == 1
+    error_message = "SessionStore is in memory: more than 1 instance breaks resume."
+  }
 }
 
 variable "allowed_extension_ids" {
