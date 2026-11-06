@@ -89,7 +89,7 @@ function preview(cmd: Extract<PanelToOffscreen, { k: 'preview' }>) {
   if (state.phase === 'live') return;
   stopPreview();
   if (cmd.capture) void beginCapture(cmd.capture, null);
-  if (cmd.wavBase64) {
+  if (import.meta.env.DEV && cmd.wavBase64) {
     const pcm = parseWav(Uint8Array.from(atob(cmd.wavBase64), (c) => c.charCodeAt(0)).buffer);
     if (!pcm) return;
     const frames = toFrames(pcm);
@@ -126,11 +126,12 @@ async function getToken(fresh: boolean): Promise<string> {
 
 function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   if (state.phase === 'live') return;
-  if (!cmd.mock && !cmd.packId && !import.meta.env.DEV) return;
-  if (!cmd.mock && !SERVER_URL) return; // prod without an https server url: never send the token
+  const mock = import.meta.env.DEV && cmd.mock; // prod build: mock path is dead code, Vite drops it
+  if (!mock && !cmd.packId && !import.meta.env.DEV) return;
+  if (!mock && !SERVER_URL) return; // prod without an https server url: never send the token
   teardown();
   dispatch({ k: 'start' });
-  const t: Transport = cmd.mock
+  const t: Transport = mock
     ? new MockTransport(cmd.latencyMs)
     : new WsTransport({ url: toWsUrl(SERVER_URL), getToken });
   transport = t;
@@ -149,10 +150,10 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
     if (msg.t === 'error' && msg.code === 'SESSION_NOT_FOUND') teardown(); // session is gone: stop capture too
   });
   t.connect();
-  if (cmd.mock) t.send({ v: 1, t: 'hello', accessToken: 'mock-token' }); // WsTransport sends hello itself
-  t.send({ v: 1, t: 'session.start', packId: cmd.mock ? 'mock-pack' : (cmd.packId ?? 'dev-pack') });
+  if (mock) t.send({ v: 1, t: 'hello', accessToken: 'mock-token' }); // WsTransport sends hello itself
+  t.send({ v: 1, t: 'session.start', packId: mock ? 'mock-pack' : (cmd.packId ?? 'dev-pack') });
   if (cmd.capture) void beginCapture(cmd.capture, t);
-  if (cmd.wavBase64) {
+  if (import.meta.env.DEV && cmd.wavBase64) {
     const bin = atob(cmd.wavBase64);
     const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
     const pcm = parseWav(bytes.buffer);

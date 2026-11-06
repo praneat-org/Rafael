@@ -10,3 +10,8 @@ test('missing / invalid latency falls back to the default', () => {
   expect(normalizeSettings({ latencyMs: -5 }).latencyMs).toBe(defaultSettings.latencyMs);
   expect(normalizeSettings({}).latencyMs).toBe(defaultSettings.latencyMs);
 });
+
+test('prod build forces mock off even if storage says true', () => {
+  expect(normalizeSettings({ mock: true }, false).mock).toBe(false);
+  expect(normalizeSettings({ mock: true }, true).mock).toBe(true);
+});
