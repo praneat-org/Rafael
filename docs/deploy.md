@@ -26,7 +26,12 @@ By hand, in this order (dev project `rafael-512903`):
        gcloud secrets versions add rafael-dev-infra-tfvars --data-file=dev.auto.tfvars --project=rafael-512903
 
 6. App secrets: none (D22, Gemini via Vertex uses the backend SA). If one is ever needed: add its id to `app_secret_ids`, apply, then `gcloud secrets versions add <ID> --data-file=-`.
-7. Prod: copy `terraform/dev` to `terraform/prod` with bucket `terraform-state-rafael-prod`, branch `^main$`, `cloudbuild_approval_required = true`, `cloud_run_service_name = "rafael"`, the prod extension id, **`stt_end_sensitivity = ""`** (explicit: the dev default is HIGH, a dev-only field experiment, BE-89).
+7. Prod (BE-127, after Go + DPO): `terraform/prod` already exists. It locks the prod-only values: `environment = "prod"`, branch `^main$`, `cloudbuild_approval_required = true`, service `rafael`, `allowed_emails = []`, `stt_end_sensitivity = ""`. A wrong tfvars value fails `terraform plan`.
+   1. Create the prod GCP project in the same folder as dev (`956387238142`), link billing, then repeat steps 1–2 with `-prod` names (`terraform-state-rafael-prod`, `rafael-prod-github-connection`).
+   2. OAuth consent screen **Internal**. OAuth client type Chrome Extension with the **prod** extension id (Web Store item id, or the id from a prod `key`).
+   3. `prod.auto.tfvars`: start from the dev file (`gcloud secrets versions access latest --secret=rafael-dev-infra-tfvars --project=rafael-512903`) and change `project_id`, `github_connection_name`, `oauth_client_id`, `allowed_extension_ids`. Remove the lines for `environment`, `cloudbuild_trigger_branch_name`, `cloudbuild_approval_required`, `cloud_run_service_name`, `allowed_emails`, `stt_end_sensitivity` (the prod defaults apply).
+   4. `cd terraform/prod && terraform init && terraform apply`, then store the file: `gcloud secrets create rafael-prod-infra-tfvars --data-file=prod.auto.tfvars --project=<PROD_PROJECT_ID>` (later changes: `versions add`) and delete the local copy.
+   5. First release: `release/x.y.z` PR into `main`, approve the build in Cloud Build, then check that `/api/health` returns 200.
 8. Drive MCP registration (Google-hosted, Developer Preview): **optional / deferred**, skip until BE-92 (deferred) is picked up.
 
 If the org policy `iam.allowedPolicyMemberDomains` blocks `allUsers`, `--allow-unauthenticated` fails on deploy: ask the org admin for an exception on this project.
