@@ -89,7 +89,7 @@ function preview(cmd: Extract<PanelToOffscreen, { k: 'preview' }>) {
   if (state.phase === 'live') return;
   stopPreview();
   if (cmd.capture) void beginCapture(cmd.capture, null);
-  if (cmd.wavBase64) {
+  if (import.meta.env.DEV && cmd.wavBase64) {
     const pcm = parseWav(Uint8Array.from(atob(cmd.wavBase64), (c) => c.charCodeAt(0)).buffer);
     if (!pcm) return;
     const frames = toFrames(pcm);
