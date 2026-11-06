@@ -22,12 +22,8 @@ variable "environment" {
 #---------------------------------------------------------------------------------------------------------------------#
 
 variable "project_id" {
-  description = "GCP Project ID (the prod project, never the dev one)"
+  description = "GCP Project ID (prod shares the dev project rafael-512903; names below keep the two apart)"
   type        = string
-  validation {
-    condition     = var.project_id != "rafael-512903"
-    error_message = "rafael-512903 is the dev project: set the prod project id (tfvars copied from dev?)."
-  }
 }
 
 variable "region" {
@@ -112,6 +108,16 @@ variable "cloudbuild_file_name" {
 #---------------------------------------------------------------------------------------------------------------------#
 # Cloud Run (passed to cloudbuild.deploy.yaml as substitutions)
 #---------------------------------------------------------------------------------------------------------------------#
+
+variable "artifact_repository_id" {
+  description = "Artifact Registry repo for prod images, separate from dev's rafael repo in the same project"
+  type        = string
+  default     = "rafael-prod"
+  validation {
+    condition     = var.artifact_repository_id == "rafael-prod"
+    error_message = "prod images go to rafael-prod (rafael is the dev repo)."
+  }
+}
 
 variable "cloud_run_service_name" {
   description = "Cloud Run service name"

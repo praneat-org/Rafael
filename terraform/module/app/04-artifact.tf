@@ -3,7 +3,7 @@
 resource "google_artifact_registry_repository" "artifact_registry_repository" {
   project       = var.project_id
   location      = var.region
-  repository_id = var.project_name
+  repository_id = coalesce(var.artifact_repository_id, var.project_name)
   description   = "rafael-server images"
   format        = "DOCKER"
 
