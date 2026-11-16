@@ -211,6 +211,8 @@ export function attachWs(http: Server, opts: WsOptions) {
             sessionId: s.id,
             resumeToken: s.resumeToken,
           });
+          // resume: replay final cues so history is whole even if the client missed some while away
+          if (m.resumeToken) for (const c of s.cues) send(c);
           if (packs) {
             const sock = ws;
             packs.setSender(s.id, (msg) => {
