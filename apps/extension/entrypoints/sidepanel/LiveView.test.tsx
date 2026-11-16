@@ -64,5 +64,5 @@ test('history: finals only, newest first, not-found tagged', () => {
   const list = html.slice(html.indexOf('aria-label="ประวัติ cue"'));
   expect(list).not.toContain('q-3'); // partial stays out of history
   expect(list.indexOf('q-2')).toBeLessThan(list.indexOf('q-1'));
-  expect(list).toMatch(/class="prev nf".*q-2.*ไม่มีในเอกสาร/);
+  expect(list).toMatch(/class="prev nf".*q-2.*ไม่พบใน pack/);
 });

@@ -32,7 +32,7 @@ export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswer
           ต้องตามต่อ <span className="num">{unanswered.length}</span> ข้อ
         </h2>
         {unanswered.length === 0 ? (
-          <p className="note">ไม่มีคำถามที่ต้องตามต่อ — ทุกคำถามมีคำตอบในเอกสาร</p>
+          <p className="note">ไม่มีรายการคำถามที่ต้องตามต่อ</p>
         ) : (
           <ul className="fu" aria-label="คำถามที่ไม่พบใน pack">
             {unanswered.map((u) => (
