@@ -133,21 +133,37 @@ export function SetupView({
       capture: s.mock ? undefined : inputs,
     });
   };
+  const remaining = [!signedIn, !folderId, !inputs.tab && !inputs.mic].filter(Boolean).length;
+  const stepClass = (done: boolean, now: boolean) => `step${done ? ' done' : now ? ' now' : ''}`;
+  const folderDone = !!folderId;
+  const inputDone = inputs.tab || inputs.mic;
+  const meter = (
+    <div className="meter-row">
+      <button
+        type="button"
+        disabled={!testing && s.mock && !wav}
+        onClick={() => setTesting(!testing)}
+      >
+        {testing ? 'หยุดทดสอบเสียง' : 'ทดสอบเสียง'}
+      </button>
+      <meter className="meter" aria-label="ระดับเสียง" min={0} max={1} value={testing ? level : 0} />
+    </div>
+  );
   return (
-    <main className="view">
+    <main className="view setup">
       <header className="brand">
         <h1>
-          <span className="mark" aria-hidden="true" />
+          <img className="mark" src="/icon/96.png" alt="" width={28} height={28} />
           Rafael
         </h1>
-        <p className="tagline">ผู้ช่วยตอบคำถามจากเอกสาร ระหว่างประชุม</p>
+        <p className="tagline">ตอบคำถามลูกค้าจากเอกสาร deal ระหว่างประชุม</p>
       </header>
       {(error === 'SESSION_NOT_FOUND' || error === 'CONNECTION_CLOSED') && (
         <ErrorNote text={errorText(error)} />
       )}
-      <div className="card">
-        {import.meta.env.DEV && (
-          <label className="row dev">
+      {import.meta.env.DEV && (
+        <div className="devbox">
+          <label className="row">
             <input
               type="checkbox"
               checked={s.mock}
@@ -155,87 +171,20 @@ export function SetupView({
             />
             โหมดจำลอง (mock)
           </label>
-        )}
-        {s.mock ? (
-          <label className="row dev">
-            latency จำลอง (ms)
-            <input
-              type="number"
-              min={0}
-              step={100}
-              value={s.latencyMs}
-              onChange={(e) =>
-                update({ ...s, latencyMs: Math.max(0, Number(e.target.value) || 0) })
-              }
-            />
-          </label>
-        ) : !configured ? (
-          <p className="note">
-            ยังไม่ได้ตั้งค่า OAuth client (WXT_OAUTH_CLIENT_ID) — ลงชื่อเข้าใช้จริงยังไม่ได้
-            {import.meta.env.DEV && ' ใช้โหมดจำลองไปก่อน'}
-          </p>
-        ) : (
-          <>
-            <button type="button" onClick={signIn} disabled={signedIn || signingIn}>
-              {signedIn ? 'ลงชื่อเข้าใช้แล้ว' : signingIn ? 'กำลังลงชื่อเข้าใช้…' : 'ลงชื่อเข้าใช้ด้วย Google'}
-            </button>
-            {signInFailed && (
-              <p className="note err" role="alert">
-                ลงชื่อเข้าใช้ไม่สำเร็จ — ลองสลับ Chrome profile
-              </p>
-            )}
-            <label className="field">
-              ลิงก์โฟลเดอร์ Drive (pack)
+          {s.mock && (
+            <label className="row">
+              latency จำลอง (ms)
               <input
-                type="text"
-                value={folderUrl}
-                aria-invalid={!!folderUrl && !folderId}
-                placeholder="https://drive.google.com/drive/folders/..."
-                onChange={(e) => setFolderUrl(e.target.value)}
-              />
-            </label>
-            {recent.length > 0 && (
-              <select
-                aria-label="โฟลเดอร์ล่าสุด"
-                value=""
+                type="number"
+                min={0}
+                step={100}
+                value={s.latencyMs}
                 onChange={(e) =>
-                  e.target.value &&
-                  setFolderUrl(`https://drive.google.com/drive/folders/${e.target.value}`)
+                  update({ ...s, latencyMs: Math.max(0, Number(e.target.value) || 0) })
                 }
-              >
-                <option value="">โฟลเดอร์ล่าสุด…</option>
-                {recent.map((id) => (
-                  <option key={id} value={id}>
-                    {names[id] ?? shortId(id)}
-                  </option>
-                ))}
-              </select>
-            )}
-            {folderUrl && !folderId && (
-              <p className="note err" role="alert">
-                ต้องเป็นลิงก์โฟลเดอร์ Drive (…/drive/folders/…) ไม่ใช่ไฟล์
-              </p>
-            )}
-            {/* ponytail: search by folder name needs a server API (BE-87); paste URL only for now */}
-            <label className="row">
-              <input
-                type="checkbox"
-                checked={inputs.tab}
-                onChange={(e) => setInputs({ ...inputs, tab: e.target.checked })}
               />
-              เสียงจากแท็บนี้ (Meet)
             </label>
-            <label className="row">
-              <input
-                type="checkbox"
-                checked={inputs.mic}
-                onChange={(e) => setInputs({ ...inputs, mic: e.target.checked })}
-              />
-              ไมค์ (ห้องประชุม)
-            </label>
-          </>
-        )}
-        {import.meta.env.DEV && (
+          )}
           <label className="row">
             ไฟล์เสียงทดสอบ (.wav 16 kHz mono)
             <input
@@ -244,52 +193,132 @@ export function SetupView({
               onChange={(e) => setWav(e.target.files?.[0] ?? null)}
             />
           </label>
-        )}
-        <div className="meter-row">
-          <button
-            type="button"
-            disabled={!testing && s.mock && !wav}
-            onClick={() => setTesting(!testing)}
-          >
-            {testing ? 'หยุดทดสอบเสียง' : 'ทดสอบเสียง'}
-          </button>
-          <meter
-            className="meter"
-            aria-label="ระดับเสียง"
-            min={0}
-            max={1}
-            value={testing ? level : 0}
-          />
+          {s.mock && meter}
         </div>
-        {testing && audio?.error === 'tab-capture' && (
-          <div className="note err" role="alert">
-            <p className="err-what">จับเสียงแท็บไม่ได้</p>
-            <ol className="steps">
-              <li>สลับไปที่แท็บ Meet</li>
-              <li>
-                กดไอคอน Rafael บนแถบเครื่องมือ หรือกด <kbd>Alt+Shift+R</kbd>
-              </li>
-              <li>กลับมาที่ panel — แถบเสียงจะขยับเมื่อจับได้</li>
-            </ol>
-            <p className="err-code">หรือคลิกขวาในหน้า Meet › Rafael: จับเสียงแท็บนี้</p>
-          </div>
-        )}
-        {testing && audio?.error === 'mic-permission' && <ErrorNote text={MIC_DENIED} />}
-      </div>
-      <button
-        type="button"
-        className="primary"
-        disabled={block !== null || (!s.mock && !configured)}
-        aria-describedby={block && configured ? 'start-hint' : undefined}
-        onClick={start}
-      >
-        เริ่ม session
-      </button>
-      {block && configured && (
-        <p id="start-hint" className="note hint">
-          {BLOCK_HINT[block]}
-        </p>
       )}
+      {s.mock ? null : !configured ? (
+        <p className="note">
+          ยังไม่ได้ตั้งค่า OAuth client (WXT_OAUTH_CLIENT_ID) — ลงชื่อเข้าใช้จริงยังไม่ได้
+          {import.meta.env.DEV && ' ใช้โหมดจำลองไปก่อน'}
+        </p>
+      ) : (
+        <ol className="checklist">
+          <li className={stepClass(signedIn, !signedIn)}>
+            <span className="dotn" aria-hidden="true">
+              {signedIn ? '✓' : '1'}
+            </span>
+            <div>
+              <p className="st">ลงชื่อเข้าใช้</p>
+              {signedIn ? (
+                <p className="sd">ลงชื่อเข้าใช้แล้ว</p>
+              ) : (
+                <button type="button" className="step-btn" onClick={signIn} disabled={signingIn}>
+                  {signingIn ? 'กำลังลงชื่อเข้าใช้…' : 'ลงชื่อเข้าใช้ด้วย Google'}
+                </button>
+              )}
+              {signInFailed && (
+                <p className="note err" role="alert">
+                  ลงชื่อเข้าใช้ไม่สำเร็จ — ลองสลับ Chrome profile
+                </p>
+              )}
+            </div>
+          </li>
+          <li className={stepClass(folderDone, signedIn && !folderDone)}>
+            <span className="dotn" aria-hidden="true">
+              {folderDone ? '✓' : '2'}
+            </span>
+            <div>
+              <label className="field">
+                <span className="st">โฟลเดอร์เอกสารของ deal</span>
+                <span className="sd">วางลิงก์ Google Drive หรือเลือกจากล่าสุด</span>
+                <input
+                  type="text"
+                  value={folderUrl}
+                  aria-invalid={!!folderUrl && !folderId}
+                  placeholder="https://drive.google.com/drive/folders/..."
+                  onChange={(e) => setFolderUrl(e.target.value)}
+                />
+              </label>
+              {recent.length > 0 && (
+                <fieldset className="recent" aria-label="โฟลเดอร์ล่าสุด">
+                  {recent.map((id) => (
+                    <button
+                      type="button"
+                      key={id}
+                      aria-pressed={folderId === id}
+                      onClick={() => setFolderUrl(`https://drive.google.com/drive/folders/${id}`)}
+                    >
+                      {names[id] ?? shortId(id)}
+                    </button>
+                  ))}
+                </fieldset>
+              )}
+              {folderUrl && !folderId && (
+                <p className="note err" role="alert">
+                  ต้องเป็นลิงก์โฟลเดอร์ Drive (…/drive/folders/…) ไม่ใช่ไฟล์
+                </p>
+              )}
+              {/* ponytail: search by folder name needs a server API (BE-87); paste URL only for now */}
+            </div>
+          </li>
+          <li className={stepClass(inputDone, signedIn && folderDone && !inputDone)}>
+            <span className="dotn" aria-hidden="true">
+              {inputDone ? '✓' : '3'}
+            </span>
+            <div>
+              <p className="st">แหล่งเสียง</p>
+              <label className="src">
+                <input
+                  type="checkbox"
+                  checked={inputs.tab}
+                  onChange={(e) => setInputs({ ...inputs, tab: e.target.checked })}
+                />
+                เสียงจากแท็บนี้ (Meet)
+              </label>
+              <label className="src">
+                <input
+                  type="checkbox"
+                  checked={inputs.mic}
+                  onChange={(e) => setInputs({ ...inputs, mic: e.target.checked })}
+                />
+                ไมค์ในห้องประชุม
+              </label>
+              {meter}
+              {testing && audio?.error === 'tab-capture' && (
+                <div className="note err" role="alert">
+                  <p className="err-what">จับเสียงแท็บไม่ได้</p>
+                  <ol className="steps">
+                    <li>สลับไปที่แท็บ Meet</li>
+                    <li>
+                      กดไอคอน Rafael บนแถบเครื่องมือ หรือกด <kbd>Alt+Shift+R</kbd>
+                    </li>
+                    <li>กลับมาที่ panel — แถบเสียงจะขยับเมื่อจับได้</li>
+                  </ol>
+                  <p className="err-code">หรือคลิกขวาในหน้า Meet › Rafael: จับเสียงแท็บนี้</p>
+                </div>
+              )}
+              {testing && audio?.error === 'mic-permission' && <ErrorNote text={MIC_DENIED} />}
+            </div>
+          </li>
+        </ol>
+      )}
+      <footer className="s-foot">
+        <button
+          type="button"
+          className="primary"
+          disabled={block !== null || (!s.mock && !configured)}
+          aria-describedby={block && configured ? 'start-hint' : undefined}
+          onClick={start}
+        >
+          เริ่ม session
+          {block && configured && !s.mock ? ` · เหลืออีก ${remaining} ขั้น` : ''}
+        </button>
+        {block && configured && (
+          <p id="start-hint" className="note hint">
+            {BLOCK_HINT[block]}
+          </p>
+        )}
+      </footer>
     </main>
   );
 }

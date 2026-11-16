@@ -23,40 +23,55 @@ export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswer
     URL.revokeObjectURL(url);
   };
   return (
-    <main className="view">
-      <h1>จบ session แล้ว</h1>
-      <h2>คำถามที่ไม่พบใน pack ({unanswered.length})</h2>
-      {unanswered.length === 0 ? (
-        <p className="note">ไม่มีคำถามที่ไม่พบใน pack</p>
-      ) : (
-        <ul aria-label="คำถามที่ไม่พบใน pack">
-          {unanswered.map((u) => (
-            <li key={`${u.at}${u.question}`}>
-              {formatTime(u.at)} {u.question}
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="row">
-        <button
-          type="button"
-          disabled={!unanswered.length}
-          onClick={() =>
-            navigator.clipboard.writeText(text).then(
-              () => setCopied(true),
-              () => {},
-            )
-          }
-        >
-          {copied ? 'คัดลอกแล้ว' : 'Copy'}
+    <main className="view end">
+      <header>
+        <h1>จบ session</h1>
+      </header>
+      <section className="e-sec">
+        <h2>
+          ต้องตามต่อ <span className="num">{unanswered.length}</span> ข้อ
+        </h2>
+        {unanswered.length === 0 ? (
+          <p className="note">ไม่มีคำถามที่ต้องตามต่อ — ทุกคำถามมีคำตอบในเอกสาร</p>
+        ) : (
+          <ul className="fu" aria-label="คำถามที่ไม่พบใน pack">
+            {unanswered.map((u) => (
+              <li key={`${u.at}${u.question}`}>
+                <span className="h-time num">{formatTime(u.at)}</span>
+                <span>{u.question}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <footer className="s-foot">
+        <div className="e-row">
+          <button
+            type="button"
+            className="primary"
+            disabled={!unanswered.length}
+            onClick={() =>
+              navigator.clipboard.writeText(text).then(
+                () => setCopied(true),
+                () => {},
+              )
+            }
+          >
+            {copied ? 'คัดลอกแล้ว' : 'คัดลอกรายการ'}
+          </button>
+          <button
+            type="button"
+            aria-label="Download .txt"
+            disabled={!unanswered.length}
+            onClick={download}
+          >
+            .txt
+          </button>
+        </div>
+        <button type="button" className="link" onClick={() => send({ k: 'reset' })}>
+          ลบ session แล้วเริ่มใหม่
         </button>
-        <button type="button" disabled={!unanswered.length} onClick={download}>
-          Download .txt
-        </button>
-      </div>
-      <button type="button" className="primary" onClick={() => send({ k: 'reset' })}>
-        ลบ session
-      </button>
+      </footer>
     </main>
   );
 }
