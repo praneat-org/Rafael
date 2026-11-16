@@ -32,7 +32,7 @@ function LatestCue({ cue, followUps }: { cue: Cue; followUps: number }) {
       <p className="question">{cue.question}</p>
       {cue.notFound ? (
         <div className="nf-box">
-          <p className="nf-title">ไม่มีในเอกสาร</p>
+          <p className="nf-title">ไม่พบใน pack</p>
           <p className="nf-sub">
             อย่าเดาคำตอบ · เก็บไว้ในรายการตามต่อแล้ว <b className="num">({followUps})</b>
           </p>
@@ -191,7 +191,7 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
               >
                 <span className="h-time num">{formatTime(c.at)}</span>
                 <span className="h-q">{c.question}</span>
-                {c.notFound && <span className="h-nf">ไม่มีในเอกสาร</span>}
+                {c.notFound && <span className="h-nf">ไม่พบใน pack</span>}
               </button>
             </li>
           ))}
