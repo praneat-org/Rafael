@@ -168,7 +168,15 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
               className={`back${newCue ? ' new' : ''}`}
               onClick={() => setOpen(null)}
             >
-              {newCue ? 'มี cue ใหม่ · กลับไป Live' : '← กลับไป Live'}
+              {newCue ? (
+                // the new question in one line, so the rep can decide whether to go back now
+                <>
+                  <span className="back-q">cue ใหม่: {latest?.question}</span>
+                  <span className="back-go">· กลับไป Live</span>
+                </>
+              ) : (
+                '← กลับไป Live'
+              )}
             </button>
           )}
           {shown ? (
