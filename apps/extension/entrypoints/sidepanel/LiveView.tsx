@@ -32,7 +32,7 @@ function LatestCue({ cue, followUps }: { cue: Cue; followUps: number }) {
       <p className="question">{cue.question}</p>
       {cue.notFound ? (
         <div className="nf-box">
-          <p className="nf-title">ไม่มีในเอกสาร</p>
+          <p className="nf-title">ไม่พบใน pack</p>
           <p className="nf-sub">
             อย่าเดาคำตอบ · เก็บไว้ในรายการตามต่อแล้ว <b className="num">({followUps})</b>
           </p>
@@ -169,11 +169,9 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
               <span className="h-time num">{formatTime(c.at)}</span>
               <span className="h-q">{c.question}</span>
               {c.notFound ? (
-                <span className="h-a miss">ไม่มีในเอกสาร · ตามต่อ</span>
+                <span className="h-a miss">ไม่พบใน pack · ตามต่อ</span>
               ) : (
-                <span className="h-a">
-                  {c.bullets.map((b) => stripInlineAnchor(b, c.sources)).join(' · ')}
-                </span>
+                <span className="h-a">{c.bullets.join(' · ')}</span>
               )}
             </li>
           ))}

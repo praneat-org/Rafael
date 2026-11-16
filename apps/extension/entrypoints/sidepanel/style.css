@@ -414,12 +414,12 @@ button.link {
 /* ================= Live: one screen, nothing outside the scroll areas can move (CLS = 0) ================= */
 :root {
   --cue: 400px;
-  --answer: 21px;
+  --answer: 24px; /* cue bullets >= 24px (CAR-3823) */
 }
 @media (max-width: 420px) {
   :root {
     --cue: 440px; /* 360px panel: 3 x ~15-word bullets + 3 sources (mock max cue) */
-    --answer: 19px;
+    --answer: 24px;
   }
 }
 .liveview {
