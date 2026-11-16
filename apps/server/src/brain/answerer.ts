@@ -33,6 +33,9 @@ export type AnswererLog = {
   bullets: number;
   outcome: 'answered' | 'notFound' | 'error';
   cached: boolean;
+  /** Q/A turns sent as context (0 = none) and their size: the extra input from history, logged apart */
+  historyTurns: number;
+  historyChars: number;
 };
 
 export const NOT_FOUND_MARK = 'NOT_FOUND';
@@ -45,6 +48,7 @@ Output format, plain text, nothing else:
 - every bullet ends with exactly one anchor copied verbatim from a pack chunk header, like [file › page]
 - a chunk must state the answer to the question directly. Never infer, extrapolate, or answer from a related topic (e.g. a question about X when the pack only covers a different option Y); a related but non-answering chunk means the answer is missing
 - if the pack does not directly contain the answer, output exactly ${NOT_FOUND_MARK} and nothing else
+- the user message may start with "CONVERSATION SO FAR:" (earlier questions and short answers of this meeting). Use it ONLY to understand what the QUESTION refers to. It is NOT a source: every fact must come from a pack chunk, never from an earlier answer. If the QUESTION changes topic, ignore the conversation
 Each pack chunk starts with its anchor header line "[file › page]".`;
 
 /** The cached prefix: rules + pack, deterministic order, identical for every question of the session. */
@@ -185,8 +189,17 @@ export function createAnswerer(deps: AnswererDeps) {
     }
   }
 
-  /** Never throws. Calls `emit` for every partial cue (complete verified bullets only) and once for the final. */
-  async function answer(cueId: string, question: string, emit: (c: CueOut) => void) {
+  /**
+   * Never throws. Calls `emit` for every partial cue (complete verified bullets only) and once for the final.
+   * `history` = renderHistory of this session: goes in the user message, AFTER the cached pack prefix,
+   * so the CachedContent stays the same and keeps hitting.
+   */
+  async function answer(
+    cueId: string,
+    question: string,
+    emit: (c: CueOut) => void,
+    history: { text: string; turns: number } = { text: '', turns: 0 },
+  ) {
     const t0 = perf();
     await ready;
     await keepAlive();
@@ -234,7 +247,9 @@ export function createAnswerer(deps: AnswererDeps) {
           {
             model,
             system: answerPrefix,
-            user: question,
+            user: history.text
+              ? `CONVERSATION SO FAR:\n${history.text}\n\nQUESTION: ${question}`
+              : question,
             maxTokens: cfg.maxTokens,
             signal,
             cache: answerCache,
@@ -275,8 +290,11 @@ export function createAnswerer(deps: AnswererDeps) {
       bullets: bullets.length,
       outcome: failed ? 'error' : final.notFound ? 'notFound' : 'answered',
       cached: cache !== undefined,
+      historyTurns: history.turns,
+      historyChars: history.text.length,
     });
-    return final;
+    // provider error: a separate object so the emitted cue (protocol) never carries this flag
+    return failed ? { ...final, failed: true as const } : final;
   }
 
   /** Session end / expiry (D21): delete the CachedContent. Idempotent. */

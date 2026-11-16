@@ -129,5 +129,181 @@
         "kind": "question"
       }
     ]
+  },
+  {
+    "id": "h01-chain-elided",
+    "note": "SYNTHETIC. Session-history golden (follow-up context): segments are > 60 s apart, so neither the 30 s window nor the already-answered list helps; only EARLIER Q&A can resolve the follow-up.",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "แพ็กเกจ Business ราคาเท่าไรต่อ agent ครับ",
+        "answer": "2,900 บาท ต่อ agent ต่อเดือน"
+      },
+      {
+        "atMs": 90000,
+        "text": "แล้วถ้าจ่ายรายปีล่ะครับ",
+        "answer": "ลด 15% เมื่อชำระรายปีล่วงหน้า"
+      },
+      {
+        "atMs": 180000,
+        "text": "แล้ว Starter ล่ะ"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question",
+        "mustMatch": "Business"
+      },
+      {
+        "segment": 1,
+        "kind": "question",
+        "mustMatch": ["Business", "รายปี|annual"]
+      },
+      {
+        "segment": 2,
+        "kind": "question",
+        "mustMatch": ["Starter", "ราคา|รายปี|annual|ส่วนลด"]
+      }
+    ]
+  },
+  {
+    "id": "h02-capacity-beyond",
+    "note": "SYNTHETIC. Session-history golden (follow-up context): segments are > 60 s apart, so neither the 30 s window nor the already-answered list helps; only EARLIER Q&A can resolve the follow-up.",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "ระบบรับ ticket ได้กี่ ticket ต่อชั่วโมงครับ",
+        "answer": "10,000 tickets ต่อชั่วโมงต่อ tenant"
+      },
+      {
+        "atMs": 90000,
+        "text": "ถ้าเกินนั้นต้องทำยังไงครับ"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question",
+        "mustMatch": "ticket"
+      },
+      {
+        "segment": 1,
+        "kind": "question",
+        "mustMatch": "10,000|10000|ticket"
+      }
+    ]
+  },
+  {
+    "id": "h03-after-notfound",
+    "note": "SYNTHETIC. Session-history golden (follow-up context): segments are > 60 s apart, so neither the 30 s window nor the already-answered list helps; only EARLIER Q&A can resolve the follow-up.",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "รองรับการติดตั้งแบบ on-premise ไหมครับ",
+        "answer": "NOT_FOUND"
+      },
+      {
+        "atMs": 90000,
+        "text": "แล้วถ้าเป็นแบบ private cloud ล่ะครับ"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question",
+        "mustMatch": "on-premise"
+      },
+      {
+        "segment": 1,
+        "kind": "question",
+        "mustMatch": ["private cloud", "รองรับ|ติดตั้ง|ได้ไหม|ไหม"]
+      }
+    ]
+  },
+  {
+    "id": "h04-topic-switch",
+    "note": "SYNTHETIC. Session-history golden (follow-up context): segments are > 60 s apart, so neither the 30 s window nor the already-answered list helps; only EARLIER Q&A can resolve the follow-up.",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "AI Assist add-on คิดเพิ่มเท่าไรครับ",
+        "answer": "450 บาท ต่อ agent ต่อเดือน"
+      },
+      {
+        "atMs": 90000,
+        "text": "SSO รองรับ Okta ไหมครับ"
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question",
+        "mustMatch": "AI Assist|add-on"
+      },
+      {
+        "segment": 1,
+        "kind": "question",
+        "mustMatch": "Okta",
+        "mustNotMatch": "AI Assist|add-on|450"
+      }
+    ]
+  },
+  {
+    "id": "h05-typed-ask-after-voice",
+    "note": "SYNTHETIC. Session-history golden (follow-up context): segments are > 60 s apart, so neither the 30 s window nor the already-answered list helps; only EARLIER Q&A can resolve the follow-up. Segment 1 is typed in the ask box (resolveQuestion, no Detector).",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "แพ็กเกจ Business ราคาเท่าไรต่อ agent ครับ",
+        "answer": "2,900 บาท ต่อ agent ต่อเดือน"
+      },
+      {
+        "atMs": 5000,
+        "text": "รวม VAT ไหม",
+        "ask": true
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question",
+        "mustMatch": "Business"
+      },
+      {
+        "segment": 1,
+        "kind": "question",
+        "mustMatch": ["VAT", "Business"]
+      }
+    ]
+  },
+  {
+    "id": "h06-typed-ask-topic-switch",
+    "note": "SYNTHETIC. Session-history golden (follow-up context): segments are > 60 s apart, so neither the 30 s window nor the already-answered list helps; only EARLIER Q&A can resolve the follow-up. Typed, new topic: must come back unchanged in meaning.",
+    "segments": [
+      {
+        "atMs": 0,
+        "text": "Dedicated CSM คิดเท่าไรครับ",
+        "answer": "25,000 บาท ต่อเดือน"
+      },
+      {
+        "atMs": 5000,
+        "text": "เก็บประวัติ ticket ได้นานแค่ไหน",
+        "ask": true
+      }
+    ],
+    "expect": [
+      {
+        "segment": 0,
+        "kind": "question",
+        "mustMatch": "CSM"
+      },
+      {
+        "segment": 1,
+        "kind": "question",
+        "mustMatch": "ประวัติ|ticket",
+        "mustNotMatch": "CSM|25,000"
+      }
+    ]
   }
 ]

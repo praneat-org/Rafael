@@ -58,7 +58,8 @@ const fakeLlm = (): LlmClient => ({
     return { text: JSON.stringify({ isQuestion: true, question: q, fromCustomer: true }) };
   },
   async stream(req, onText) {
-    const k = keys.find((x) => x.question === req.user);
+    const q = req.user.split('QUESTION: ').at(-1); // history (follow-ups) comes before the question
+    const k = keys.find((x) => x.question === q);
     onText(k?.anchor ? `- ${k.answer} ${k.anchor}\n` : 'NOT_FOUND');
     return { text: '', inputTokens: 100, cacheReadTokens: 90, outputTokens: 10 };
   },

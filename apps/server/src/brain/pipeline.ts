@@ -5,7 +5,8 @@ import { log } from '../log.js';
 import type { Session, SessionStore } from '../session/store.js';
 import { type CueOut, createAnswerer, type PackIndex } from './answerer.js';
 import type { BrainConfig } from './config.js';
-import { createDetector, type Segment } from './detector.js';
+import { createDetector, resolveQuestion, type Segment } from './detector.js';
+import { renderHistory } from './history.js';
 import type { LlmClient } from './llm.js';
 
 /** No pack yet (undefined) -> ask answers PACK_NOT_READY. */
@@ -32,6 +33,15 @@ export function createPipeline(
   store: Pick<SessionStore, 'onEnd' | 'get'>,
 ) {
   const perf = () => performance.now();
+  // follow-up context = this session's final cues (Session.cues): memory only, survives resume, emptied on end
+  // errored answers stay in Session.cues (resume replays what the client saw) but are not context:
+  // a provider error is not "not in the pack"
+  const errored = new WeakSet<object>();
+  const historyOf = (s: Session) =>
+    renderHistory(
+      s.cues.filter((c) => !errored.has(c)),
+      opts.config.history,
+    );
   const entries = new Map<string, Entry>();
   // one Detector per session; segments run one at a time so window and dedupe stay in order
   const detectors = new Map<
@@ -72,6 +82,8 @@ export function createPipeline(
             inputTokens: a.inputTokens,
             cacheReadTokens: a.cacheReadTokens,
             outputTokens: a.outputTokens,
+            historyTurns: a.historyTurns,
+            historyChars: a.historyChars,
           }),
       }),
       chain: Promise.resolve(),
@@ -109,9 +121,27 @@ export function createPipeline(
         return;
       }
       const startedAt = perf();
+      // runs behind the previous answer, so its Q/A is already in the history
+      const history = historyOf(s);
+      let resolveMs: number | undefined;
+      if (ctx.stage === 'ask' && history.turns > 0) {
+        // typed follow-up ("แล้วราคาล่ะ"): resolve it so the cue Q: line is self-contained
+        const r = await resolveQuestion(opts, question, history.text);
+        resolveMs = Math.round(perf() - startedAt);
+        if (resolveMs > opts.config.detector.budgetMs)
+          log('budget.exceeded', { sessionId: s.id, stage: 'resolve', ms: resolveMs });
+        log('resolve', { sessionId: s.id, stage: 'resolve', ms: resolveMs, outcome: r.outcome });
+        question = r.question;
+        // session ended while resolving: its Answerer is disposed and history emptied (D11, D21)
+        if (store.get(s.id) !== s) {
+          e.inFlight--;
+          return void log('cue.dropped', { sessionId: s.id, reason: 'ended' });
+        }
+      }
       let firstCueMs: number | undefined;
       let dropped = false;
       let lastLatencyMs: number | undefined;
+      let finalMsg: Extract<ServerMessage, { t: 'cue' }> | undefined;
       const emit = (c: CueOut) => {
         if (ctx.isPaused?.()) {
           dropped = true;
@@ -128,15 +158,20 @@ export function createPipeline(
           latencyMs: lastLatencyMs,
           at: Date.now(),
         } as const;
-        // ponytail: unbounded per session; one pitch yields tens of cues, cap if that changes
-        if (!c.partial) s.cues.push(msg);
+        if (!c.partial) finalMsg = msg;
         send(msg);
       };
-      let final: CueOut;
+      let final: Awaited<ReturnType<typeof e.answerer.answer>>;
       try {
-        final = await e.answerer.answer(cueId, question, emit);
+        final = await e.answerer.answer(cueId, question, emit, history);
       } finally {
         e.inFlight--;
+      }
+      // history: resume replay + follow-up context (errored answers excluded from context)
+      // ponytail: unbounded per session; one pitch yields tens of cues, cap if that changes
+      if (finalMsg) {
+        if ('failed' in final) errored.add(finalMsg);
+        s.cues.push(finalMsg);
       }
       if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
       if (ctx.stage === 'segment' && firstCueMs !== undefined) {
@@ -150,6 +185,8 @@ export function createPipeline(
         cueId,
         stage: ctx.stage,
         queueMs: Math.round(startedAt - receivedAt),
+        historyTurns: history.turns,
+        ...(resolveMs !== undefined && { resolveMs }),
         firstCueMs,
         ms: Math.round(perf() - receivedAt),
         // detector path only; ms counts from the final segment (detector included)
@@ -207,6 +244,7 @@ export function createPipeline(
               outputTokens: a.outputTokens,
               outcome: a.outcome,
               count: a.attempts,
+              historyTurns: historyOf(s).turns,
             }),
           warn: (w) => log('budget.exceeded', { sessionId: s.id, stage: w.stage, ms: w.ms }),
         });
@@ -219,7 +257,10 @@ export function createPipeline(
           // queued behind slower segments: pause may have arrived, do not even pay for the Detector
           if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
           const t0 = perf();
-          const r = await det.d.onFinalSegment(seg);
+          // ponytail: an answer still streaming is not in history yet; its question is in the
+          // Detector's ALREADY ANSWERED list. Waiting for it would add the Detector's ~0.8 s.
+          const history = historyOf(s);
+          const r = await det.d.onFinalSegment(seg, history.text);
           if (r.kind !== 'question') return;
           if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
           const detectorMs = Math.round(perf() - t0);

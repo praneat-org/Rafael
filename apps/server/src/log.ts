@@ -29,6 +29,10 @@ const ALLOWED = [
   'sttFinalMs',
   'detectorMs',
   'serverTotalMs',
+  // follow-up context: counts / ms only, never the Q/A text
+  'historyTurns',
+  'historyChars',
+  'resolveMs',
   // pack builder (BE-91): counts / ms only, never content
   'tokens',
   'max',
