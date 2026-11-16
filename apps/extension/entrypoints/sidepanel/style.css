@@ -418,7 +418,7 @@ button.link {
 }
 @media (max-width: 420px) {
   :root {
-    --cue: 440px; /* 360px panel: 3 x ~15-word bullets + 3 sources (mock max cue) */
+    --cue: 440px; /* 360px panel: at 24px a max cue (3 x 15 words + 3 sources) is ~600px and scrolls inside the slot */
     --answer: 24px;
   }
 }
