@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { errorText } from '../../src/error-text';
+import { formatTime } from '../../src/export';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { Cue, SessionState } from '../../src/session';
 import { stripInlineAnchor } from '../../src/strip-anchor';
@@ -17,37 +18,50 @@ const STATUS_TEXT = {
   closed: 'ปิดแล้ว',
 } as const;
 
+/** footnote numbers of the sources this bullet cites inline (1-based) */
+const cites = (b: string, cue: Cue) =>
+  cue.sources.flatMap((x, i) => (b.includes(`[${x.file} › ${x.locator}]`) ? [i + 1] : []));
+
 /** D10: anchors are shown exactly as the server sent them; notFound is never answered. */
-function CueBody({ cue, big }: { cue: Cue; big: boolean }) {
+function LatestCue({ cue, followUps }: { cue: Cue; followUps: number }) {
   return (
     <>
-      <p className={cue.notFound ? 'announce-head nf' : 'announce-head'}>
-        <span className="glyph" aria-hidden="true" />
-        <span className="label">{cue.notFound ? '《ไม่พบในเอกสาร》' : '《ตอบ》'}</span>
-        <span className="rule" aria-hidden="true" />
+      <p className="q-meta">
+        <span className="num">{formatTime(cue.at)}</span> ลูกค้าถาม
       </p>
-      <p className="question">
-        <span className="qlabel">ลูกค้าถาม</span> {cue.question}
-      </p>
-      <div className="cuebody">
-        {cue.notFound ? (
-          <p className="notfound">ไม่มีข้อมูลนี้ในเอกสาร</p>
-        ) : (
-          <ul className={big ? 'bullets big' : 'bullets'}>
-            {cue.bullets.map((b) => (
-              <li key={b}>{stripInlineAnchor(b, cue.sources)}</li>
-            ))}
-          </ul>
-        )}
-      </div>
-      {cue.sources.length > 0 && (
-        <p className="anchors">
-          {cue.sources.map((x) => (
-            <span className="chip" key={`${x.fileId}${x.locator}`}>
-              {x.file} › {x.locator}
-            </span>
+      <p className="question">{cue.question}</p>
+      {cue.notFound ? (
+        <div className="nf-box">
+          <p className="nf-title">ไม่พบใน pack</p>
+          <p className="nf-sub">
+            อย่าเดาคำตอบ · เก็บไว้ในรายการตามต่อแล้ว <b className="num">({followUps})</b>
+          </p>
+        </div>
+      ) : (
+        <ul className="bullets">
+          {cue.bullets.map((b) => (
+            <li key={b}>
+              <span>
+                {stripInlineAnchor(b, cue.sources)}
+                {cites(b, cue).map((n) => (
+                  <sup key={n} className="fn">
+                    {n}
+                  </sup>
+                ))}
+              </span>
+            </li>
           ))}
-        </p>
+        </ul>
+      )}
+      {cue.sources.length > 0 && (
+        <ol className="anchors">
+          {cue.sources.map((x, i) => (
+            <li key={`${x.fileId}${x.locator}`}>
+              <b className="num">{i + 1}</b>
+              <span className="hl">{x.file}</span> · {x.locator}
+            </li>
+          ))}
+        </ol>
       )}
     </>
   );
@@ -67,7 +81,7 @@ function AskBox({ send }: { send: Send }) {
       <input
         value={text}
         maxLength={2000}
-        placeholder="ถามจาก pack แล้วกด Enter"
+        placeholder="พิมพ์ถามจากเอกสาร แล้วกด Enter"
         aria-label="ถามจาก pack"
         onChange={(e) => setText(e.target.value)}
       />
@@ -78,12 +92,9 @@ function AskBox({ send }: { send: Send }) {
 export function LiveView({ state, send }: { state: SessionState; send: Send }) {
   const [confirming, setConfirming] = useState(false);
   const latest = state.cues.at(-1);
-  const previous = state.cues.slice(0, -1);
-  const listEnd = useRef<HTMLLIElement>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll when a cue is added
-  useEffect(() => {
-    listEnd.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [previous.length]);
+  const previous = state.cues.slice(0, -1).reverse(); // newest first, right under the latest cue
+  const followUps = state.cues.filter((c) => c.notFound && !c.partial).length;
+  const heard = state.segments.at(-1)?.text;
   return (
     <main className="liveview">
       <header className="bar">
@@ -103,7 +114,7 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
             className="ghost"
             onClick={() => send({ k: state.paused ? 'resume' : 'pause' })}
           >
-            {state.paused ? 'ต่อ' : 'หยุดชั่วคราว'}
+            {state.paused ? 'ต่อ' : 'พัก'}
           </button>
           {/* leaving Live needs one confirm; End is the only way out */}
           <button
@@ -137,25 +148,40 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
       ) : (
         state.error && <ErrorNote code={state.error} />
       )}
-      {/* fixed-height slot: any cue (partial or final) fits without moving the rest */}
-      <section className="latestwrap slot" aria-live="polite">
+      {/* fixed-height slot: any cue (partial or final) fits without moving the rest (CLS) */}
+      <section className="latestwrap" aria-live="polite">
         <div
           key={latest?.cueId}
-          className={`latest${latest?.partial ? ' partial' : ''}${latest ? ' arrive' : ''}`}
+          className={`latest${latest?.partial ? ' partial' : ''}${latest?.notFound ? ' nf' : ''}${latest ? ' arrive' : ''}`}
         >
-          {latest ? <CueBody cue={latest} big /> : <p className="note">รอคำถามจากลูกค้า…</p>}
+          {latest ? (
+            <LatestCue cue={latest} followUps={followUps} />
+          ) : (
+            <p className="note waiting">รอคำถามจากลูกค้า…</p>
+          )}
         </div>
       </section>
-      <ul className="previous" aria-label="cue ก่อนหน้า">
-        {previous.map((c) => (
-          <li key={c.cueId} className="prev">
-            <CueBody cue={c} big={false} />
-          </li>
-        ))}
-        <li ref={listEnd} aria-hidden="true" />
-      </ul>
+      <section className="previous">
+        {previous.length > 0 && <h2 className="hist-h">ก่อนหน้า</h2>}
+        <ul aria-label="cue ก่อนหน้า">
+          {previous.map((c) => (
+            <li key={c.cueId} className="prev">
+              <span className="h-time num">{formatTime(c.at)}</span>
+              <span className="h-q">{c.question}</span>
+              {c.notFound ? (
+                <span className="h-a miss">ไม่พบใน pack · ตามต่อ</span>
+              ) : (
+                <span className="h-a">{c.bullets.join(' · ')}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
       <details className="transcript">
-        <summary>transcript ({state.segments.length})</summary>
+        <summary>
+          <span className="listen">กำลังฟัง</span>
+          <span className="heard">{heard ? `…${heard}` : '…'}</span>
+        </summary>
         <ul>
           {state.segments.map((g) => (
             <li key={g.segId} className={g.final ? '' : 'partial'}>
