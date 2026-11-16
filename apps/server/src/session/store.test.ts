@@ -71,3 +71,21 @@ test('TTL is 24h absolute from create: reconnects do not extend it (D11)', () =>
   vi.advanceTimersByTime(1000);
   expect(store.get(s.id)).toBeUndefined();
 });
+
+test('end empties cue history (D11)', () => {
+  const store = new MemorySessionStore();
+  const s = store.create('a@b.c', 'p');
+  s.cues.push({
+    v: 1,
+    t: 'cue',
+    cueId: 'c',
+    question: 'q',
+    bullets: [],
+    sources: [],
+    latencyMs: 0,
+    partial: false,
+    notFound: true,
+  });
+  store.end(s.id);
+  expect(s.cues).toEqual([]);
+});

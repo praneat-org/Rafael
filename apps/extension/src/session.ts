@@ -12,7 +12,7 @@ export type Cue = {
   partial: boolean;
   notFound: boolean;
   latencyMs: number;
-  /** epoch ms when the panel got it (client clock) */
+  /** epoch ms: server emit time when sent, else when the panel got it (client clock) */
   at: number;
 };
 /** End screen: a customer question the pack could not answer (D10). Memory only (D11). */
@@ -126,7 +126,7 @@ export function reduce(s: SessionState, a: Action): SessionState {
             partial: m.partial,
             notFound: m.notFound,
             latencyMs: m.latencyMs,
-            at: a.at ?? 0,
+            at: m.at ?? a.at ?? 0, // server time first: a resume replay keeps the original time
           };
           return { ...s, cues: upsert(s.cues, cue, (x) => x.cueId === m.cueId) };
         }

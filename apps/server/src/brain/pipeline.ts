@@ -121,7 +121,16 @@ export function createPipeline(
         // D26: cue.latencyMs = end of speech -> this cue emitted (stt + detector + answerer; queue included).
         // ask path has no STT / Detector: counts from ask receipt. Overrides the Answerer-local value.
         lastLatencyMs = Math.round(perf() - receivedAt) + (ctx.sttFinalMs ?? 0);
-        send({ v: PROTOCOL_VERSION, t: 'cue', ...c, latencyMs: lastLatencyMs });
+        const msg = {
+          v: PROTOCOL_VERSION,
+          t: 'cue',
+          ...c,
+          latencyMs: lastLatencyMs,
+          at: Date.now(),
+        } as const;
+        // ponytail: unbounded per session; one pitch yields tens of cues, cap if that changes
+        if (!c.partial) s.cues.push(msg);
+        send(msg);
       };
       let final: CueOut;
       try {

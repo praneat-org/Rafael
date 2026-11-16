@@ -83,6 +83,8 @@ export const ServerMessage = z.discriminatedUnion('t', [
       latencyMs: z.number().int().nonnegative(),
       partial: z.boolean(),
       notFound: z.boolean(),
+      // optional in v1: server epoch ms when emitted. Lets a resume replay keep the original time.
+      at: z.number().int().nonnegative().optional(),
     })
     // D10: a cue that claims an answer must cite at least one source.
     .refine((c) => c.notFound || c.sources.length >= 1, {

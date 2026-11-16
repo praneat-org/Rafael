@@ -641,36 +641,62 @@ sup.fn {
   list-style: none;
 }
 .prev {
-  display: grid;
-  grid-template-columns: 42px 1fr;
-  gap: 0 6px;
-  padding: 8px 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px; /* one tap on iPad (CAR-3823) */
+  padding: 10px 16px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
   border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.prev[aria-current] {
+  background: var(--surface);
+  box-shadow: inset 3px 0 var(--accent);
 }
 .h-time {
+  flex: none;
+  width: 42px;
   font-size: 12px;
   color: var(--faint);
 }
-.prev .h-time {
-  grid-row: span 2;
-  padding-top: 1px;
-}
-.h-q,
-.h-a {
+.h-q {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.h-q {
-  font-size: 13px;
+/* not in source: dashed tag, same language as the nf box */
+.h-nf {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11.5px;
+  color: var(--warn);
+  border: 1px dashed var(--warn);
+  border-radius: 4px;
+}
+.prev.nf .h-q {
   color: var(--muted);
 }
-.h-a {
-  font-size: 14px;
+/* back to Live from a history cue; no motion, colour only when a new cue waits */
+.back {
+  flex: none;
+  align-self: flex-start;
+  margin-bottom: 8px;
+  min-height: 32px;
+  font-size: 13px;
 }
-.h-a.miss {
-  color: var(--faint);
-  font-style: italic;
+.back.new {
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 /* listening line + transcript */

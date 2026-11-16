@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
+import type { ServerMessage } from '@rafael/protocol';
 import { log } from '../log.js';
 
 export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // absolute from create, activity does not extend it (D11: deleted after 24h)
@@ -19,6 +20,9 @@ export type Session = {
   audioFrames: number; // count only; audio content is never kept (D11)
   /** user's Google token for Drive reads (D13): memory only, never logged; refreshed on resume */
   accessToken?: string;
+  /** final cues, oldest first: replayed on resume so the panel history survives a reconnect.
+   * Memory only, emptied on end (D11) */
+  cues: Extract<ServerMessage, { t: 'cue' }>[];
 };
 
 /** One interface so Memorystore (Q2) can replace the in-memory map later. */
@@ -60,6 +64,7 @@ export class MemorySessionStore implements SessionStore {
       resumeToken: randomBytes(32).toString('base64url'),
       socket: undefined,
       audioFrames: 0,
+      cues: [],
     };
     this.byId.set(session.id, {
       session,
@@ -103,6 +108,7 @@ export class MemorySessionStore implements SessionStore {
     clearTimeout(e.grace);
     this.byId.delete(id);
     this.byToken.delete(e.session.resumeToken);
+    e.session.cues.length = 0; // D11: cue history goes with the session
     for (const fn of this.endHooks) {
       // one failing cleanup (sync throw or async rejection) must not block the others or the
       // socket close; log the code only, errors from providers may carry content (D11)

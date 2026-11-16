@@ -91,8 +91,15 @@ function AskBox({ send }: { send: Send }) {
 
 export function LiveView({ state, send }: { state: SessionState; send: Send }) {
   const [confirming, setConfirming] = useState(false);
+  // history cue open in the slot; liveKey = latest cue when it was opened, to spot a new one
+  const [open, setOpen] = useState<{ id: string; liveKey?: string } | null>(null);
   const latest = state.cues.at(-1);
-  const previous = state.cues.slice(0, -1).reverse(); // newest first, right under the latest cue
+  // a cue still streaming when history opened counts as new once it turns final
+  const liveKey = latest && `${latest.cueId}${latest.partial ? '~' : ''}`;
+  const viewing = open ? state.cues.find((c) => c.cueId === open.id) : undefined;
+  const shown = viewing ?? latest;
+  const newCue = viewing !== undefined && liveKey !== open?.liveKey;
+  const history = state.cues.filter((c) => !c.partial).reverse(); // finals only, newest first
   const followUps = state.cues.filter((c) => c.notFound && !c.partial).length;
   const heard = state.segments.at(-1)?.text;
   return (
@@ -149,32 +156,43 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
         state.error && <ErrorNote code={state.error} />
       )}
       {/* fixed-height slot: any cue (partial or final) fits without moving the rest (CLS) */}
-      <section className="latestwrap" aria-live="polite">
+      <section className="latestwrap" aria-live={viewing ? 'off' : 'polite'}>
         <div
-          key={latest?.cueId}
-          className={`latest${latest?.partial ? ' partial' : ''}${latest?.notFound ? ' nf' : ''}${latest ? ' arrive' : ''}`}
+          key={shown?.cueId}
+          className={`latest${shown?.partial ? ' partial' : ''}${shown?.notFound ? ' nf' : ''}${shown && !viewing ? ' arrive' : ''}`}
         >
-          {latest ? (
-            <LatestCue cue={latest} followUps={followUps} />
+          {viewing && (
+            // a new cue never pulls the rep out of history; one tap goes back to Live
+            <button
+              type="button"
+              className={`back${newCue ? ' new' : ''}`}
+              onClick={() => setOpen(null)}
+            >
+              {newCue ? 'มี cue ใหม่ · กลับไป Live' : '← กลับไป Live'}
+            </button>
+          )}
+          {shown ? (
+            <LatestCue cue={shown} followUps={followUps} />
           ) : (
             <p className="note waiting">รอคำถามจากลูกค้า…</p>
           )}
         </div>
       </section>
       <section className="previous">
-        {previous.length > 0 && <h2 className="hist-h">ก่อนหน้า</h2>}
-        <ul aria-label="cue ก่อนหน้า">
-          {previous.map((c) => (
-            <li key={c.cueId} className="prev">
-              <span className="h-time num">{formatTime(c.at)}</span>
-              <span className="h-q">{c.question}</span>
-              {c.notFound ? (
-                <span className="h-a miss">ไม่มีในเอกสาร · ตามต่อ</span>
-              ) : (
-                <span className="h-a">
-                  {c.bullets.map((b) => stripInlineAnchor(b, c.sources)).join(' · ')}
-                </span>
-              )}
+        {history.length > 0 && <h2 className="hist-h">ประวัติ</h2>}
+        <ul aria-label="ประวัติ cue">
+          {history.map((c) => (
+            <li key={c.cueId}>
+              <button
+                type="button"
+                className={`prev${c.notFound ? ' nf' : ''}`}
+                aria-current={c.cueId === viewing?.cueId || undefined}
+                onClick={() => setOpen(c.cueId === latest?.cueId ? null : { id: c.cueId, liveKey })}
+              >
+                <span className="h-time num">{formatTime(c.at)}</span>
+                <span className="h-q">{c.question}</span>
+                {c.notFound && <span className="h-nf">ไม่มีในเอกสาร</span>}
+              </button>
             </li>
           ))}
         </ul>

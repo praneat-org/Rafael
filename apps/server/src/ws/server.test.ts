@@ -98,6 +98,35 @@ test('disconnect then resume with token -> same sessionId, no new session', asyn
   b.ws.close();
 });
 
+test('resume replays final cue history after session.ready', async () => {
+  const { port, store } = start();
+  const a = await login(port);
+  send(a, { t: 'session.start', packId: 'p1' });
+  const ready = await a.next();
+  if (ready.t !== 'session.ready') throw new Error();
+  const cue = {
+    v: 1 as const,
+    t: 'cue' as const,
+    cueId: 'c1',
+    question: 'q',
+    bullets: [],
+    sources: [],
+    latencyMs: 0,
+    partial: false,
+    notFound: true,
+    at: 123,
+  };
+  store.get(ready.sessionId)?.cues.push(cue);
+  a.ws.terminate();
+  await a.closed;
+
+  const b = await login(port);
+  send(b, { t: 'session.start', packId: 'p1', resumeToken: ready.resumeToken });
+  expect((await b.next()).t).toBe('session.ready');
+  expect(await b.next()).toEqual(cue);
+  b.ws.close();
+});
+
 test('wrong token, or right token for another user -> SESSION_NOT_FOUND', async () => {
   const { port } = start();
   const a = await login(port);
