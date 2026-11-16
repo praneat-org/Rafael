@@ -166,6 +166,8 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
             <button
               type="button"
               className={`back${newCue ? ' new' : ''}`}
+              // the cue slot is aria-live=off while viewing history: announce the new cue here
+              aria-live="polite"
               onClick={() => setOpen(null)}
             >
               {newCue ? (

@@ -693,11 +693,6 @@ sup.fn {
   min-height: 32px;
   font-size: 13px;
 }
-.back.new {
-  display: flex;
-  gap: 4px;
-  max-width: 100%;
-}
 .back-q {
   min-width: 0;
   white-space: nowrap;
@@ -708,6 +703,9 @@ sup.fn {
   flex: none;
 }
 .back.new {
+  display: flex;
+  gap: 4px;
+  max-width: 100%;
   color: var(--on-accent);
   background: var(--accent);
   border-color: var(--accent);
