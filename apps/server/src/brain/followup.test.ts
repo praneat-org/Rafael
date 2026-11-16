@@ -36,6 +36,7 @@ function fakeLlm(script: { detect?: string[]; resolve?: string[]; answer?: strin
     async stream(req, onText) {
       reqs.push({ kind: 'answer', req });
       const text = script.answer?.shift() ?? 'NOT_FOUND';
+      if (text === 'THROW') throw new Error('provider down');
       onText(text);
       return { text, inputTokens: 1000, cacheReadTokens: 900, outputTokens: 20 };
     },
@@ -221,4 +222,17 @@ test('history is per session and goes with the session on end (D11)', async () =
   expect(t.store.resume(t.s.resumeToken, 'a@b.c')?.cues).toHaveLength(1);
   t.store.end(t.s.id);
   expect(t.s.cues).toEqual([]);
+});
+
+test('a provider error is not history: the next follow-up is not told "not in the pack"', async () => {
+  const t = setup({
+    detect: [detected('ราคาเท่าไหร่'), detected('ราคารวม VAT ไหม')],
+    answer: ['THROW', 'NOT_FOUND'],
+  });
+  await t.say('ราคาเท่าไหร่');
+  expect(t.last().notFound).toBe(true); // the client still gets a final cue
+  expect(t.s.cues).toEqual([]);
+  await t.say('รวม VAT ไหม');
+  expect(t.user('answer')).not.toContain('CONVERSATION SO FAR');
+  expect(t.s.cues).toHaveLength(1);
 });

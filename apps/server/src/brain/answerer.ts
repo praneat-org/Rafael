@@ -293,7 +293,8 @@ export function createAnswerer(deps: AnswererDeps) {
       historyTurns: history.turns,
       historyChars: history.text.length,
     });
-    return final;
+    // provider error: a separate object so the emitted cue (protocol) never carries this flag
+    return failed ? { ...final, failed: true as const } : final;
   }
 
   /** Session end / expiry (D21): delete the CachedContent. Idempotent. */

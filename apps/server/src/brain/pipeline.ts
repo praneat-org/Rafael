@@ -127,6 +127,7 @@ export function createPipeline(
       let firstCueMs: number | undefined;
       let dropped = false;
       let lastLatencyMs: number | undefined;
+      let finalMsg: Extract<ServerMessage, { t: 'cue' }> | undefined;
       const emit = (c: CueOut) => {
         if (ctx.isPaused?.()) {
           dropped = true;
@@ -143,16 +144,18 @@ export function createPipeline(
           latencyMs: lastLatencyMs,
           at: Date.now(),
         } as const;
-        // ponytail: unbounded per session; one pitch yields tens of cues, cap if that changes
-        if (!c.partial) s.cues.push(msg);
+        if (!c.partial) finalMsg = msg;
         send(msg);
       };
-      let final: CueOut;
+      let final: Awaited<ReturnType<typeof e.answerer.answer>>;
       try {
         final = await e.answerer.answer(cueId, question, emit, history);
       } finally {
         e.inFlight--;
       }
+      // history (resume replay + follow-up context): a provider error is not "not in the pack"
+      // ponytail: unbounded per session; one pitch yields tens of cues, cap if that changes
+      if (finalMsg && !('failed' in final)) s.cues.push(finalMsg);
       if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
       if (ctx.stage === 'segment' && firstCueMs !== undefined) {
         const total = firstCueMs + (ctx.sttFinalMs ?? 0);
