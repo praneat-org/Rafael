@@ -273,7 +273,7 @@
       {
         "segment": 1,
         "kind": "question",
-        "mustMatch": ["VAT", "Business|ราคา|2,900"]
+        "mustMatch": ["VAT", "Business"]
       }
     ]
   },

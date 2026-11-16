@@ -132,6 +132,11 @@ export function createPipeline(
           log('budget.exceeded', { sessionId: s.id, stage: 'resolve', ms: resolveMs });
         log('resolve', { sessionId: s.id, stage: 'resolve', ms: resolveMs, outcome: r.outcome });
         question = r.question;
+        // session ended while resolving: its Answerer is disposed and history emptied (D11, D21)
+        if (store.get(s.id) !== s) {
+          e.inFlight--;
+          return void log('cue.dropped', { sessionId: s.id, reason: 'ended' });
+        }
       }
       let firstCueMs: number | undefined;
       let dropped = false;

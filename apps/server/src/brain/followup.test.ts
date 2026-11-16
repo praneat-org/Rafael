@@ -23,7 +23,12 @@ const pack: PackIndex = [
 ];
 
 /** Routes by system prompt: Detector / resolver get scripted JSON, the Answerer gets scripted bullets. */
-function fakeLlm(script: { detect?: string[]; resolve?: string[]; answer?: string[] }) {
+function fakeLlm(script: {
+  detect?: string[];
+  resolve?: string[];
+  answer?: string[];
+  onResolve?: () => void;
+}) {
   const reqs: { kind: 'detect' | 'resolve' | 'answer'; req: LlmRequest }[] = [];
   const llm: LlmClient = {
     async complete(req) {
@@ -31,6 +36,7 @@ function fakeLlm(script: { detect?: string[]; resolve?: string[]; answer?: strin
       const kind = req.system === RESOLVE_PROMPT ? 'resolve' : 'detect';
       expect(req.system).toBe(kind === 'resolve' ? RESOLVE_PROMPT : DETECT_PROMPT);
       reqs.push({ kind, req });
+      if (kind === 'resolve') script.onResolve?.();
       return { text: script[kind]?.shift() ?? '{}' };
     },
     async stream(req, onText) {
@@ -70,7 +76,7 @@ function setup(script: Parameters<typeof fakeLlm>[0]) {
   const last = () => finals().at(-1) as Extract<ServerMessage, { t: 'cue' }>;
   const user = (kind: 'detect' | 'resolve' | 'answer') =>
     f.reqs.filter((r) => r.kind === kind).at(-1)?.req.user ?? '';
-  return { ...f, s, store, say, ask, last, user };
+  return { ...f, s, store, say, ask, last, user, p, send, sent };
 }
 
 let logs: string[] = [];
@@ -235,4 +241,20 @@ test('a provider error is not history: the next follow-up is not told "not in th
   await t.say('รวม VAT ไหม');
   expect(t.user('answer')).not.toContain('CONVERSATION SO FAR'); // ...but never as context
   expect(t.s.cues).toHaveLength(2);
+});
+
+test('session ended while a typed follow-up is resolving: no Answerer call, no cue (D11, D21)', async () => {
+  const script: Parameters<typeof fakeLlm>[0] = {
+    detect: [detected('ราคาเท่าไหร่')],
+    resolve: [JSON.stringify({ question: 'ราคารวม VAT ไหม' })],
+    answer: ['- 5,000 [price.xlsx › tab Infra]'],
+  };
+  const t = setup(script);
+  await t.say('ราคาเท่าไหร่');
+  script.onResolve = () => t.store.end(t.s.id);
+  expect(t.p.ask(t.s, 'รวม VAT ไหม', t.send)).toBe('ok');
+  await vi.waitFor(() => expect(t.reqs.some((r) => r.kind === 'resolve')).toBe(true));
+  await new Promise((r) => setTimeout(r, 20));
+  expect(t.reqs.filter((r) => r.kind === 'answer')).toHaveLength(1); // only the first question
+  expect(t.sent.filter((m) => m.t === 'cue' && !m.partial)).toHaveLength(1);
 });
