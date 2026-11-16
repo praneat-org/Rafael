@@ -34,7 +34,14 @@ export function createPipeline(
 ) {
   const perf = () => performance.now();
   // follow-up context = this session's final cues (Session.cues): memory only, survives resume, emptied on end
-  const historyOf = (s: Session) => renderHistory(s.cues, opts.config.history);
+  // errored answers stay in Session.cues (resume replays what the client saw) but are not context:
+  // a provider error is not "not in the pack"
+  const errored = new WeakSet<object>();
+  const historyOf = (s: Session) =>
+    renderHistory(
+      s.cues.filter((c) => !errored.has(c)),
+      opts.config.history,
+    );
   const entries = new Map<string, Entry>();
   // one Detector per session; segments run one at a time so window and dedupe stay in order
   const detectors = new Map<
@@ -121,6 +128,8 @@ export function createPipeline(
         // typed follow-up ("แล้วราคาล่ะ"): resolve it so the cue Q: line is self-contained
         const r = await resolveQuestion(opts, question, history.text);
         resolveMs = Math.round(perf() - startedAt);
+        if (resolveMs > opts.config.detector.budgetMs)
+          log('budget.exceeded', { sessionId: s.id, stage: 'resolve', ms: resolveMs });
         log('resolve', { sessionId: s.id, stage: 'resolve', ms: resolveMs, outcome: r.outcome });
         question = r.question;
       }
@@ -153,9 +162,12 @@ export function createPipeline(
       } finally {
         e.inFlight--;
       }
-      // history (resume replay + follow-up context): a provider error is not "not in the pack"
+      // history: resume replay + follow-up context (errored answers excluded from context)
       // ponytail: unbounded per session; one pitch yields tens of cues, cap if that changes
-      if (finalMsg && !('failed' in final)) s.cues.push(finalMsg);
+      if (finalMsg) {
+        if ('failed' in final) errored.add(finalMsg);
+        s.cues.push(finalMsg);
+      }
       if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
       if (ctx.stage === 'segment' && firstCueMs !== undefined) {
         const total = firstCueMs + (ctx.sttFinalMs ?? 0);
@@ -240,6 +252,8 @@ export function createPipeline(
           // queued behind slower segments: pause may have arrived, do not even pay for the Detector
           if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
           const t0 = perf();
+          // ponytail: an answer still streaming is not in history yet; its question is in the
+          // Detector's ALREADY ANSWERED list. Waiting for it would add the Detector's ~0.8 s.
           const history = historyOf(s);
           const r = await det.d.onFinalSegment(seg, history.text);
           if (r.kind !== 'question') return;

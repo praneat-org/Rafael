@@ -231,8 +231,8 @@ test('a provider error is not history: the next follow-up is not told "not in th
   });
   await t.say('ราคาเท่าไหร่');
   expect(t.last().notFound).toBe(true); // the client still gets a final cue
-  expect(t.s.cues).toEqual([]);
+  expect(t.s.cues).toHaveLength(1); // kept for resume replay (the client saw it)
   await t.say('รวม VAT ไหม');
-  expect(t.user('answer')).not.toContain('CONVERSATION SO FAR');
-  expect(t.s.cues).toHaveLength(1);
+  expect(t.user('answer')).not.toContain('CONVERSATION SO FAR'); // ...but never as context
+  expect(t.s.cues).toHaveLength(2);
 });
