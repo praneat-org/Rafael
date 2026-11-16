@@ -5,7 +5,8 @@ import { log } from '../log.js';
 import type { Session, SessionStore } from '../session/store.js';
 import { type CueOut, createAnswerer, type PackIndex } from './answerer.js';
 import type { BrainConfig } from './config.js';
-import { createDetector, type Segment } from './detector.js';
+import { createDetector, resolveQuestion, type Segment } from './detector.js';
+import { renderHistory } from './history.js';
 import type { LlmClient } from './llm.js';
 
 /** No pack yet (undefined) -> ask answers PACK_NOT_READY. */
@@ -32,6 +33,8 @@ export function createPipeline(
   store: Pick<SessionStore, 'onEnd' | 'get'>,
 ) {
   const perf = () => performance.now();
+  // follow-up context = this session's final cues (Session.cues): memory only, survives resume, emptied on end
+  const historyOf = (s: Session) => renderHistory(s.cues, opts.config.history);
   const entries = new Map<string, Entry>();
   // one Detector per session; segments run one at a time so window and dedupe stay in order
   const detectors = new Map<
@@ -72,6 +75,8 @@ export function createPipeline(
             inputTokens: a.inputTokens,
             cacheReadTokens: a.cacheReadTokens,
             outputTokens: a.outputTokens,
+            historyTurns: a.historyTurns,
+            historyChars: a.historyChars,
           }),
       }),
       chain: Promise.resolve(),
@@ -109,6 +114,16 @@ export function createPipeline(
         return;
       }
       const startedAt = perf();
+      // runs behind the previous answer, so its Q/A is already in the history
+      const history = historyOf(s);
+      let resolveMs: number | undefined;
+      if (ctx.stage === 'ask' && history.turns > 0) {
+        // typed follow-up ("แล้วราคาล่ะ"): resolve it so the cue Q: line is self-contained
+        const r = await resolveQuestion(opts, question, history.text);
+        resolveMs = Math.round(perf() - startedAt);
+        log('resolve', { sessionId: s.id, stage: 'resolve', ms: resolveMs, outcome: r.outcome });
+        question = r.question;
+      }
       let firstCueMs: number | undefined;
       let dropped = false;
       let lastLatencyMs: number | undefined;
@@ -134,7 +149,7 @@ export function createPipeline(
       };
       let final: CueOut;
       try {
-        final = await e.answerer.answer(cueId, question, emit);
+        final = await e.answerer.answer(cueId, question, emit, history);
       } finally {
         e.inFlight--;
       }
@@ -150,6 +165,8 @@ export function createPipeline(
         cueId,
         stage: ctx.stage,
         queueMs: Math.round(startedAt - receivedAt),
+        historyTurns: history.turns,
+        ...(resolveMs !== undefined && { resolveMs }),
         firstCueMs,
         ms: Math.round(perf() - receivedAt),
         // detector path only; ms counts from the final segment (detector included)
@@ -207,6 +224,7 @@ export function createPipeline(
               outputTokens: a.outputTokens,
               outcome: a.outcome,
               count: a.attempts,
+              historyTurns: historyOf(s).turns,
             }),
           warn: (w) => log('budget.exceeded', { sessionId: s.id, stage: w.stage, ms: w.ms }),
         });
@@ -219,7 +237,8 @@ export function createPipeline(
           // queued behind slower segments: pause may have arrived, do not even pay for the Detector
           if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
           const t0 = perf();
-          const r = await det.d.onFinalSegment(seg);
+          const history = historyOf(s);
+          const r = await det.d.onFinalSegment(seg, history.text);
           if (r.kind !== 'question') return;
           if (isPaused()) return void log('cue.dropped', { sessionId: s.id, reason: 'paused' });
           const detectorMs = Math.round(perf() - t0);

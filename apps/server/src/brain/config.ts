@@ -27,6 +27,8 @@ export type BrainConfig = {
     /** speech end -> first cue: the p95 ceiling (p50 target is 3 s) */
     firstCueBudgetMs: number;
   };
+  /** follow-up context: last Q/A turns given to Detector + Answerer (context only, never a source) */
+  history: { maxTurns: number; maxChars: number };
   answerer: {
     maxBullets: number;
     maxWordsPerBullet: number;
@@ -54,6 +56,7 @@ export function loadBrainConfig(env: Record<string, string | undefined>): BrainC
       dedupeSimilarity: 0.85,
     },
     pipeline: { sttFinalBudgetMs: 800, firstCueBudgetMs: 5000 },
+    history: { maxTurns: 6, maxChars: 2000 },
     answerer: {
       maxBullets: 3,
       maxWordsPerBullet: 15,
