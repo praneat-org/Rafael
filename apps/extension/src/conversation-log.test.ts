@@ -121,3 +121,11 @@ test('md: a model failure shows in the timeline but not in the "not found" list'
   expect(md).toContain('## ไม่พบใน source (1)');
   expect(md).not.toContain('- 14:11 ส่วนลดเท่าไร');
 });
+
+test('md: Markdown characters in spoken text are escaped', () => {
+  const md = logToMarkdown([
+    log[0] as LogEvent,
+    { ...base(1, '14:05:10'), type: 'transcript', segId: '1-9', text: 'รหัส *A12* กับ [x]' },
+  ]);
+  expect(md).toContain('รหัส \\*A12\\* กับ \\[x\\]');
+});

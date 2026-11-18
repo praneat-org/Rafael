@@ -9,7 +9,12 @@ type Of<T extends LogEvent['type']> = Extract<LogEvent, { type: T }>;
 const hms = (ts: string) => ts.slice(11, 19); // ts is already Asia/Bangkok
 const hm = (ts: string) => ts.slice(11, 16);
 const day = (ts: string) => ts.slice(0, 10);
-const oneLine = (t: string) => t.replace(/\s*[\r\n]+\s*/g, ' ').trim();
+// one line, Markdown characters escaped: `*A12*` must stay `*A12*`, not italic A12
+const oneLine = (t: string) =>
+  t
+    .replace(/\s*[\r\n]+\s*/g, ' ')
+    .trim()
+    .replace(/[\\`*_[\]<>#|~]/g, '\\$&');
 
 /** rafael_<YYYYMMDD-HHmm>_<folder>.<ext>, start time in Asia/Bangkok */
 export function logFileName(events: LogEvent[], ext: 'md' | 'json'): string {
@@ -58,7 +63,9 @@ export function logToMarkdown(events: LogEvent[]): string {
         );
         for (const b of e.bullets) out.push(`> - ${oneLine(stripInlineAnchor(b, e.sources))}`);
         if (e.sources.length)
-          out.push(`> ที่มา: ${e.sources.map((x) => `${x.file} › ${x.locator}`).join(', ')}`);
+          out.push(
+            `> ที่มา: ${e.sources.map((x) => oneLine(`${x.file} › ${x.locator}`)).join(', ')}`,
+          );
         out.push('');
         break;
       case 'not_found':

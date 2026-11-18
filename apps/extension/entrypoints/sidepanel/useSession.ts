@@ -51,8 +51,12 @@ export function useSession() {
         };
         const timer = setTimeout(() => done(null), 5000);
         pendingLog.current = { id, done };
-        if (port.current) port.current.postMessage({ k: 'log', id } satisfies PanelToOffscreen);
-        else done(null);
+        try {
+          // throws once the port is gone (offscreen closed)
+          port.current?.postMessage({ k: 'log', id } satisfies PanelToOffscreen) ?? done(null);
+        } catch {
+          done(null);
+        }
       }),
     [],
   );

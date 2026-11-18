@@ -15,12 +15,19 @@ export type LogEntry = { at: number; body: LogBody };
  * Append one event to the session's Conversation Log (memory only, emptied on end: D11).
  * `id` (segId / cueId) makes it idempotent: a replay after reconnect never adds a second copy.
  */
-export function record(s: Session, body: LogBody, id?: string, at = Date.now()) {
+export function record(
+  s: Session,
+  body: LogBody,
+  id?: string,
+  at = Date.now(),
+): LogEntry | undefined {
   if (id !== undefined) {
     if (s.logIds.has(id)) return;
     s.logIds.add(id);
   }
-  s.log.push({ at, body });
+  const e = { at, body };
+  s.log.push(e);
+  return e;
 }
 
 /** The whole log so far; `endedAt` adds the session.end event. */
