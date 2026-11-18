@@ -4,6 +4,7 @@ import type { Browser } from 'wxt/browser';
 import type { AudioState } from '../../src/audio/audio-state';
 import { type OffscreenToPanel, type PanelToOffscreen, PORT_NAME } from '../../src/messages';
 import { requestOffscreen } from '../../src/offscreen-client';
+import { postOrFail } from '../../src/post-or-fail';
 import { initialState, type SessionState } from '../../src/session';
 
 /** The only place the side panel talks to the offscreen document. Display-only state. */
@@ -50,12 +51,7 @@ export function useSession() {
         };
         const timer = setTimeout(() => done(null), timeoutMs);
         pending.current.set(id, done);
-        try {
-          // throws once the port is gone (offscreen closed)
-          port.current?.postMessage({ k, id } satisfies PanelToOffscreen) ?? done(null);
-        } catch {
-          done(null);
-        }
+        postOrFail(port.current, { k, id } satisfies PanelToOffscreen, () => done(null));
       }),
     [],
   );
