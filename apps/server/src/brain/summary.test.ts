@@ -61,6 +61,7 @@ const modelOut = {
   actions: [
     { what: 'ส่ง quotation', who: 'คุณสมชาย', when: 'วันศุกร์', at: '00:32:30' },
     { what: 'นัด demo', who: 'คุณวิภา', when: 'พรุ่งนี้', at: '00:32:30' }, // never said: blanked
+    { what: 'โทรตาม', who: '-', when: '?', at: '00:32:30' }, // punctuation only: blanked
   ],
 };
 
@@ -77,10 +78,11 @@ test('claims are checked against the log: no line -> dropped, who / when not sai
   expect(summary.actions).toEqual([
     { what: 'ส่ง quotation', who: 'คุณสมชาย', when: 'วันศุกร์', at: '00:32:30' },
     { what: 'นัด demo', who: null, when: null, at: '00:32:30' },
+    { what: 'โทรตาม', who: null, when: null, at: '00:32:30' },
   ]);
   // "not found" questions go to the parking lot; a model failure does not
   expect(summary.notFound).toEqual([{ text: 'มี SLA 99.99 ไหม', at: '00:33:20' }]);
-  expect(stats).toEqual({ chunks: 1, droppedNoLine: 1, blankedWho: 1, blankedWhen: 1 });
+  expect(stats).toEqual({ chunks: 1, droppedNoLine: 1, blankedWho: 2, blankedWhen: 2 });
 });
 
 test('long transcript: split into chunks, merged; tldr from one more call', async () => {
@@ -128,7 +130,7 @@ test('POST /api/summary: own log -> 200 with the summary, model from SUMMARY_MOD
   const { res, calls } = await post({ events: log });
   expect(res.status).toBe(200);
   const b = (await res.json()) as { summary: { actions: unknown[] } };
-  expect(b.summary.actions).toHaveLength(2);
+  expect(b.summary.actions).toHaveLength(3);
   expect(calls[0]?.model).toBe('sum');
 });
 

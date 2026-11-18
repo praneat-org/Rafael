@@ -125,9 +125,9 @@ export async function summarize(
       return ok;
     });
   const saidNear = (words: string | null, at: string) => {
-    if (!words?.trim()) return false;
+    const w = norm(words ?? '');
+    if (!w) return false; // empty / punctuation only: nothing was said
     const ms = byAt.get(at)?.[0]?.ms ?? -Infinity;
-    const w = norm(words);
     return ls.some((l) => Math.abs(l.ms - ms) <= NEAR_MS && norm(l.text).includes(w));
   };
 
