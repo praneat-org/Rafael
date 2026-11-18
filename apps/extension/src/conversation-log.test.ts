@@ -129,3 +129,11 @@ test('md: Markdown characters in spoken text are escaped', () => {
   ]);
   expect(md).toContain('รหัส \\*A12\\* กับ \\[x\\]');
 });
+
+test('md: & is escaped so &copy; stays as said', () => {
+  const md = logToMarkdown([
+    log[0] as LogEvent,
+    { ...base(1, '14:05:10'), type: 'transcript', segId: '1-8', text: 'A &copy; B' },
+  ]);
+  expect(md).toContain('A \\&copy; B');
+});

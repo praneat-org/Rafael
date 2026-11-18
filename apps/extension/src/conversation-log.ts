@@ -14,7 +14,7 @@ const oneLine = (t: string) =>
   t
     .replace(/\s*[\r\n]+\s*/g, ' ')
     .trim()
-    .replace(/[\\`*_[\]<>#|~]/g, '\\$&');
+    .replace(/[\\`*_[\]<>#|~&]/g, '\\$&');
 
 /** rafael_<YYYYMMDD-HHmm>_<folder>.<ext>, start time in Asia/Bangkok */
 export function logFileName(events: LogEvent[], ext: 'md' | 'json'): string {
