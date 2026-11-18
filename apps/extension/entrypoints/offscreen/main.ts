@@ -28,7 +28,8 @@ let state = initialState;
 // Conversation Log copy the server sent with session.end (the server deletes its own). Memory only (D11)
 let finalLog: LogEvent[] | null = null;
 let endTimer: ReturnType<typeof setTimeout> | undefined;
-const END_LOG_WAIT_MS = 3000;
+// server flushes STT first (gemini flush timeout 2 s) before it sends the last log copy: leave margin
+const END_LOG_WAIT_MS = 6000;
 let transport: Transport | null = null;
 let stopAudio: (() => void) | null = null;
 const capture = new CaptureSlot();
