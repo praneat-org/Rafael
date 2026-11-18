@@ -62,7 +62,10 @@ export function logToMarkdown(events: LogEvent[]): string {
         out.push('');
         break;
       case 'not_found':
-        out.push(`> **${hms(e.ts)} ไม่พบใน source** · ${oneLine(e.question)}`, '');
+        out.push(
+          `> **${hms(e.ts)} ${e.failed ? 'ตอบไม่ได้ (ระบบขัดข้อง)' : 'ไม่พบใน source'}** · ${oneLine(e.question)}`,
+          '',
+        );
         break;
       case 'pause':
         pausedAt = e.ts;
@@ -75,7 +78,8 @@ export function logToMarkdown(events: LogEvent[]): string {
   }
   // still paused when the log was taken: close the marker at the end / last event
   if (pausedAt) out.push(`_paused ${hm(pausedAt)}–${end ? hm(end.ts) : 'ตอนนี้'}_`, '');
-  const nf = events.filter((e): e is Of<'not_found'> => e.type === 'not_found');
+  // a model failure is not a gap in the pack: timeline only
+  const nf = events.filter((e): e is Of<'not_found'> => e.type === 'not_found' && !e.failed);
   out.push(`## ไม่พบใน source (${nf.length})`, '');
   if (!nf.length) out.push('ไม่มี', '');
   for (const e of nf) out.push(`- ${hm(e.ts)} ${oneLine(e.question)}`);

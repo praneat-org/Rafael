@@ -88,7 +88,8 @@ export function EndView({
           type="button"
           className="link"
           onClick={() => {
-            if (!saved && endLog === 'ready' && !warned) return setWarned(true);
+            // also while the last copy is still on its way: deleting now would drop it
+            if (!saved && endLog !== 'none' && !warned) return setWarned(true);
             send({ k: 'reset' });
           }}
         >

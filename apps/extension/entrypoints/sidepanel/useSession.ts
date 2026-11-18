@@ -12,7 +12,7 @@ export function useSession() {
   const [audio, setAudio] = useState<AudioState | null>(null);
   const [offline, setOffline] = useState(false);
   const port = useRef<Browser.runtime.Port | null>(null);
-  const pendingLog = useRef<((e: LogEvent[] | null) => void) | null>(null);
+  const pendingLog = useRef<{ id: string; done: (e: LogEvent[] | null) => void } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -22,8 +22,10 @@ export function useSession() {
       const p = browser.runtime.connect({ name: PORT_NAME });
       p.onMessage.addListener((m: OffscreenToPanel) => {
         if (m.k === 'state') setState(m.state);
-        else if (m.k === 'log') pendingLog.current?.(m.events);
-        else setAudio(m); // level number only, never audio (D11)
+        // only the answer to the newest request: a late one may be an older snapshot
+        else if (m.k === 'log') {
+          if (m.id === pendingLog.current?.id) pendingLog.current?.done(m.events);
+        } else setAudio(m); // level number only, never audio (D11)
       });
       p.onDisconnect.addListener(() => setOffline(true));
       port.current = p;
@@ -40,15 +42,16 @@ export function useSession() {
   const getLog = useCallback(
     () =>
       new Promise<LogEvent[] | null>((resolve) => {
-        pendingLog.current?.(null); // an older request loses
+        pendingLog.current?.done(null); // an older request loses
+        const id = crypto.randomUUID();
         const done = (e: LogEvent[] | null) => {
           clearTimeout(timer);
-          if (pendingLog.current === done) pendingLog.current = null;
+          if (pendingLog.current?.id === id) pendingLog.current = null;
           resolve(e);
         };
         const timer = setTimeout(() => done(null), 5000);
-        pendingLog.current = done;
-        if (port.current) port.current.postMessage({ k: 'log' } satisfies PanelToOffscreen);
+        pendingLog.current = { id, done };
+        if (port.current) port.current.postMessage({ k: 'log', id } satisfies PanelToOffscreen);
         else done(null);
       }),
     [],

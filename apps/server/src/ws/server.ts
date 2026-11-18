@@ -80,7 +80,8 @@ export function attachWs(http: Server, opts: WsOptions) {
           if (paused.has(s))
             return void log('cue.dropped', { sessionId: s.id, reason: 'paused-final' });
           // Conversation Log: finals only, never while paused (the pause marker stands in)
-          if (seg.text.trim())
+          // store.end flushes STT after emptying the log: an ended session must not refill it (D11)
+          if (store.get(s.id) === s && seg.text.trim())
             record(
               s,
               { type: 'transcript', segId: seg.segId, text: seg.text, speaker: seg.speaker },
@@ -265,7 +266,7 @@ export function attachWs(http: Server, opts: WsOptions) {
         case 'log.get':
           // only on the socket that owns the session: resume already checked it is the same account
           if (!session) return fail('SESSION_NOT_FOUND');
-          return send({ v: PROTOCOL_VERSION, t: 'log', events: snapshot(session) });
+          return send({ v: PROTOCOL_VERSION, t: 'log', id: m.id, events: snapshot(session) });
         case 'pause':
           if (!session) return fail('SESSION_NOT_FOUND');
           if (!paused.has(session)) record(session, { type: 'pause' }); // a repeated pause is one marker

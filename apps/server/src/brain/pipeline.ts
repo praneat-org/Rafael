@@ -174,21 +174,29 @@ export function createPipeline(
         if ('failed' in final) errored.add(finalMsg);
         s.cues.push(finalMsg);
         const { cueId: id, question: q, latencyMs } = finalMsg;
-        record(
-          s,
-          finalMsg.notFound
-            ? { type: 'not_found', cueId: id, question: q, latencyMs }
-            : {
-                type: 'cue',
-                cueId: id,
-                question: q,
-                bullets: finalMsg.bullets,
-                sources: finalMsg.sources,
-                latencyMs,
-              },
-          id,
-          finalMsg.at,
-        );
+        // ended meanwhile: its log is already emptied (D11)
+        if (store.get(s.id) === s)
+          record(
+            s,
+            finalMsg.notFound
+              ? {
+                  type: 'not_found',
+                  cueId: id,
+                  question: q,
+                  latencyMs,
+                  ...('failed' in final && { failed: true as const }),
+                }
+              : {
+                  type: 'cue',
+                  cueId: id,
+                  question: q,
+                  bullets: finalMsg.bullets,
+                  sources: finalMsg.sources,
+                  latencyMs,
+                },
+            id,
+            finalMsg.at,
+          );
       }
       if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
       if (ctx.stage === 'segment' && firstCueMs !== undefined) {

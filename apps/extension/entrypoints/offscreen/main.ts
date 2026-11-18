@@ -159,7 +159,7 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   });
   t.onMessage((msg) => {
     if (msg.t === 'log') {
-      if (state.phase !== 'end') return post({ k: 'log', events: msg.events });
+      if (state.phase !== 'end') return post({ k: 'log', id: msg.id, events: msg.events });
       finalLog = msg.events; // the copy sent with session.end: the session is gone after this
       dispatch({ k: 'end-log', ok: true });
       return teardown();
@@ -205,8 +205,8 @@ function onCommand(cmd: PanelToOffscreen) {
   } else if (cmd.k === 'ask') {
     if (state.phase === 'live') transport?.send({ v: 1, t: 'ask', text: cmd.text.slice(0, 2000) });
   } else if (cmd.k === 'log') {
-    if (state.phase === 'live') transport?.send({ v: 1, t: 'log.get' });
-    else post({ k: 'log', events: state.phase === 'end' ? finalLog : null });
+    if (state.phase === 'live') transport?.send({ v: 1, t: 'log.get', id: cmd.id });
+    else post({ k: 'log', id: cmd.id, events: state.phase === 'end' ? finalLog : null });
   } else if (cmd.k === 'end') {
     if (state.phase !== 'live') return;
     // end first: the transport may close right away on session.end, and a `closed` while live resets to Setup

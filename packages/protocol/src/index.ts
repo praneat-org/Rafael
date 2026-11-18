@@ -46,7 +46,8 @@ export const ClientMessage = z.discriminatedUnion('t', [
   z.strictObject({ v, t: z.literal('resume') }),
   z.strictObject({ v, t: z.literal('session.end') }),
   /** Conversation Log of this connection's session so far; answered with `log` */
-  z.strictObject({ v, t: z.literal('log.get') }),
+  /** `id` is echoed in the answer so a late answer is never taken for a newer request */
+  z.strictObject({ v, t: z.literal('log.get'), id: z.string().min(1).max(64).optional() }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessage>;
 
@@ -107,7 +108,7 @@ export const ServerMessage = z.discriminatedUnion('t', [
     total: z.number().int().nonnegative().optional(),
   }),
   /** answer to log.get, and sent once more (with session.end) right before session.end deletes it */
-  z.object({ v, t: z.literal('log'), events: z.array(LogEvent) }),
+  z.object({ v, t: z.literal('log'), id: z.string().optional(), events: z.array(LogEvent) }),
   z.object({
     v,
     t: z.literal('error'),

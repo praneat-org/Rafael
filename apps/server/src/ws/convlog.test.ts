@@ -130,9 +130,11 @@ test('reconnect mid-session: log keeps every final once; pause leaves a marker a
   expect(texts).toEqual(['w1 w2', 'w5 w6', 'w7 w8']); // w3 w4 were said during the pause
   expect(new Set(log.map((e) => e.seq)).size).toBe(log.length);
   expect(log.map((e) => e.seq)).toEqual(log.map((_, i) => i));
+  const sessionId = a.ready && 'sessionId' in a.ready ? a.ready.sessionId : '';
+  expect(sessionId).not.toBe('');
   for (const e of log) {
     expect(e.ts).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}\+07:00$/);
-    expect(e.sessionId).toBe(log[0]?.sessionId);
+    expect(e.sessionId).toBe(sessionId); // the first connection's session, also after reconnect
   }
   expect(log[0]).toMatchObject({ user: 'a@praneat.com', folderId: 'folder-1', offsetMs: 0 });
 
@@ -211,4 +213,27 @@ test('2 h session (2,000 finals + 100 cues): snapshot well under 3 s', () => {
   const json = JSON.stringify(snapshot(s, Date.now()));
   expect(performance.now() - t0).toBeLessThan(500);
   expect(json.length).toBeLessThan(2_000_000);
+});
+
+test('a model failure is logged as not_found with failed: true; log.get echoes its id', async () => {
+  const { port } = start({
+    brain: {
+      llm: {
+        ...llm(''),
+        stream: async () => {
+          throw new Error('provider down');
+        },
+      },
+      config: loadBrainConfig({ DETECTOR_MODEL: 'd', ANSWERER_MODEL: 'a' }),
+      getPack: () => pack,
+    },
+  });
+  const c = await client(port, { packId: 'p' });
+  c.send({ t: 'ask', text: 'ราคาเท่าไร' });
+  await vi.waitFor(async () =>
+    expect((await c.getLog()).some((e) => e.type === 'not_found')).toBe(true),
+  );
+  expect((await c.getLog()).at(-1)).toMatchObject({ type: 'not_found', failed: true });
+  c.send({ t: 'log.get', id: 'r-42' });
+  await vi.waitFor(() => expect(c.msgs.some((m) => m.t === 'log' && m.id === 'r-42')).toBe(true));
 });

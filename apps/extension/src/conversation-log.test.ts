@@ -100,7 +100,24 @@ test('2 h session formats well under 3 s', () => {
       text: 'ข้อความ '.repeat(20),
     });
   const t0 = performance.now();
-  logToMarkdown(big);
-  logToJson(big);
+  const md = logToMarkdown(big);
+  const json = logToJson(big);
   expect(performance.now() - t0).toBeLessThan(1000);
+  expect(md.match(/^\*\*15:00:00\*\*/gm)).toHaveLength(3000);
+  expect(JSON.parse(json).events).toHaveLength(big.length);
+});
+
+test('md: a model failure shows in the timeline but not in the "not found" list', () => {
+  const failed: LogEvent = {
+    ...base(7, '14:11:00'),
+    type: 'not_found',
+    cueId: 'c3',
+    question: 'ส่วนลดเท่าไร',
+    latencyMs: 900,
+    failed: true,
+  };
+  const md = logToMarkdown([...log.slice(0, 7), failed, log[7] as LogEvent]);
+  expect(md).toContain('ตอบไม่ได้ (ระบบขัดข้อง)** · ส่วนลดเท่าไร');
+  expect(md).toContain('## ไม่พบใน source (1)');
+  expect(md).not.toContain('- 14:11 ส่วนลดเท่าไร');
 });

@@ -56,6 +56,8 @@ export const LogEvent = z.discriminatedUnion('type', [
     cueId: z.string().min(1),
     question: z.string(),
     latencyMs: z.number().int().nonnegative(),
+    /** true = the model failed (provider error), not a real "not in the pack" answer */
+    failed: z.literal(true).optional(),
   }),
   z.object({ ...base, type: z.literal('pause') }),
   z.object({ ...base, type: z.literal('resume') }),

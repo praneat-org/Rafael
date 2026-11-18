@@ -93,6 +93,7 @@ export class MockTransport implements Transport {
       this.emit({
         v: 1,
         t: 'log',
+        id: msg.t === 'log.get' ? msg.id : undefined,
         events: [
           {
             ...base,
