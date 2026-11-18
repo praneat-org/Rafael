@@ -18,7 +18,7 @@ export type SttOptions = {
    */
   onFinal?: (
     s: Session,
-    seg: { text: string; speaker?: string },
+    seg: { segId: string; text: string; speaker?: string },
     send: (m: ServerMessage) => void,
     meta: { sttFinalMs?: number },
   ) => void;
@@ -85,18 +85,13 @@ export function createSttService(opts: SttOptions, store: Pick<SessionStore, 'on
           segId: `${e.gen}-${m.segId}`,
         }),
       onFinal: (m) => {
-        out({
-          v: PROTOCOL_VERSION,
-          t: 'transcript',
-          final: true,
-          ...m,
-          segId: `${e.gen}-${m.segId}`,
-        });
+        const segId = `${e.gen}-${m.segId}`;
+        out({ v: PROTOCOL_VERSION, t: 'transcript', final: true, ...m, segId });
         // one final covers every speech run that ended before it (a sentence has many pauses)
         const from = e.runEnds.at(-1) ?? e.lastVoicedAt;
         e.runEnds.length = 0;
         const sttFinalMs = from === undefined ? undefined : Math.max(0, Math.round(now() - from));
-        opts.onFinal?.(s, { text: m.text, speaker: m.speaker }, out, { sttFinalMs });
+        opts.onFinal?.(s, { segId, text: m.text, speaker: m.speaker }, out, { sttFinalMs });
       },
       onError: (gaveUp) => {
         log('stt.error', {

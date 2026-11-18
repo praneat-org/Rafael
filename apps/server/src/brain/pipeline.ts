@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { PROTOCOL_VERSION, type ServerMessage } from '@rafael/protocol';
 import { log } from '../log.js';
+import { record } from '../session/convlog.js';
 import type { Session, SessionStore } from '../session/store.js';
 import { type CueOut, createAnswerer, type PackIndex } from './answerer.js';
 import type { BrainConfig } from './config.js';
@@ -172,6 +173,22 @@ export function createPipeline(
       if (finalMsg) {
         if ('failed' in final) errored.add(finalMsg);
         s.cues.push(finalMsg);
+        const { cueId: id, question: q, latencyMs } = finalMsg;
+        record(
+          s,
+          finalMsg.notFound
+            ? { type: 'not_found', cueId: id, question: q, latencyMs }
+            : {
+                type: 'cue',
+                cueId: id,
+                question: q,
+                bullets: finalMsg.bullets,
+                sources: finalMsg.sources,
+                latencyMs,
+              },
+          id,
+          finalMsg.at,
+        );
       }
       if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
       if (ctx.stage === 'segment' && firstCueMs !== undefined) {

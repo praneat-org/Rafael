@@ -1,3 +1,4 @@
+import type { LogEvent } from '@rafael/protocol';
 import type { Browser } from 'wxt/browser';
 import { AudioStatus } from '../../src/audio/audio-state';
 import { CaptureFailed, startCapture } from '../../src/audio/capture';
@@ -24,6 +25,10 @@ import { toWsUrl, WsTransport } from '../../src/ws-transport';
 // This document outlives the side panel (and the service worker): it owns the session
 // state and the Transport. State is memory only (D11).
 let state = initialState;
+// Conversation Log copy the server sent with session.end (the server deletes its own). Memory only (D11)
+let finalLog: LogEvent[] | null = null;
+let endTimer: ReturnType<typeof setTimeout> | undefined;
+const END_LOG_WAIT_MS = 3000;
 let transport: Transport | null = null;
 let stopAudio: (() => void) | null = null;
 const capture = new CaptureSlot();
@@ -102,7 +107,12 @@ function preview(cmd: Extract<PanelToOffscreen, { k: 'preview' }>) {
   }
 }
 
+function post(m: OffscreenToPanel) {
+  for (const p of ports) p.postMessage(m);
+}
+
 function teardown() {
+  clearTimeout(endTimer);
   capture.stop();
   audio.reset(); // incl. error: an old session's failure must not leak into the next
   stopAudio?.();
@@ -130,6 +140,7 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   if (!mock && !cmd.packId && !import.meta.env.DEV) return;
   if (!mock && !SERVER_URL) return; // prod without an https server url: never send the token
   teardown();
+  finalLog = null;
   dispatch({ k: 'start' });
   const t: Transport = mock
     ? new MockTransport(cmd.latencyMs)
@@ -146,6 +157,12 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
     }
   });
   t.onMessage((msg) => {
+    if (msg.t === 'log') {
+      if (state.phase !== 'end') return post({ k: 'log', events: msg.events });
+      finalLog = msg.events; // the copy sent with session.end: the session is gone after this
+      dispatch({ k: 'end-log', ok: true });
+      return teardown();
+    }
     dispatch({ k: 'server', msg, at: Date.now() });
     if (msg.t === 'error' && msg.code === 'SESSION_NOT_FOUND') teardown(); // session is gone: stop capture too
   });
@@ -186,12 +203,27 @@ function onCommand(cmd: PanelToOffscreen) {
     });
   } else if (cmd.k === 'ask') {
     if (state.phase === 'live') transport?.send({ v: 1, t: 'ask', text: cmd.text.slice(0, 2000) });
+  } else if (cmd.k === 'log') {
+    if (state.phase === 'live') transport?.send({ v: 1, t: 'log.get' });
+    else post({ k: 'log', events: state.phase === 'end' ? finalLog : null });
   } else if (cmd.k === 'end') {
+    if (state.phase !== 'live') return;
     // end first: the transport may close right away on session.end, and a `closed` while live resets to Setup
     dispatch({ k: 'end' });
+    finalLog = null;
+    capture.stop(); // no more audio; the socket stays open until the server's last log copy arrives
+    stopAudio?.();
+    stopAudio = null;
     transport?.send({ v: 1, t: 'session.end' });
-    teardown();
-  } else dispatch({ k: 'reset' });
+    endTimer = setTimeout(() => {
+      dispatch({ k: 'end-log', ok: false }); // never came (link down): End screen says so
+      teardown();
+    }, END_LOG_WAIT_MS);
+  } else {
+    if (state.phase === 'end') teardown(); // deleted before the last log copy came: stop waiting
+    finalLog = null;
+    dispatch({ k: 'reset' });
+  }
 }
 
 browser.runtime.onConnect.addListener((port) => {
