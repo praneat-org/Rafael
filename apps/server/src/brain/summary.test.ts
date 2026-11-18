@@ -143,3 +143,11 @@ test('POST /api/summary: another account log -> 403, bad body -> 400, nothing se
   expect(bad.res.status).toBe(400);
   expect(bad.calls).toHaveLength(0);
 });
+
+test('POST /api/summary: a Thai log bigger than one network chunk reaches the model intact', async () => {
+  const text = 'ตกลงใช้ package Pro ครับ '.repeat(8000);
+  const big = [log[0]!, ev(1, 5, { type: 'transcript', segId: '1-1', text })];
+  const { res, calls } = await post({ events: big });
+  expect(res.status).toBe(200);
+  expect(calls[0]?.user).toContain(text.trim());
+});

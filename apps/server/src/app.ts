@@ -41,6 +41,7 @@ export function createApp(ws?: Partial<WsOptions>) {
         if (req.method !== 'POST') return void res.writeHead(405, { allow: 'POST' }).end();
         const brain = ws?.brain;
         if (!brain) return json(503, { code: 'LLM_UNAVAILABLE' });
+        req.setEncoding('utf8'); // a Thai char split across two chunks must not turn into U+FFFD
         let body = '';
         for await (const c of req) {
           body += c;
@@ -79,6 +80,7 @@ export function createApp(ws?: Partial<WsOptions>) {
         if (!s || s.email !== who.email || !wsApi?.packs)
           return json(404, { code: 'SESSION_NOT_FOUND' });
         // BE-112: optional JSON body { exclude?: string[] }; empty body = no exclusions
+        req.setEncoding('utf8'); // a Thai char split across two chunks must not turn into U+FFFD
         let body = '';
         for await (const c of req) {
           body += c;
