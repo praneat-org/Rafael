@@ -5,12 +5,20 @@ import { useSession } from './useSession';
 import { EndView } from './views';
 
 export function App() {
-  const { state, audio, offline, send, getLog } = useSession();
+  const { state, audio, offline, send, getLog, getSummary } = useSession();
   if (offline) return <p className="note">เชื่อมต่อ offscreen ไม่ได้ — ปิดแล้วเปิด side panel ใหม่</p>;
   if (state.phase === 'live') return <LiveView state={state} send={send} getLog={getLog} />;
   if (state.phase === 'end')
     return (
-      <EndView send={send} unanswered={state.unanswered} endLog={state.endLog} getLog={getLog} />
+      <EndView
+        send={send}
+        unanswered={state.unanswered}
+        endLog={state.endLog}
+        getLog={getLog}
+        endMeta={state.endMeta}
+        attendees={state.attendees}
+        getSummary={getSummary}
+      />
     );
   return <SetupView send={send} error={state.error} audio={audio} />;
 }

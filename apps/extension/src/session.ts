@@ -51,6 +51,10 @@ export type SessionState = {
   unanswered: Unanswered[];
   /** End screen: the server's last copy of the Conversation Log (held in offscreen memory) */
   endLog: 'waiting' | 'ready' | 'none';
+  /** typed at Setup for the meeting summary; memory only (D11) */
+  attendees: string;
+  /** End: from the last log copy, for the summary header */
+  endMeta: { folderName: string; startTs: string; endTs: string } | null;
 };
 
 export const initialState: SessionState = {
@@ -66,16 +70,18 @@ export const initialState: SessionState = {
   refreshing: false,
   unanswered: [],
   endLog: 'none',
+  attendees: '',
+  endMeta: null,
 };
 
 export type Action =
-  | { k: 'start' }
+  | { k: 'start'; attendees?: string }
   | { k: 'end' }
   | { k: 'reset' }
   | { k: 'pause' }
   | { k: 'resume' }
   | { k: 'refreshing'; on: boolean }
-  | { k: 'end-log'; ok: boolean }
+  | { k: 'end-log'; ok: boolean; meta?: SessionState['endMeta'] }
   | { k: 'status'; status: TransportStatus }
   | { k: 'server'; msg: ServerMessage; at?: number };
 
@@ -88,7 +94,7 @@ function upsert<T>(list: T[], item: T, same: (a: T) => boolean): T[] {
 export function reduce(s: SessionState, a: Action): SessionState {
   switch (a.k) {
     case 'start':
-      return { ...initialState, phase: 'live', status: 'connecting' };
+      return { ...initialState, phase: 'live', status: 'connecting', attendees: a.attendees ?? '' };
     case 'end':
       if (s.phase === 'end') return s; // repeated end must not wipe the list
       // D11: drop transcript / cues when the session ends; keep only the unanswered questions
@@ -98,6 +104,7 @@ export function reduce(s: SessionState, a: Action): SessionState {
         phase: 'end',
         status: 'closed',
         endLog: 'waiting',
+        attendees: s.attendees,
         unanswered: s.cues
           .filter((c) => c.notFound && !c.partial)
           .map((c) => ({ at: c.at, question: c.question })),
@@ -106,7 +113,7 @@ export function reduce(s: SessionState, a: Action): SessionState {
       return initialState;
     case 'end-log':
       return s.phase === 'end' && s.endLog === 'waiting'
-        ? { ...s, endLog: a.ok ? 'ready' : 'none' }
+        ? { ...s, endLog: a.ok ? 'ready' : 'none', endMeta: (a.ok && a.meta) || null }
         : s;
     case 'refreshing':
       return { ...s, refreshing: a.on };

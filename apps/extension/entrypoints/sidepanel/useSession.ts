@@ -1,4 +1,4 @@
-import type { LogEvent } from '@rafael/protocol';
+import type { LogEvent, MeetingSummary } from '@rafael/protocol';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Browser } from 'wxt/browser';
 import type { AudioState } from '../../src/audio/audio-state';
@@ -12,7 +12,8 @@ export function useSession() {
   const [audio, setAudio] = useState<AudioState | null>(null);
   const [offline, setOffline] = useState(false);
   const port = useRef<Browser.runtime.Port | null>(null);
-  const pendingLog = useRef<{ id: string; done: (e: LogEvent[] | null) => void } | null>(null);
+  // request id -> resolver: an answer only ever settles the request it was sent for
+  const pending = useRef(new Map<string, (v: unknown) => void>());
 
   useEffect(() => {
     let alive = true;
@@ -23,8 +24,8 @@ export function useSession() {
       p.onMessage.addListener((m: OffscreenToPanel) => {
         if (m.k === 'state') setState(m.state);
         // only the answer to the newest request: a late one may be an older snapshot
-        else if (m.k === 'log') {
-          if (m.id === pendingLog.current?.id) pendingLog.current?.done(m.events);
+        else if (m.k === 'log' || m.k === 'summary') {
+          if (m.id) pending.current.get(m.id)?.(m.k === 'log' ? m.events : m.summary);
         } else setAudio(m); // level number only, never audio (D11)
       });
       p.onDisconnect.addListener(() => setOffline(true));
@@ -38,23 +39,25 @@ export function useSession() {
   }, []);
 
   const send = useCallback((cmd: PanelToOffscreen) => port.current?.postMessage(cmd), []);
-  /** Conversation Log from the offscreen document (live: fetched from the server now). null after 5 s. */
-  const getLog = useCallback(
-    () =>
-      new Promise<LogEvent[] | null>((resolve) => {
-        pendingLog.current?.done(null); // an older request loses
+  const request = useCallback(
+    <T>(k: 'log' | 'summary', timeoutMs: number) =>
+      new Promise<T | null>((resolve) => {
         const id = crypto.randomUUID();
-        const done = (e: LogEvent[] | null) => {
+        const done = (v: unknown) => {
           clearTimeout(timer);
-          if (pendingLog.current?.id === id) pendingLog.current = null;
-          resolve(e);
+          pending.current.delete(id);
+          resolve((v as T | null) ?? null);
         };
-        const timer = setTimeout(() => done(null), 5000);
-        pendingLog.current = { id, done };
-        if (port.current) port.current.postMessage({ k: 'log', id } satisfies PanelToOffscreen);
+        const timer = setTimeout(() => done(null), timeoutMs);
+        pending.current.set(id, done);
+        if (port.current) port.current.postMessage({ k, id } satisfies PanelToOffscreen);
         else done(null);
       }),
     [],
   );
-  return { state, audio, offline, send, getLog };
+  /** Conversation Log from the offscreen document (live: fetched from the server now). null after 5 s. */
+  const getLog = useCallback(() => request<LogEvent[]>('log', 5000), [request]);
+  /** End: meeting summary of the last log copy. 1 h meeting target is 60 s; give up at 120 s. */
+  const getSummary = useCallback(() => request<MeetingSummary>('summary', 120_000), [request]);
+  return { state, audio, offline, send, getLog, getSummary };
 }

@@ -1,4 +1,4 @@
-import type { LogEvent } from '@rafael/protocol';
+import { type LogEvent, MeetingSummary } from '@rafael/protocol';
 import type { Browser } from 'wxt/browser';
 import { AudioStatus } from '../../src/audio/audio-state';
 import { CaptureFailed, startCapture } from '../../src/audio/capture';
@@ -112,6 +112,24 @@ function post(m: OffscreenToPanel) {
   for (const p of ports) p.postMessage(m);
 }
 
+// meeting summary: the server reads the log we send and keeps nothing (D11)
+async function summaryOf(events: LogEvent[] | null): Promise<MeetingSummary | null> {
+  if (!events || state.phase !== 'end' || !SERVER_URL) return null;
+  try {
+    const token = await getToken(false);
+    const res = await fetch(`${SERVER_URL.replace(/\/+$/, '')}/api/summary`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ events }),
+    });
+    if (!res.ok) return null; // code only, never the body (D11)
+    const r = MeetingSummary.safeParse(((await res.json()) as { summary?: unknown }).summary);
+    return r.success ? r.data : null;
+  } catch {
+    return null;
+  }
+}
+
 function teardown() {
   clearTimeout(endTimer);
   capture.stop();
@@ -142,7 +160,7 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   if (!mock && !SERVER_URL) return; // prod without an https server url: never send the token
   teardown();
   finalLog = null;
-  dispatch({ k: 'start' });
+  dispatch({ k: 'start', attendees: cmd.attendees?.slice(0, 500) });
   const t: Transport = mock
     ? new MockTransport(cmd.latencyMs)
     : new WsTransport({ url: toWsUrl(SERVER_URL), getToken });
@@ -161,7 +179,16 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
     if (msg.t === 'log') {
       if (state.phase !== 'end') return post({ k: 'log', id: msg.id, events: msg.events });
       finalLog = msg.events; // the copy sent with session.end: the session is gone after this
-      dispatch({ k: 'end-log', ok: true });
+      const first = msg.events[0];
+      const last = msg.events.at(-1);
+      dispatch({
+        k: 'end-log',
+        ok: true,
+        meta:
+          first?.type === 'session.start' && last
+            ? { folderName: first.folderName, startTs: first.ts, endTs: last.ts }
+            : null,
+      });
       return teardown();
     }
     dispatch({ k: 'server', msg, at: Date.now() });
@@ -207,6 +234,8 @@ function onCommand(cmd: PanelToOffscreen) {
   } else if (cmd.k === 'log') {
     if (state.phase === 'live') transport?.send({ v: 1, t: 'log.get', id: cmd.id });
     else post({ k: 'log', id: cmd.id, events: state.phase === 'end' ? finalLog : null });
+  } else if (cmd.k === 'summary') {
+    void summaryOf(finalLog).then((summary) => post({ k: 'summary', id: cmd.id, summary }));
   } else if (cmd.k === 'end') {
     if (state.phase !== 'live') return;
     // end first: the transport may close right away on session.end, and a `closed` while live resets to Setup

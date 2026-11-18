@@ -46,6 +46,7 @@ export function SetupView({
   const [signInFailed, setSignInFailed] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
   const [folderUrl, setFolderUrl] = useState('');
+  const [attendees, setAttendees] = useState(''); // meeting summary only; memory only (D11)
   const [recent, setRecent] = useState<string[]>([]);
   const [names, setNames] = useState<Record<string, string>>({}); // memory only, never stored (D11)
   const tried = useRef(new Set<string>());
@@ -131,6 +132,7 @@ export function SetupView({
       wavBase64,
       packId: s.mock ? undefined : (folderId ?? undefined),
       capture: s.mock ? undefined : inputs,
+      attendees: attendees.trim() || undefined,
     });
   };
   const remaining = [!signedIn, !folderId, !inputs.tab && !inputs.mic].filter(Boolean).length;
@@ -259,6 +261,15 @@ export function SetupView({
                 </p>
               )}
               {/* ponytail: search by folder name needs a server API (BE-87); paste URL only for now */}
+              <label className="field">
+                <span className="sd">ผู้เข้าร่วมประชุม (ไม่บังคับ ใช้ในสรุปการประชุม)</span>
+                <input
+                  type="text"
+                  value={attendees}
+                  placeholder="เช่น คุณสมชาย (ACME), คุณวิภา"
+                  onChange={(e) => setAttendees(e.target.value)}
+                />
+              </label>
             </div>
           </li>
           <li className={stepClass(inputDone, signedIn && folderDone && !inputDone)}>

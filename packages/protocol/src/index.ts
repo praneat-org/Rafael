@@ -5,6 +5,7 @@ import { LogEvent } from './log.js';
 
 export * from './audio.js';
 export * from './log.js';
+export * from './summary.js';
 
 export const PROTOCOL_VERSION = 1;
 

@@ -803,3 +803,31 @@ sup.fn {
   color: var(--bad);
   text-align: center;
 }
+
+/* End: meeting summary draft */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.summary .draft {
+  width: 100%;
+  min-height: 280px;
+  font:
+    13px / 1.5 ui-monospace,
+    monospace;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  resize: vertical;
+}
+.summary .draft.has-blank {
+  border-color: var(--warn);
+  outline: 2px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.warn-blank {
+  color: var(--warn);
+  font-weight: 600;
+}

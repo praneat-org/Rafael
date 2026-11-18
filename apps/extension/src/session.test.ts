@@ -165,3 +165,11 @@ test('End waits for the server log copy: ready once, timeout -> none; reset clea
   expect(reduce(ended, { k: 'reset' }).endLog).toBe('none');
   expect(run([{ k: 'start' }, { k: 'end-log', ok: true }]).endLog).toBe('none'); // live: ignored
 });
+
+test('attendees typed at Setup survive to End; end meta comes with the log copy', () => {
+  const ended = run([{ k: 'start', attendees: 'คุณสมชาย' }, { k: 'end' }]);
+  expect(ended.attendees).toBe('คุณสมชาย');
+  const meta = { folderName: 'ACME', startTs: 'a', endTs: 'b' };
+  expect(reduce(ended, { k: 'end-log', ok: true, meta }).endMeta).toEqual(meta);
+  expect(reduce(ended, { k: 'reset' }).attendees).toBe('');
+});
