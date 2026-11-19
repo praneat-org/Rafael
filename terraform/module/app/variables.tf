@@ -161,6 +161,12 @@ variable "answerer_model" {
   type        = string
 }
 
+variable "summary_model" {
+  description = "Gemini model id for the meeting summary (SUMMARY_MODEL); empty = answerer model"
+  type        = string
+  default     = ""
+}
+
 variable "artifact_repository_id" {
   description = "Artifact Registry repo id; empty = project_name. Set when two envs share one GCP project (prod: rafael-prod)"
   type        = string

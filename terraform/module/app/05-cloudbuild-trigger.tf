@@ -46,6 +46,7 @@ resource "google_cloudbuild_trigger" "cloudbuild_branch_trigger" {
     _STT_END_SENSITIVITY   = var.stt_end_sensitivity
     _DETECTOR_MODEL        = var.detector_model
     _ANSWERER_MODEL        = var.answerer_model
+    _SUMMARY_MODEL         = var.summary_model
     _ALLOWED_EMAILS        = join(",", var.allowed_emails)
     _SECRETS               = join(",", [for id in var.app_secret_ids : "${id}=${id}:latest"])
   }

@@ -45,7 +45,8 @@ export type BrainConfig = {
 };
 
 export function loadBrainConfig(env: Record<string, string | undefined>): BrainConfig {
-  const e = Env.parse(env);
+  // Cloud Build passes unset substitutions as '': treat them as unset
+  const e = Env.parse(Object.fromEntries(Object.entries(env).filter(([, v]) => v !== '')));
   return {
     detectorModel: e.DETECTOR_MODEL,
     answererModel: e.ANSWERER_MODEL,

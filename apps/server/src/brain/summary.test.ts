@@ -153,3 +153,11 @@ test('POST /api/summary: a Thai log bigger than one network chunk reaches the mo
   expect(res.status).toBe(200);
   expect(calls[0]?.user).toContain(text.trim());
 });
+
+test('config: empty SUMMARY_MODEL / ANSWERER_MODEL (Cloud Build default) fall back', () => {
+  const c = loadBrainConfig({ DETECTOR_MODEL: 'd', ANSWERER_MODEL: 'a', SUMMARY_MODEL: '' });
+  expect(c.summaryModel).toBe('a');
+  expect(
+    loadBrainConfig({ DETECTOR_MODEL: 'd', ANSWERER_MODEL: '', SUMMARY_MODEL: '' }).summaryModel,
+  ).toBe('d');
+});

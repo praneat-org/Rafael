@@ -204,3 +204,9 @@ variable "answerer_model" {
   description = "Gemini model id for the Answerer (ANSWERER_MODEL)"
   type        = string
 }
+
+variable "summary_model" {
+  description = "Gemini model id for the meeting summary (SUMMARY_MODEL); empty = answerer model"
+  type        = string
+  default     = ""
+}
