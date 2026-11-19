@@ -57,7 +57,8 @@ export function useSession() {
   );
   /** Conversation Log from the offscreen document (live: fetched from the server now). null after 5 s. */
   const getLog = useCallback(() => request<LogEvent[]>('log', 5000), [request]);
-  /** End: meeting summary of the last log copy. 1 h meeting target is 60 s; give up at 120 s. */
-  const getSummary = useCallback(() => request<MeetingSummary>('summary', 120_000), [request]);
+  /** End: meeting summary of the last log copy. 1 h meeting target is 60 s; server worst case
+   * ~110 s (55 s chunk calls + 55 s merge), so give up at 150 s, not before the server does. */
+  const getSummary = useCallback(() => request<MeetingSummary>('summary', 150_000), [request]);
   return { state, audio, offline, send, getLog, getSummary };
 }

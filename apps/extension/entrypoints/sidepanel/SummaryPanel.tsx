@@ -37,13 +37,19 @@ export function SummaryPanel({
         <>
           <label className="field">
             <span className="sd">หัวข้อการประชุม</span>
-            <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} />
+            <input
+              type="text"
+              value={subject}
+              disabled={busy}
+              onChange={(e) => setSubject(e.target.value)}
+            />
           </label>
           <label className="field">
             <span className="sd">ผู้เข้าร่วมประชุม (ไม่กรอก = "ยังไม่ระบุ")</span>
             <input
               type="text"
               value={attendees}
+              disabled={busy} // the draft is built from the values at click time
               placeholder="เช่น คุณสมชาย (ACME), คุณวิภา"
               onChange={(e) => setAttendees(e.target.value)}
             />

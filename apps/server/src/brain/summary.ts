@@ -128,7 +128,22 @@ export async function summarize(
     const w = norm(words ?? '');
     if (!w) return false; // empty / punctuation only: nothing was said
     const ms = byAt.get(at)?.[0]?.ms ?? -Infinity;
-    return ls.some((l) => Math.abs(l.ms - ms) <= NEAR_MS && norm(l.text).includes(w));
+    // Latin: whole words ("Ann" is not in "annual"); Thai has no spaces, so a substring
+    const latin = /^[a-z0-9]+$/.test(w)
+      ? new RegExp(
+          `\\b${words
+            ?.toLowerCase()
+            .trim()
+            .split(/[^a-z0-9]+/)
+            .filter(Boolean)
+            .join('\\W+')}\\b`,
+        )
+      : null;
+    return ls.some(
+      (l) =>
+        Math.abs(l.ms - ms) <= NEAR_MS &&
+        (latin ? latin.test(l.text.toLowerCase()) : norm(l.text).includes(w)),
+    );
   };
 
   const topics = raws.flatMap((r) =>
@@ -147,15 +162,18 @@ export async function summarize(
   if (raws.length > 1)
     tldr = await call(MERGE_PROMPT, raws.map((r, i) => `PART ${i + 1}: ${r.tldr}`).join('\n'));
   const notFound = events.flatMap((e) =>
-    e.type === 'not_found' && !e.failed ? [{ text: e.question, at: offsetClock(e.offsetMs) }] : [],
+    e.type === 'not_found' && !e.failed && e.question.trim()
+      ? [{ text: e.question, at: offsetClock(e.offsetMs) }]
+      : [],
   );
   return {
-    summary: {
+    // the endpoint must never answer with something its own schema rejects
+    summary: MeetingSummary.parse({
       tldr: tldr.trim().split('\n').slice(0, 3).join('\n'),
       topics,
       notFound,
       actions,
-    },
+    }),
     stats,
   };
 }

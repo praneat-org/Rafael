@@ -13,7 +13,8 @@ import { createGeminiClient } from '../src/brain/gemini.js';
 import { summarize } from '../src/brain/summary.js';
 
 const args = process.argv.slice(2);
-const files = args.filter((a, i) => a.endsWith('.json') && args[i - 1] !== '--expect');
+// positional log files only: skip --flags and the value after a bare --expect
+const files = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--expect');
 const expectFile = optArg(process.argv, 'expect', '');
 const expected: Record<string, string[]> = expectFile
   ? JSON.parse(readFileSync(expectFile, 'utf8'))

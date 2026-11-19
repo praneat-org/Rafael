@@ -161,3 +161,27 @@ test('config: empty SUMMARY_MODEL / ANSWERER_MODEL (Cloud Build default) fall ba
     loadBrainConfig({ DETECTOR_MODEL: 'd', ANSWERER_MODEL: '', SUMMARY_MODEL: '' }).summaryModel,
   ).toBe('d');
 });
+
+test('who in Latin must be a whole word; an empty not_found question is skipped', async () => {
+  const at = (sec: number, text: string, seq: number) =>
+    ev(seq, sec, { type: 'transcript', segId: `2-${seq}`, text });
+  const events = [
+    log[0]!,
+    at(60, 'the annual plan is due', 1),
+    at(120, 'Ann will send it', 2),
+    ev(3, 130, { type: 'not_found', cueId: 'c9', question: '  ', latencyMs: 1 }),
+  ];
+  const f = fakeLlm(() =>
+    JSON.stringify({
+      tldr: 'x',
+      topics: [],
+      actions: [
+        { what: 'plan', who: 'Ann', when: null, at: '00:01:00' }, // said as a word at 00:02:00
+        { what: 'plan', who: 'Nual', when: null, at: '00:01:00' }, // only inside "annual"
+      ],
+    }),
+  );
+  const { summary } = await summarize(events, { llm: f.llm, model: 'm' });
+  expect(summary.actions.map((a) => a.who)).toEqual(['Ann', null]);
+  expect(summary.notFound).toEqual([]);
+});

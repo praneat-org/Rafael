@@ -1,4 +1,4 @@
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage } from 'node:http';
 import { PackExclude } from '@rafael/protocol';
 import { audit } from './audit.js';
 import { denyAll } from './auth/verifier.js';
@@ -8,6 +8,26 @@ import { MemorySessionStore } from './session/store.js';
 import { attachWs, type WsOptions } from './ws/server.js';
 
 const SUMMARY_MAX_BYTES = 8 * 1024 * 1024; // 2 h log is well under 2 MB
+
+const TOO_LARGE = Symbol('too large');
+/**
+ * Request body as UTF-8, capped in bytes. Decoded once at the end, so a Thai char split
+ * across two chunks stays intact. null = the client went away mid-body (no unhandled rejection).
+ */
+async function readBody(req: IncomingMessage, maxBytes: number) {
+  const chunks: Buffer[] = [];
+  let n = 0;
+  try {
+    for await (const c of req as AsyncIterable<Buffer>) {
+      n += c.length;
+      if (n > maxBytes) return TOO_LARGE;
+      chunks.push(c);
+    }
+  } catch {
+    return null;
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
 
 export function createApp(ws?: Partial<WsOptions>) {
   const verifier = ws?.verifier ?? denyAll;
@@ -41,12 +61,9 @@ export function createApp(ws?: Partial<WsOptions>) {
         if (req.method !== 'POST') return void res.writeHead(405, { allow: 'POST' }).end();
         const brain = ws?.brain;
         if (!brain) return json(503, { code: 'LLM_UNAVAILABLE' });
-        req.setEncoding('utf8'); // a Thai char split across two chunks must not turn into U+FFFD
-        let body = '';
-        for await (const c of req) {
-          body += c;
-          if (body.length > SUMMARY_MAX_BYTES) return json(413, { code: 'BAD_MESSAGE' });
-        }
+        const body = await readBody(req, SUMMARY_MAX_BYTES);
+        if (body === null) return json(400, { code: 'BAD_MESSAGE' });
+        if (body === TOO_LARGE) return json(413, { code: 'BAD_MESSAGE' });
         let raw: unknown;
         try {
           raw = JSON.parse(body);
@@ -80,12 +97,9 @@ export function createApp(ws?: Partial<WsOptions>) {
         if (!s || s.email !== who.email || !wsApi?.packs)
           return json(404, { code: 'SESSION_NOT_FOUND' });
         // BE-112: optional JSON body { exclude?: string[] }; empty body = no exclusions
-        req.setEncoding('utf8'); // a Thai char split across two chunks must not turn into U+FFFD
-        let body = '';
-        for await (const c of req) {
-          body += c;
-          if (body.length > 64 * 1024) return json(413, { code: 'BAD_MESSAGE' });
-        }
+        const body = await readBody(req, 64 * 1024);
+        if (body === null) return json(400, { code: 'BAD_MESSAGE' });
+        if (body === TOO_LARGE) return json(413, { code: 'BAD_MESSAGE' });
         let exclude: string[] | undefined;
         if (body.trim()) {
           let raw: unknown;

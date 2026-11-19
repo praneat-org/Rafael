@@ -116,12 +116,18 @@ function post(m: OffscreenToPanel) {
 async function summaryOf(events: LogEvent[] | null): Promise<MeetingSummary | null> {
   if (!events || state.phase !== 'end' || !SERVER_URL) return null;
   try {
-    const token = await getToken(false);
-    const res = await fetch(`${SERVER_URL.replace(/\/+$/, '')}/api/summary`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ events }),
-    });
+    const body = JSON.stringify({ events });
+    const call = async (fresh: boolean) =>
+      fetch(`${SERVER_URL.replace(/\/+$/, '')}/api/summary`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${await getToken(fresh)}`,
+          'content-type': 'application/json',
+        },
+        body,
+      });
+    let res = await call(false);
+    if (res.status === 401) res = await call(true); // expired token: a new one, once
     if (!res.ok) return null; // code only, never the body (D11)
     const r = MeetingSummary.safeParse(((await res.json()) as { summary?: unknown }).summary);
     return r.success ? r.data : null;
@@ -177,7 +183,10 @@ function start(cmd: Extract<PanelToOffscreen, { k: 'start' }>) {
   });
   t.onMessage((msg) => {
     if (msg.t === 'log') {
-      if (state.phase !== 'end') return post({ k: 'log', id: msg.id, events: msg.events });
+      // a log.get answer carries its id, even one that lands after End was pressed;
+      // only the copy sent with session.end (no id) is the final log
+      if (msg.id !== undefined) return post({ k: 'log', id: msg.id, events: msg.events });
+      if (state.phase !== 'end') return;
       finalLog = msg.events; // the copy sent with session.end: the session is gone after this
       const first = msg.events[0];
       const last = msg.events.at(-1);
