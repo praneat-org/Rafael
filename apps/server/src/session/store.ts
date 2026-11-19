@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { ServerMessage } from '@rafael/protocol';
 import { log } from '../log.js';
+import type { LogEntry } from './convlog.js';
 
 export const SESSION_TTL_MS = 24 * 60 * 60 * 1000; // absolute from create, activity does not extend it (D11: deleted after 24h)
 export const RESUME_GRACE_MS = 5 * 60 * 1000; // socket gone -> session kept this long
@@ -23,6 +24,15 @@ export type Session = {
   /** final cues, oldest first: replayed on resume so the panel history survives a reconnect.
    * Memory only, emptied on end (D11) */
   cues: Extract<ServerMessage, { t: 'cue' }>[];
+  /** epoch ms at create: Conversation Log offsets count from here */
+  readonly startedAt: number;
+  /** Drive folder name and pack size once a build succeeded (Conversation Log header) */
+  folderName?: string;
+  pack?: { files: number; tokens: number };
+  /** Conversation Log (session/convlog.ts). Memory only, emptied on end (D11) */
+  log: LogEntry[];
+  /** segIds / cueIds already in `log` */
+  logIds: Set<string>;
 };
 
 /** One interface so Memorystore (Q2) can replace the in-memory map later. */
@@ -65,6 +75,9 @@ export class MemorySessionStore implements SessionStore {
       socket: undefined,
       audioFrames: 0,
       cues: [],
+      startedAt: Date.now(),
+      log: [],
+      logIds: new Set(),
     };
     this.byId.set(session.id, {
       session,
@@ -109,6 +122,8 @@ export class MemorySessionStore implements SessionStore {
     this.byId.delete(id);
     this.byToken.delete(e.session.resumeToken);
     e.session.cues.length = 0; // D11: cue history goes with the session
+    e.session.log.length = 0; // ...and the Conversation Log
+    e.session.logIds.clear();
     for (const fn of this.endHooks) {
       // one failing cleanup (sync throw or async rejection) must not block the others or the
       // socket close; log the code only, errors from providers may carry content (D11)

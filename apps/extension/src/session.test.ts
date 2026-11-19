@@ -154,3 +154,14 @@ test('PACK_BUILD_FAILED drops the stale too-large list, survives PACK_NOT_READY,
   expect(reduce(s, err('PACK_NOT_READY')).error).toBe('PACK_BUILD_FAILED');
   expect(reduce(s, ps('ready')).error).toBeNull();
 });
+
+test('End waits for the server log copy: ready once, timeout -> none; reset clears it', () => {
+  const ended = run([{ k: 'start' }, { k: 'end' }]);
+  expect(ended.endLog).toBe('waiting');
+  expect(reduce(ended, { k: 'end-log', ok: true }).endLog).toBe('ready');
+  const late = reduce(reduce(ended, { k: 'end-log', ok: true }), { k: 'end-log', ok: false });
+  expect(late.endLog).toBe('ready'); // a timeout after the copy arrived changes nothing
+  expect(reduce(ended, { k: 'end-log', ok: false }).endLog).toBe('none');
+  expect(reduce(ended, { k: 'reset' }).endLog).toBe('none');
+  expect(run([{ k: 'start' }, { k: 'end-log', ok: true }]).endLog).toBe('none'); // live: ignored
+});

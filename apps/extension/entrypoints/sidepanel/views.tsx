@@ -1,27 +1,32 @@
 import { useEffect, useState } from 'react';
 import { formatTime, formatUnanswered } from '../../src/export';
 import type { PanelToOffscreen } from '../../src/messages';
-import type { Unanswered } from '../../src/session';
+import type { SessionState, Unanswered } from '../../src/session';
+import { type GetLog, LogButtons } from './LogButtons';
 
 type Send = (cmd: PanelToOffscreen) => void;
 
-export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswered[] }) {
+export function EndView({
+  send,
+  unanswered,
+  endLog,
+  getLog,
+}: {
+  send: Send;
+  unanswered: Unanswered[];
+  endLog: SessionState['endLog'];
+  getLog: GetLog;
+}) {
   const text = formatUnanswered(unanswered);
   const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+  // deleting before any download warns once: the log exists nowhere else (D11)
+  const [warned, setWarned] = useState(false);
   useEffect(() => {
     if (!copied) return;
     const t = setTimeout(() => setCopied(false), 2000);
     return () => clearTimeout(t); // also clears on unmount
   }, [copied]);
-  // export is built here in the browser from memory; nothing is stored or sent (D11)
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'rafael-follow-up.txt';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
   return (
     <main className="view end">
       <header>
@@ -59,17 +64,36 @@ export function EndView({ send, unanswered }: { send: Send; unanswered: Unanswer
           >
             {copied ? 'คัดลอกแล้ว' : 'คัดลอกรายการ'}
           </button>
-          <button
-            type="button"
-            aria-label="Download .txt"
-            disabled={!unanswered.length}
-            onClick={download}
-          >
-            .txt
-          </button>
         </div>
-        <button type="button" className="link" onClick={() => send({ k: 'reset' })}>
-          ลบ session แล้วเริ่มใหม่
+        <div className="e-row log-row">
+          <span className="log-h">
+            {endLog === 'waiting'
+              ? 'กำลังรับ Conversation Log…'
+              : endLog === 'ready'
+                ? 'Conversation Log'
+                : 'ไม่ได้รับ Conversation Log (การเชื่อมต่อหลุดตอนจบ)'}
+          </span>
+          <LogButtons
+            getLog={getLog}
+            disabled={endLog !== 'ready'}
+            onSaved={() => setSaved(true)}
+          />
+        </div>
+        {warned && (
+          <p role="alert" className="note warn-del">
+            ยังไม่ได้ download log ลบแล้วจะกู้คืนไม่ได้
+          </p>
+        )}
+        <button
+          type="button"
+          className="link"
+          onClick={() => {
+            // also while the last copy is still on its way: deleting now would drop it
+            if (!saved && endLog !== 'none' && !warned) return setWarned(true);
+            send({ k: 'reset' });
+          }}
+        >
+          {warned && !saved ? 'ลบเลย ไม่ต้อง download' : 'ลบ session แล้วเริ่มใหม่'}
         </button>
       </footer>
     </main>

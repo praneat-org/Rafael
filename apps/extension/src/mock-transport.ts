@@ -86,8 +86,28 @@ export class MockTransport implements Transport {
       buildAskScript(msg.text).forEach((m, i) => {
         this.later(() => this.emit(m), this.latencyMs * (i + 1));
       });
-    } else if (msg.t === 'session.end') {
-      this.close();
+    } else if (msg.t === 'log.get' || msg.t === 'session.end') {
+      // minimal Conversation Log: just the header (the mock keeps no history)
+      const at = new Date().toISOString().replace('Z', '+00:00');
+      const base = { sessionId: 'mock-session', ts: at, offsetMs: 0 };
+      this.emit({
+        v: 1,
+        t: 'log',
+        id: msg.t === 'log.get' ? msg.id : undefined,
+        events: [
+          {
+            ...base,
+            seq: 0,
+            type: 'session.start',
+            user: 'mock',
+            folderId: 'mock-pack',
+            folderName: 'mock',
+            pack: null,
+          },
+          ...(msg.t === 'session.end' ? [{ ...base, seq: 1, type: 'session.end' as const }] : []),
+        ],
+      });
+      if (msg.t === 'session.end') this.close();
     }
   }
 

@@ -5,6 +5,7 @@ import type { PanelToOffscreen } from '../../src/messages';
 import type { Cue, SessionState } from '../../src/session';
 import { stripInlineAnchor } from '../../src/strip-anchor';
 import { ErrorNote } from './ErrorNote';
+import { type GetLog, LogButtons } from './LogButtons';
 import { PackBuildFailed } from './PackBuildFailed';
 import { PackStatus, PackTooLarge } from './PackStatus';
 
@@ -89,7 +90,16 @@ function AskBox({ send }: { send: Send }) {
   );
 }
 
-export function LiveView({ state, send }: { state: SessionState; send: Send }) {
+export function LiveView({
+  state,
+  send,
+  getLog,
+}: {
+  state: SessionState;
+  send: Send;
+  /** Conversation Log so far; omitted in tests */
+  getLog?: GetLog;
+}) {
   const [confirming, setConfirming] = useState(false);
   // history cue open in the slot; liveKey = latest cue when it was opened, to spot a new one
   const [open, setOpen] = useState<{ id: string; liveKey?: string } | null>(null);
@@ -116,6 +126,7 @@ export function LiveView({ state, send }: { state: SessionState; send: Send }) {
             : STATUS_TEXT[state.status]}
         </span>
         <span className="actions">
+          {getLog && <LogButtons getLog={getLog} />}
           <button
             type="button"
             className="ghost"

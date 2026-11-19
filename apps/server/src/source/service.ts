@@ -91,6 +91,9 @@ export function createPackService(
       );
       if (!pack || store.get(s.id) !== s) return { result: 'superseded' };
       onPack(s, pack);
+      void name.then((n) => {
+        if (n && current()) s.folderName = n; // Conversation Log header
+      });
       try {
         // BE-97 AC5: who read which folder
         audit({

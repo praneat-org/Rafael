@@ -12,6 +12,7 @@ import { audit, driveId } from '../audit.js';
 import type { TokenVerifier } from '../auth/verifier.js';
 import { type BrainOptions, createPipeline } from '../brain/pipeline.js';
 import { log } from '../log.js';
+import { record, snapshot } from '../session/convlog.js';
 import type { Session, SessionStore } from '../session/store.js';
 import { createPackService, type PackServiceOptions } from '../source/service.js';
 import { createSttService, type SttOptions } from '../stt/service.js';
@@ -78,6 +79,14 @@ export function attachWs(http: Server, opts: WsOptions) {
           // a final that was already in the provider when pause arrived must not start a cue
           if (paused.has(s))
             return void log('cue.dropped', { sessionId: s.id, reason: 'paused-final' });
+          // Conversation Log: finals only, never while paused (the pause marker stands in)
+          // store.end flushes STT after emptying the log: an ended session must not refill it (D11)
+          if (store.get(s.id) === s && seg.text.trim())
+            record(
+              s,
+              { type: 'transcript', segId: seg.segId, text: seg.text, speaker: seg.speaker },
+              seg.segId,
+            );
           const epoch = pauseEpoch.get(s) ?? 0;
           const isPaused = () => paused.has(s) || (pauseEpoch.get(s) ?? 0) !== epoch;
           void pipeline?.onFinalSegment(s, seg, send, meta.sttFinalMs, isPaused);
@@ -88,6 +97,7 @@ export function attachWs(http: Server, opts: WsOptions) {
   packs =
     opts.pack &&
     createPackService(opts.pack, store, (s, p) => {
+      s.pack = { files: p.files.length, tokens: p.tokens };
       pipeline?.packReady(s, p.chunks);
       stt?.hintsReady(s);
     });
@@ -227,6 +237,8 @@ export function attachWs(http: Server, opts: WsOptions) {
           log('session.ended', { sessionId: session.id, audioFrames: session.audioFrames });
           // store.end closes the socket: flush the STT first so the last final reaches the client
           await stt?.end(session).catch(() => {});
+          // last chance: the log is deleted with the session, so the client gets the final copy now
+          send({ v: PROTOCOL_VERSION, t: 'log', events: snapshot(session, Date.now()) });
           store.end(session.id); // also closes the socket
           return;
         case 'ask': {
@@ -241,6 +253,7 @@ export function attachWs(http: Server, opts: WsOptions) {
           if (r === undefined)
             fail('LLM_UNAVAILABLE'); // no brain configured
           else if (r === 'busy') fail('BAD_MESSAGE');
+          else if (r === 'ok') record(session, { type: 'ask', text: m.text });
           else if (r === 'no-pack') {
             // last build failed as too-large: that pack never becomes ready, say why (files: D11-safe)
             // other failure / still building: PACK_NOT_READY (pack.status 'error' already told the client; refresh may fix it)
@@ -250,8 +263,13 @@ export function attachWs(http: Server, opts: WsOptions) {
           }
           return;
         }
+        case 'log.get':
+          // only on the socket that owns the session: resume already checked it is the same account
+          if (!session) return fail('SESSION_NOT_FOUND');
+          return send({ v: PROTOCOL_VERSION, t: 'log', id: m.id, events: snapshot(session) });
         case 'pause':
           if (!session) return fail('SESSION_NOT_FOUND');
+          if (!paused.has(session)) record(session, { type: 'pause' }); // a repeated pause is one marker
           paused.add(session);
           log('session.pause', { sessionId: session.id });
           pauseEpoch.set(session, (pauseEpoch.get(session) ?? 0) + 1);
@@ -259,6 +277,7 @@ export function attachWs(http: Server, opts: WsOptions) {
           return;
         case 'resume':
           if (!session) return fail('SESSION_NOT_FOUND');
+          if (paused.has(session)) record(session, { type: 'resume' });
           paused.delete(session);
           log('session.resume', { sessionId: session.id });
           return;

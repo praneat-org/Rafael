@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { PROTOCOL_VERSION, type ServerMessage } from '@rafael/protocol';
 import { log } from '../log.js';
+import { record } from '../session/convlog.js';
 import type { Session, SessionStore } from '../session/store.js';
 import { type CueOut, createAnswerer, type PackIndex } from './answerer.js';
 import type { BrainConfig } from './config.js';
@@ -142,6 +143,7 @@ export function createPipeline(
       let dropped = false;
       let lastLatencyMs: number | undefined;
       let finalMsg: Extract<ServerMessage, { t: 'cue' }> | undefined;
+      let logged: ReturnType<typeof record>;
       const emit = (c: CueOut) => {
         if (ctx.isPaused?.()) {
           dropped = true;
@@ -158,7 +160,27 @@ export function createPipeline(
           latencyMs: lastLatencyMs,
           at: Date.now(),
         } as const;
-        if (!c.partial) finalMsg = msg;
+        if (!c.partial) {
+          finalMsg = msg;
+          // logged before it goes out: a session.end right after must not snapshot without it
+          // ended meanwhile: its log is already emptied (D11)
+          if (store.get(s.id) === s)
+            logged = record(
+              s,
+              msg.notFound
+                ? { type: 'not_found', cueId, question: msg.question, latencyMs: msg.latencyMs }
+                : {
+                    type: 'cue',
+                    cueId,
+                    question: msg.question,
+                    bullets: msg.bullets,
+                    sources: msg.sources,
+                    latencyMs: msg.latencyMs,
+                  },
+              cueId,
+              msg.at,
+            );
+        }
         send(msg);
       };
       let final: Awaited<ReturnType<typeof e.answerer.answer>>;
@@ -172,6 +194,9 @@ export function createPipeline(
       if (finalMsg) {
         if ('failed' in final) errored.add(finalMsg);
         s.cues.push(finalMsg);
+        // a model failure is known only now: mark it, it is not a real "not in the pack"
+        if ('failed' in final && logged?.body.type === 'not_found')
+          logged.body = { ...logged.body, failed: true };
       }
       if (dropped) log('cue.dropped', { sessionId: s.id, reason: 'paused' });
       if (ctx.stage === 'segment' && firstCueMs !== undefined) {

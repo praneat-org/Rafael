@@ -1,3 +1,4 @@
+import type { LogEvent } from '@rafael/protocol';
 import type { CaptureError, CaptureOpts } from './audio/capture';
 import type { SessionState } from './session';
 
@@ -38,9 +39,13 @@ export type PanelToOffscreen =
   /** Setup only: open the inputs to show a level meter before Start; nothing is sent or stored (FE-44, D11) */
   | { k: 'preview'; capture?: CaptureOpts; wavBase64?: string }
   | { k: 'preview-stop' }
+  /** Conversation Log: live -> fetched from the server now; end -> the copy taken at End */
+  | { k: 'log'; id: string }
   | { k: 'reset' };
 
 export type OffscreenToPanel =
   | { k: 'state'; state: SessionState }
+  /** answer to { k: 'log' }; null = not available. Memory only, the panel turns it into a file (D11) */
+  | { k: 'log'; id?: string; events: LogEvent[] | null }
   /** audio level (RMS 0..1, ~10/s while capturing) + capture status; memory only (D11) */
   | { k: 'audio'; level: number; paused: boolean; error: CaptureError | null };

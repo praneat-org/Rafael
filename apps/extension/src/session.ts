@@ -49,6 +49,8 @@ export type SessionState = {
   refreshing: boolean;
   /** filled on `end`, emptied by `reset` */
   unanswered: Unanswered[];
+  /** End screen: the server's last copy of the Conversation Log (held in offscreen memory) */
+  endLog: 'waiting' | 'ready' | 'none';
 };
 
 export const initialState: SessionState = {
@@ -63,6 +65,7 @@ export const initialState: SessionState = {
   paused: false,
   refreshing: false,
   unanswered: [],
+  endLog: 'none',
 };
 
 export type Action =
@@ -72,6 +75,7 @@ export type Action =
   | { k: 'pause' }
   | { k: 'resume' }
   | { k: 'refreshing'; on: boolean }
+  | { k: 'end-log'; ok: boolean }
   | { k: 'status'; status: TransportStatus }
   | { k: 'server'; msg: ServerMessage; at?: number };
 
@@ -93,12 +97,17 @@ export function reduce(s: SessionState, a: Action): SessionState {
         ...initialState,
         phase: 'end',
         status: 'closed',
+        endLog: 'waiting',
         unanswered: s.cues
           .filter((c) => c.notFound && !c.partial)
           .map((c) => ({ at: c.at, question: c.question })),
       };
     case 'reset':
       return initialState;
+    case 'end-log':
+      return s.phase === 'end' && s.endLog === 'waiting'
+        ? { ...s, endLog: a.ok ? 'ready' : 'none' }
+        : s;
     case 'refreshing':
       return { ...s, refreshing: a.on };
     case 'pause':
