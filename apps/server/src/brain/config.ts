@@ -4,11 +4,14 @@ import { z } from 'zod';
 const Env = z.object({
   DETECTOR_MODEL: z.string().min(1),
   ANSWERER_MODEL: z.string().min(1).optional(),
+  /** meeting summary model; default = answerer, else detector */
+  SUMMARY_MODEL: z.string().min(1).optional(),
 });
 
 export type BrainConfig = {
   detectorModel: string;
   answererModel?: string;
+  summaryModel: string;
   detector: {
     windowMs: number;
     dedupeMs: number;
@@ -42,10 +45,12 @@ export type BrainConfig = {
 };
 
 export function loadBrainConfig(env: Record<string, string | undefined>): BrainConfig {
-  const e = Env.parse(env);
+  // Cloud Build passes unset substitutions as '': treat them as unset
+  const e = Env.parse(Object.fromEntries(Object.entries(env).filter(([, v]) => v !== '')));
   return {
     detectorModel: e.DETECTOR_MODEL,
     answererModel: e.ANSWERER_MODEL,
+    summaryModel: e.SUMMARY_MODEL ?? e.ANSWERER_MODEL ?? e.DETECTOR_MODEL,
     detector: {
       windowMs: 30_000,
       dedupeMs: 60_000,

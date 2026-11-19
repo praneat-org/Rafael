@@ -58,5 +58,6 @@ module "app" {
   stt_end_sensitivity    = var.stt_end_sensitivity
   detector_model         = var.detector_model
   answerer_model         = var.answerer_model
+  summary_model          = var.summary_model
   allowed_emails         = var.allowed_emails
 }

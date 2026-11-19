@@ -40,6 +40,11 @@ const ALLOWED = [
   'unreadable',
   'anchors',
   'buildMs',
+  // meeting summary: counts / ms only, never text
+  'chunks',
+  'droppedNoLine',
+  'blankedWho',
+  'blankedWhen',
 ] as const;
 type Allowed = (typeof ALLOWED)[number];
 const allowed = new Set<string>(ALLOWED);

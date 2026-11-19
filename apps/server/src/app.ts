@@ -1,9 +1,33 @@
-import { createServer } from 'node:http';
+import { createServer, type IncomingMessage } from 'node:http';
 import { PackExclude } from '@rafael/protocol';
 import { audit } from './audit.js';
 import { denyAll } from './auth/verifier.js';
+import { SummaryRequest, summarize } from './brain/summary.js';
+import { log } from './log.js';
 import { MemorySessionStore } from './session/store.js';
 import { attachWs, type WsOptions } from './ws/server.js';
+
+const SUMMARY_MAX_BYTES = 8 * 1024 * 1024; // 2 h log is well under 2 MB
+
+const TOO_LARGE = Symbol('too large');
+/**
+ * Request body as UTF-8, capped in bytes. Decoded once at the end, so a Thai char split
+ * across two chunks stays intact. null = the client went away mid-body (no unhandled rejection).
+ */
+async function readBody(req: IncomingMessage, maxBytes: number) {
+  const chunks: Buffer[] = [];
+  let n = 0;
+  try {
+    for await (const c of req as AsyncIterable<Buffer>) {
+      n += c.length;
+      if (n > maxBytes) return TOO_LARGE;
+      chunks.push(c);
+    }
+  } catch {
+    return null;
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
 
 export function createApp(ws?: Partial<WsOptions>) {
   const verifier = ws?.verifier ?? denyAll;
@@ -29,22 +53,53 @@ export function createApp(ws?: Partial<WsOptions>) {
         res.writeHead(401, { 'content-type': 'application/json' }).end('{"code":"UNAUTHORIZED"}');
         return;
       }
+      const json = (code: number, body: object) =>
+        res.writeHead(code, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+      // meeting summary from the caller's own Conversation Log (the End screen holds the last copy).
+      // Nothing is stored: the log and the summary only pass through (D11)
+      if (path === '/api/summary') {
+        if (req.method !== 'POST') return void res.writeHead(405, { allow: 'POST' }).end();
+        const brain = ws?.brain;
+        if (!brain) return json(503, { code: 'LLM_UNAVAILABLE' });
+        const body = await readBody(req, SUMMARY_MAX_BYTES);
+        if (body === null) return json(400, { code: 'BAD_MESSAGE' });
+        if (body === TOO_LARGE) return json(413, { code: 'BAD_MESSAGE' });
+        let raw: unknown;
+        try {
+          raw = JSON.parse(body);
+        } catch {}
+        const p = SummaryRequest.safeParse(raw);
+        if (!p.success) return json(400, { code: 'BAD_MESSAGE' });
+        const start = p.data.events[0];
+        // only the account that opened the session
+        if (start?.type !== 'session.start' || start.user !== who.email)
+          return json(403, { code: 'UNAUTHORIZED' });
+        const t0 = Date.now();
+        try {
+          const { summary, stats } = await summarize(p.data.events, {
+            llm: brain.llm,
+            model: brain.config.summaryModel,
+          });
+          // D11: counts and ms only
+          log('summary', { sessionId: start.sessionId, ms: Date.now() - t0, ...stats });
+          return json(200, { summary });
+        } catch {
+          log('summary.failed', { sessionId: start.sessionId, ms: Date.now() - t0 });
+          return json(502, { code: 'LLM_UNAVAILABLE' });
+        }
+      }
       // BE-108: re-read the Drive folder into the pack of the caller's own session
       const refresh = /^\/api\/pack\/([\w-]+)\/refresh$/.exec(path);
       if (refresh) {
-        const json = (code: number, body: object) =>
-          res.writeHead(code, { 'content-type': 'application/json' }).end(JSON.stringify(body));
         if (req.method !== 'POST') return void res.writeHead(405, { allow: 'POST' }).end();
         const s = store.get(refresh[1]!);
         // another user's session looks the same as a missing one
         if (!s || s.email !== who.email || !wsApi?.packs)
           return json(404, { code: 'SESSION_NOT_FOUND' });
         // BE-112: optional JSON body { exclude?: string[] }; empty body = no exclusions
-        let body = '';
-        for await (const c of req) {
-          body += c;
-          if (body.length > 64 * 1024) return json(413, { code: 'BAD_MESSAGE' });
-        }
+        const body = await readBody(req, 64 * 1024);
+        if (body === null) return json(400, { code: 'BAD_MESSAGE' });
+        if (body === TOO_LARGE) return json(413, { code: 'BAD_MESSAGE' });
         let exclude: string[] | undefined;
         if (body.trim()) {
           let raw: unknown;

@@ -1,8 +1,10 @@
+import type { MeetingSummary } from '@rafael/protocol';
 import { useEffect, useState } from 'react';
 import { formatTime, formatUnanswered } from '../../src/export';
 import type { PanelToOffscreen } from '../../src/messages';
 import type { SessionState, Unanswered } from '../../src/session';
 import { type GetLog, LogButtons } from './LogButtons';
+import { SummaryPanel } from './SummaryPanel';
 
 type Send = (cmd: PanelToOffscreen) => void;
 
@@ -11,11 +13,17 @@ export function EndView({
   unanswered,
   endLog,
   getLog,
+  endMeta,
+  attendees,
+  getSummary,
 }: {
   send: Send;
   unanswered: Unanswered[];
   endLog: SessionState['endLog'];
   getLog: GetLog;
+  endMeta: SessionState['endMeta'];
+  attendees: string;
+  getSummary: () => Promise<MeetingSummary | null>;
 }) {
   const text = formatUnanswered(unanswered);
   const [copied, setCopied] = useState(false);
@@ -49,6 +57,9 @@ export function EndView({
           </ul>
         )}
       </section>
+      {endLog === 'ready' && endMeta && (
+        <SummaryPanel meta={endMeta} attendees={attendees} getSummary={getSummary} />
+      )}
       <footer className="s-foot">
         <div className="e-row">
           <button
