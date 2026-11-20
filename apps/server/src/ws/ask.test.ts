@@ -158,7 +158,9 @@ test('session end logs one session.stats line: counts and ms only (D11)', async 
     }),
   );
   t.send({ t: 'ask', text: QUESTION });
-  await new Promise((r) => setTimeout(r, 100)); // the ask is received, the answer is held back
+  // the server has started on the ask (stream() called, now blocked on the gate): the whole hold is inside the measured latency
+  await vi.waitFor(() => expect(t.calls.stream).toBeGreaterThan(0));
+  await new Promise((r) => setTimeout(r, 100));
   release();
   await vi.waitFor(() => expect(cues(t.msgs).some((c) => !c.partial)).toBe(true));
   t.send({ t: 'session.end' });

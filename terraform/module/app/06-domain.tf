@@ -3,6 +3,9 @@
 ## cloudbuild deploy must have created the service before this is applied (else the mapping errors: service not found) ##
 ## Google issues the managed certificate once the DNS records below exist ##
 
+## ponytail: Cloud Run domain mapping is Preview and Google does not recommend it for production (extra first-connect latency). ##
+## Kept as the MVP path (zero extra infra). Upgrade: external Application Load Balancer + serverless NEG + managed cert, ##
+## when first-connect latency is noticeable in real pitches or when GA needs it. Not built now ##
 ## https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/cloud_run_domain_mapping ##
 resource "google_cloud_run_domain_mapping" "web" {
   count = var.custom_domain == "" ? 0 : 1
