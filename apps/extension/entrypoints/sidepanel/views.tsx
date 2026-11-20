@@ -16,6 +16,7 @@ export function EndView({
   endMeta,
   attendees,
   getSummary,
+  feedbackUrl,
 }: {
   send: Send;
   unanswered: Unanswered[];
@@ -24,6 +25,8 @@ export function EndView({
   endMeta: SessionState['endMeta'];
   attendees: string;
   getSummary: () => Promise<MeetingSummary | null>;
+  /** web app: opens the feedback form in a new tab; omitted = no button */
+  feedbackUrl?: string;
 }) {
   const text = formatUnanswered(unanswered);
   const [copied, setCopied] = useState(false);
@@ -106,6 +109,11 @@ export function EndView({
         >
           {warned && !saved ? 'ลบเลย ไม่ต้อง download' : 'ลบ session แล้วเริ่มใหม่'}
         </button>
+        {feedbackUrl && (
+          <a className="link" href={feedbackUrl} target="_blank" rel="noopener noreferrer">
+            ส่งความเห็นเกี่ยวกับ Rafael
+          </a>
+        )}
       </footer>
     </main>
   );

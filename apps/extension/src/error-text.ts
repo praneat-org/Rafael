@@ -57,3 +57,9 @@ export const MIC_DENIED: ErrorText = {
   what: 'ใช้ไมค์ไม่ได้ เพราะยังไม่ได้อนุญาตไมค์ให้ Rafael',
   todo: 'อนุญาตไมค์ใน Chrome (chrome://settings/content/microphone) หรือเอาติ๊ก "ไมค์" ออก',
 };
+
+/** The mic track ended on its own while capturing (CaptureError 'mic-ended'): unplugged or revoked. */
+export const MIC_ENDED: ErrorText = {
+  what: 'ไมค์หยุดทำงาน (ถอดอุปกรณ์หรือถูกเพิกถอนสิทธิ์) จึงไม่มี cue จากเสียงในห้อง',
+  todo: 'ต่อไมค์ใหม่หรืออนุญาตไมค์อีกครั้ง แล้วจบ session และเริ่มใหม่',
+};

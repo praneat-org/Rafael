@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { AudioState } from '../../src/audio/audio-state';
 import type { CaptureOpts } from '../../src/audio/capture';
 import { getAuthToken, isAuthConfigured, refreshAuthToken } from '../../src/auth';
-import { errorText, MIC_DENIED } from '../../src/error-text';
+import { errorText, MIC_DENIED, MIC_ENDED } from '../../src/error-text';
 import { loadNames, shortId } from '../../src/folder-names';
 import { parseFolderId } from '../../src/folder-url';
 import { type PanelToOffscreen, TAB_GRANTED } from '../../src/messages';
-import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
+import { pushRecent } from '../../src/recent-folders';
+import { loadRecent, saveRecent } from '../../src/recent-storage';
 import { defaultSettings, loadSettings, type Settings, saveSettings } from '../../src/settings';
 import { defaultInputs, startBlock } from '../../src/setup-state';
 
@@ -309,6 +310,7 @@ export function SetupView({
                 </div>
               )}
               {testing && audio?.error === 'mic-permission' && <ErrorNote text={MIC_DENIED} />}
+              {testing && audio?.error === 'mic-ended' && <ErrorNote text={MIC_ENDED} />}
             </div>
           </li>
         </ol>
