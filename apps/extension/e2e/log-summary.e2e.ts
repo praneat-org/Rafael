@@ -94,6 +94,16 @@ try {
   // End: the last copy sent with session.end
   await cmd({ k: 'end' });
   await page.getByRole('button', { name: 'สร้างสรุป' }).waitFor({ timeout: 15_000 });
+  // log PDF only opens print (may be cancelled): delete must still warn
+  const [logPdf] = await Promise.all([
+    ctx.waitForEvent('page', { timeout: 10_000 }),
+    page.getByRole('combobox', { name: 'Download log' }).selectOption('pdf'),
+  ]);
+  await logPdf.waitForLoadState();
+  assert.match((await logPdf.locator('h1').textContent()) ?? '', /Conversation Log/);
+  await logPdf.close();
+  await page.getByRole('button', { name: 'ลบ session แล้วเริ่มใหม่' }).click();
+  await page.getByText('ยังไม่ได้ download log').waitFor({ timeout: 5_000 });
   const end = await save();
   assert.equal(end.at(-1)?.type, 'session.end');
   assert.equal(end[0]?.folderName, 'ACME e2e'); // set once the pack is built

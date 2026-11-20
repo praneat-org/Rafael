@@ -24,8 +24,9 @@ export function LogButtons({
     const events = await getLog();
     setBusy(false);
     if (!events) return setFailed(true);
-    if (ext === 'pdf') savePdf(logFileName(events, 'md'), logToMarkdown(events));
-    else downloadLog(events, ext);
+    // PDF only opens the print dialog; the user may cancel, so it does not count as saved
+    if (ext === 'pdf') return savePdf(logFileName(events, 'md'), logToMarkdown(events));
+    downloadLog(events, ext);
     onSaved?.();
   };
   return (
