@@ -4,6 +4,7 @@ import { PROTOCOL_VERSION, type ServerMessage } from '@rafael/protocol';
 import { log } from '../log.js';
 import { record } from '../session/convlog.js';
 import type { Session, SessionStore } from '../session/store.js';
+import { createSessionStats } from '../sessionStats.js';
 import { type CueOut, createAnswerer, type PackIndex } from './answerer.js';
 import type { BrainConfig } from './config.js';
 import { createDetector, resolveQuestion, type Segment } from './detector.js';
@@ -50,8 +51,10 @@ export function createPipeline(
     { d: ReturnType<typeof createDetector>; chain: Promise<unknown> }
   >();
 
+  const stats = createSessionStats();
   // D21: session end / expiry deletes the CachedContent
   store.onEnd(async (s) => {
+    stats.end(s.id);
     const e = entries.get(s.id);
     entries.delete(s.id);
     detectors.delete(s.id);
@@ -193,6 +196,8 @@ export function createPipeline(
       // ponytail: unbounded per session; one pitch yields tens of cues, cap if that changes
       if (finalMsg) {
         if ('failed' in final) errored.add(finalMsg);
+        // ended meanwhile: stats already flushed, a new tally would leak
+        if (store.get(s.id) === s) stats.record(s.id, finalMsg.latencyMs ?? 0, 'failed' in final);
         s.cues.push(finalMsg);
         // a model failure is known only now: mark it, it is not a real "not in the pack"
         if ('failed' in final && logged?.body.type === 'not_found')

@@ -20,6 +20,10 @@ provider "google" {
   project = var.project_id
   region  = var.region
 
+  # the billing budgets API needs a quota project when called with user (ADC) credentials
+  user_project_override = true
+  billing_project       = var.project_id
+
   default_labels = {
     project_name = var.project_name
     environment  = var.environment
@@ -60,4 +64,14 @@ module "app" {
   answerer_model         = var.answerer_model
   summary_model          = var.summary_model
   allowed_emails         = var.allowed_emails
+  # ---------------- Web version ---------------- #
+  web_oauth_client_id = var.web_oauth_client_id
+  feedback_url        = var.feedback_url
+  app_version         = var.app_version
+  allowed_web_origins = var.allowed_web_origins
+  custom_domain       = var.custom_domain
+  # ---------------- Cost + monitoring ---------------- #
+  billing_account    = var.billing_account
+  monthly_budget_thb = var.monthly_budget_thb
+  alert_emails       = var.alert_emails
 }

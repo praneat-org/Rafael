@@ -147,6 +147,20 @@ test('session end disposes the answerer: cache deleted at the provider', async (
   await vi.waitFor(() => expect(t.live.size).toBe(0));
 });
 
+test('session end logs one session.stats line: counts and ms only (D11)', async () => {
+  const t = await setup([`- ${ANSWER} ${A1}`]);
+  t.send({ t: 'ask', text: QUESTION });
+  await vi.waitFor(() => expect(cues(t.msgs).some((c) => !c.partial)).toBe(true));
+  t.send({ t: 'session.end' });
+  await vi.waitFor(() => expect(out.some((l) => l.includes('session.stats'))).toBe(true));
+  const lines = out.filter((l) => l.includes('session.stats'));
+  expect(lines).toHaveLength(1);
+  const st = JSON.parse(lines[0] as string);
+  expect(st).toMatchObject({ msg: 'session.stats', cueCount: 1, errorCount: 0, errorRate: 0 });
+  expect(st.cueP95Ms).toBeGreaterThanOrEqual(st.cueP50Ms);
+  expect(lines[0]).not.toMatch(/SECRET|ราคา/);
+});
+
 test('ask right after session.end creates no answerer and no cache (D21)', async () => {
   const t = await setup([`- ${ANSWER} ${A1}`]);
   t.send({ t: 'session.end' });

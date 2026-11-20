@@ -1,4 +1,5 @@
 import type { AddressInfo } from 'node:net';
+import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
 import { createGoogleVerifier } from './auth/google.js';
 import { denyAll, devFake, type TokenVerifier } from './auth/verifier.js';
@@ -7,6 +8,7 @@ import { createGeminiClient, packTokenCounter } from './brain/gemini.js';
 import { log } from './log.js';
 import { createDriveProvider } from './source/drive.js';
 import { createMcpProvider } from './source/driveMcp.js';
+import { isDir } from './static.js';
 import { createGeminiStt } from './stt/gemini.js';
 
 // fail-closed: dev conveniences only when explicitly NODE_ENV=development and not on Cloud Run
@@ -15,12 +17,16 @@ if (process.env.DEV_FAKE_AUTH !== undefined && !(isDev && process.env.DEV_FAKE_A
   log('fatal', { reason: 'DEV_FAKE_AUTH set outside explicit development env' });
   process.exit(1);
 }
-// GOOGLE_OAUTH_CLIENT_ID (extension's OAuth client, BE-71) missing -> fail closed
-const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+// token aud must be the extension's OAuth client (BE-71) or the web app's (another client id, type Web application).
+// None set -> fail closed
+const clientId = [
+  process.env.GOOGLE_OAUTH_CLIENT_ID,
+  process.env.GOOGLE_OAUTH_WEB_CLIENT_ID,
+].filter((id): id is string => Boolean(id));
 const verifier: TokenVerifier =
   process.env.DEV_FAKE_AUTH === '1'
     ? devFake
-    : clientId
+    : clientId.length
       ? createGoogleVerifier({
           clientId,
           // ALLOWED_EMAILS: dev-only allowlist outside praneat.com (D13 exception), never set on prod
@@ -36,30 +42,44 @@ const brain =
 // BE-89: live STT only when STT_MODEL is set (Vertex, location STT_LOCATION default global); else no stt
 const sttProvider = createGeminiStt(process.env);
 
-const server = createApp({
-  verifier,
-  allowedOrigins: (process.env.ALLOWED_EXTENSION_IDS ?? '')
-    .split(',')
-    .filter(Boolean)
-    .map((id) => `chrome-extension://${id.trim()}`),
-  allowLocalhost: isDev,
-  stt: sttProvider && { provider: sttProvider },
-  brain,
-  pack: {
-    // BE-92: SOURCE_PROVIDER=mcp|driveApi (default driveApi: MCP is Developer Preview; falls back per call)
-    provider: (accessToken) => {
-      const api = createDriveProvider({ accessToken });
-      return process.env.SOURCE_PROVIDER === 'mcp'
-        ? createMcpProvider({ accessToken, fallback: api })
-        : api;
+// web build: WEB_DIST, default apps/web/dist (same relative path from src/ and from dist/); absent = API only
+const webDist = process.env.WEB_DIST ?? fileURLToPath(new URL('../../web/dist', import.meta.url));
+const hasWeb = isDir(webDist);
+
+const server = createApp(
+  {
+    verifier,
+    allowedOrigins: [
+      ...(process.env.ALLOWED_EXTENSION_IDS ?? '')
+        .split(',')
+        .filter(Boolean)
+        .map((id) => `chrome-extension://${id.trim()}`),
+      // exact https://host entries; the page's own origin needs no entry (same-origin)
+      ...(process.env.ALLOWED_WEB_ORIGINS ?? '')
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ],
+    allowLocalhost: isDev,
+    stt: sttProvider && { provider: sttProvider },
+    brain,
+    pack: {
+      // BE-92: SOURCE_PROVIDER=mcp|driveApi (default driveApi: MCP is Developer Preview; falls back per call)
+      provider: (accessToken) => {
+        const api = createDriveProvider({ accessToken });
+        return process.env.SOURCE_PROVIDER === 'mcp'
+          ? createMcpProvider({ accessToken, fallback: api })
+          : api;
+      },
+      build: { countTokens: packTokenCounter(llm, brain?.config.answererModel) },
     },
-    build: { countTokens: packTokenCounter(llm, brain?.config.answererModel) },
   },
-}).listen(Number(process.env.PORT ?? 8080), () => {
+  { webDist: hasWeb ? webDist : undefined },
+).listen(Number(process.env.PORT ?? 8080), () => {
   const { port } = server.address() as AddressInfo;
-  log('listening', { port });
-  if (!clientId && process.env.DEV_FAKE_AUTH !== '1')
-    log('warn', { reason: 'GOOGLE_OAUTH_CLIENT_ID unset, all auth denied' });
+  log('listening', { port, ...(hasWeb && { reason: 'web' }) });
+  if (!clientId.length && process.env.DEV_FAKE_AUTH !== '1')
+    log('warn', { reason: 'no OAuth client id set, all auth denied' });
   if (!brain) log('warn', { reason: 'no LLM backend or DETECTOR_MODEL, ask -> LLM_UNAVAILABLE' });
 });
 

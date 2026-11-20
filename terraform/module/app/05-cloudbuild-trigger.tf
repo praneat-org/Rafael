@@ -47,6 +47,10 @@ resource "google_cloudbuild_trigger" "cloudbuild_branch_trigger" {
     _DETECTOR_MODEL        = var.detector_model
     _ANSWERER_MODEL        = var.answerer_model
     _SUMMARY_MODEL         = var.summary_model
+    _WEB_OAUTH_CLIENT_ID   = var.web_oauth_client_id
+    _FEEDBACK_URL          = var.feedback_url
+    _APP_VERSION           = var.app_version
+    _ALLOWED_WEB_ORIGINS   = join(",", var.allowed_web_origins)
     _ALLOWED_EMAILS        = join(",", var.allowed_emails)
     _SECRETS               = join(",", [for id in var.app_secret_ids : "${id}=${id}:latest"])
   }

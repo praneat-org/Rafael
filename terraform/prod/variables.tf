@@ -94,13 +94,9 @@ variable "cloudbuild_trigger_branch_name" {
 }
 
 variable "cloudbuild_approval_required" {
-  description = "Require manual approval before the build runs (always on for prod)"
+  description = "Require manual approval before the build runs. CAR-3845: merge to main deploys automatically, so the prod default is false (set true to bring the approval gate back)"
   type        = bool
-  default     = true
-  validation {
-    condition     = var.cloudbuild_approval_required
-    error_message = "prod deploys need a human approval."
-  }
+  default     = false
 }
 
 variable "cloudbuild_file_name" {
@@ -209,4 +205,64 @@ variable "summary_model" {
   description = "Gemini model id for the meeting summary (SUMMARY_MODEL); empty = answerer model"
   type        = string
   default     = ""
+}
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Web version (CAR-3845)
+#---------------------------------------------------------------------------------------------------------------------#
+
+variable "web_oauth_client_id" {
+  description = "OAuth client id of type Web application for the web version (not secret): token aud on the server + sign-in in the web bundle"
+  type        = string
+  default     = ""
+}
+
+variable "feedback_url" {
+  description = "Feedback form URL baked into the web bundle (VITE_FEEDBACK_URL)"
+  type        = string
+  default     = ""
+}
+
+variable "app_version" {
+  description = "Version label shown in the web app (VITE_APP_VERSION)"
+  type        = string
+  default     = ""
+}
+
+variable "allowed_web_origins" {
+  description = "Extra exact https://host origins allowed to open /ws; the origin of the page this service serves needs no entry"
+  type        = list(string)
+  default     = []
+}
+
+variable "custom_domain" {
+  description = "Custom domain for the web version (Cloud Run domain mapping, HTTPS); empty = none. The domain must be verified for the deploying account in Search Console"
+  type        = string
+  default     = ""
+}
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Cost + monitoring
+#---------------------------------------------------------------------------------------------------------------------#
+
+variable "billing_account" {
+  description = "Billing account id (XXXXXX-XXXXXX-XXXXXX) for the Vertex AI budget alert; empty = no budget"
+  type        = string
+  default     = ""
+}
+
+variable "monthly_budget_thb" {
+  description = "Monthly Vertex AI budget in THB (the billing account currency); alerts at 50/90/100 %"
+  type        = number
+  default     = 0
+  validation {
+    condition     = var.monthly_budget_thb >= 0
+    error_message = "monthly_budget_thb must be >= 0."
+  }
+}
+
+variable "alert_emails" {
+  description = "Emails for the budget alert and the cue-error alert"
+  type        = list(string)
+  default     = []
 }

@@ -5,6 +5,7 @@ import { denyAll } from './auth/verifier.js';
 import { SummaryRequest, summarize } from './brain/summary.js';
 import { log } from './log.js';
 import { MemorySessionStore } from './session/store.js';
+import { createStaticHandler } from './static.js';
 import { attachWs, type WsOptions } from './ws/server.js';
 
 const SUMMARY_MAX_BYTES = 8 * 1024 * 1024; // 2 h log is well under 2 MB
@@ -29,7 +30,9 @@ async function readBody(req: IncomingMessage, maxBytes: number) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-export function createApp(ws?: Partial<WsOptions>) {
+/** `webDist`: directory of the web build; when set it is served at / and the WS accepts same-origin pages. */
+export function createApp(ws?: Partial<WsOptions>, o: { webDist?: string } = {}) {
+  const web = o.webDist ? createStaticHandler(o.webDist) : undefined;
   const verifier = ws?.verifier ?? denyAll;
   const store = ws?.store ?? new MemorySessionStore();
   // one place for session.end / session.expired, whichever path ended it (explicit, grace, TTL)
@@ -138,10 +141,12 @@ export function createApp(ws?: Partial<WsOptions>) {
       res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
       return;
     }
+    if (web && !path.startsWith('/api/') && path !== '/ws' && web(req, res, path)) return;
     res.writeHead(404).end();
   });
   wsApi = attachWs(server, {
     allowedOrigins: [],
+    sameOrigin: Boolean(web),
     ...ws,
     store,
     verifier,

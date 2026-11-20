@@ -45,6 +45,12 @@ const ALLOWED = [
   'droppedNoLine',
   'blankedWho',
   'blankedWhen',
+  // session end stats: counts / ms / rate only
+  'cueCount',
+  'cueP50Ms',
+  'cueP95Ms',
+  'errorCount',
+  'errorRate',
 ] as const;
 type Allowed = (typeof ALLOWED)[number];
 const allowed = new Set<string>(ALLOWED);
