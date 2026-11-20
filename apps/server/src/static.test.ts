@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -225,23 +225,35 @@ test('web origin entries are normalized: trailing slash, path and upper case sti
   }
 });
 
-test('an aborted download destroys the file stream (no leaked fd)', async () => {
-  writeFileSync(join(dir, 'assets', 'big-1.js'), Buffer.alloc(32 * 1024 * 1024, 97));
-  const fdsBefore = readdirSync('/proc/self/fd').length;
-  await new Promise<void>((resolve) => {
-    const req = request({ port, path: '/assets/big-1.js' }, (res) => {
-      res.once('data', () => {
-        req.destroy(); // client goes away mid-download
-        resolve();
+test.skipIf(process.platform !== 'linux')(
+  'an aborted download destroys the file stream (no leaked fd)',
+  async () => {
+    writeFileSync(join(dir, 'assets', 'big-1.js'), Buffer.alloc(32 * 1024 * 1024, 97));
+    // Linux only: count fds that point at this very file (the total fd count is noisy)
+    const openBig = () =>
+      readdirSync('/proc/self/fd').filter((n) => {
+        try {
+          return readlinkSync(`/proc/self/fd/${n}`).endsWith('big-1.js');
+        } catch {
+          return false;
+        }
+      }).length;
+    await new Promise<void>((resolve) => {
+      const req = request({ port, path: '/assets/big-1.js' }, (res) => {
+        res.once('data', () => {
+          // stop reading so the server is blocked on backpressure with the file still open, then go away
+          res.pause();
+          setTimeout(() => {
+            req.destroy();
+            resolve();
+          }, 200);
+        });
       });
-    });
-    req.on('error', () => {});
-    req.end();
-  }).catch(() => {});
-  await vi.waitFor(
-    () => expect(readdirSync('/proc/self/fd').length).toBeLessThanOrEqual(fdsBefore + 1),
-    {
+      req.on('error', () => {});
+      req.end();
+    }).catch(() => {});
+    await vi.waitFor(() => expect(openBig()).toBe(0), {
       timeout: 3000,
-    },
-  );
-});
+    });
+  },
+);

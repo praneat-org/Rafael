@@ -141,7 +141,16 @@ export function createApp(ws?: Partial<WsOptions>, o: { webDist?: string } = {})
       res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
       return;
     }
-    if (web && !path.startsWith('/api/') && path !== '/ws' && (await web(req, res, path))) return;
+    if (web && !path.startsWith('/api/') && path !== '/ws') {
+      try {
+        if (await web(req, res, path)) return;
+      } catch {
+        // a throw here must not become an unhandled rejection (kills the process and every live WS)
+        if (!res.headersSent) res.writeHead(500).end();
+        else res.destroy();
+        return;
+      }
+    }
     res.writeHead(404).end();
   });
   wsApi = attachWs(server, {
