@@ -75,10 +75,15 @@ try {
     }, m);
   await cmd({ k: 'start', mock: false, packId: 'folder-1', latencyMs: 0 });
 
+  const pick = async (menu: string, item: string, exact = false) => {
+    const d = page.locator('details.dl').filter({ has: page.getByText(menu, { exact }) });
+    await d.locator('summary').click();
+    await d.getByRole('button', { name: item }).click();
+  };
   const save = async () => {
     const [dl] = await Promise.all([
       page.waitForEvent('download', { timeout: 10_000 }),
-      page.getByRole('combobox', { name: 'Download log' }).selectOption('json'),
+      pick('ดาวน์โหลด log', 'JSON (สำหรับ Eval)'),
     ]);
     const file = JSON.parse(readFileSync((await dl.path()) as string, 'utf8')) as {
       events: { type: string; folderName?: string }[];
@@ -87,7 +92,15 @@ try {
   };
 
   // Live: fetched from the server now
-  await page.getByRole('combobox', { name: 'Download log' }).waitFor({ timeout: 15_000 });
+  await page.getByText('ดาวน์โหลด log').waitFor({ timeout: 15_000 });
+  // keyboard: Enter opens the menu, Tab walks the formats (a <select> jumped to .md on ArrowDown)
+  await page.locator('details.dl summary').first().focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.evaluate(() => document.activeElement?.textContent), 'PDF');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('details.dl').first().getAttribute('open'), null);
   const live = await save();
   assert.equal(live[0]?.type, 'session.start');
 
@@ -97,7 +110,7 @@ try {
   // log PDF only opens print (may be cancelled): delete must still warn
   const [logPdf] = await Promise.all([
     ctx.waitForEvent('page', { timeout: 10_000 }),
-    page.getByRole('combobox', { name: 'Download log' }).selectOption('pdf'),
+    pick('ดาวน์โหลด log', 'PDF'),
   ]);
   await logPdf.waitForLoadState();
   assert.match((await logPdf.locator('h1').textContent()) ?? '', /Conversation Log/);
@@ -118,7 +131,7 @@ try {
   // PDF: printable tab with the draft (print dialog itself is Chrome's)
   const [pdfTab] = await Promise.all([
     ctx.waitForEvent('page', { timeout: 10_000 }),
-    page.getByRole('combobox', { name: 'ดาวน์โหลด' }).selectOption('pdf'),
+    pick('⬇ ดาวน์โหลด', 'PDF', true),
   ]);
   await pdfTab.waitForLoadState();
   assert.match(await pdfTab.title(), /^rafael_summary_.*ACME_e2e$/);

@@ -41,7 +41,7 @@ export function mdToHtml(md: string): string {
       }
       out.push(`<li>${inline(line.slice(2))}</li>`);
     } else if (line.startsWith('|')) {
-      if (/^\|[\s|-]+\|$/.test(line)) continue; // header separator row
+      if (/^\|(\s*--+\s*\|)+$/.test(line)) continue; // header separator row (not the "| - |" placeholder)
       const cells = line.replace(/^\||\|$/g, '').split('|');
       const tag = table ? 'td' : 'th';
       if (!table) {

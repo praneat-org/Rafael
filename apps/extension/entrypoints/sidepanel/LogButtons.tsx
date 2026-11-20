@@ -32,7 +32,7 @@ export function LogButtons({
   return (
     <>
       <DownloadMenu
-        label="Download log"
+        label="ดาวน์โหลด log"
         formats={{ md: 'Markdown (.md)', pdf: 'PDF', json: 'JSON (สำหรับ Eval)' }}
         disabled={disabled || busy}
         onPick={save}

@@ -29,6 +29,11 @@ describe('mdToHtml', () => {
     expect(html).not.toContain('--');
   });
 
+  it('keeps the "no actions" placeholder row', () => {
+    const html = mdToHtml('| What | Who |\n| -- | -- |\n| - | - |');
+    expect(html).toContain('<tr><td>-</td><td>-</td></tr>');
+  });
+
   it('escapes the title and log content', () => {
     const md = logToMarkdown([
       { type: 'transcript', ts: '2026-11-20T10:00:01', text: '<script>alert(1)</script>' } as never,
