@@ -3,7 +3,7 @@ import { LiveView } from '../../extension/entrypoints/sidepanel/LiveView';
 import { EndView } from '../../extension/entrypoints/sidepanel/views';
 import { checkSupport } from './browser-support';
 import { FEEDBACK_URL, VERSION } from './config';
-import { getToken } from './identity';
+import { auth, getToken } from './identity';
 import { Onboarding } from './Onboarding';
 import { SetupView } from './SetupView';
 import { useWebSession } from './useWebSession';
@@ -39,12 +39,31 @@ export function App() {
     return () => window.removeEventListener('beforeunload', on);
   }, [live]);
 
+  // renew the token before it expires; if that fails the session keeps running and asks for a sign-in
+  const [needSignIn, setNeedSignIn] = useState(false);
+  useEffect(() => {
+    if (!live || !auth) return;
+    const stop = auth.keepFresh(setNeedSignIn);
+    return () => {
+      stop();
+      setNeedSignIn(false);
+    };
+  }, [live]);
+
   let body: React.ReactNode;
   if (hash === '#/onboarding') body = <Onboarding />;
   else if (live)
     body = (
       <>
         <LiveView state={state} send={send} getLog={getLog} />
+        {needSignIn && (
+          <p className="note err web-alert" role="alert">
+            session ยังทำงานอยู่ แต่การลงชื่อเข้าใช้หมดอายุ ถ้าการเชื่อมต่อหลุดจะต่อใหม่ไม่ได้{' '}
+            <button type="button" className="link inline" onClick={() => auth?.getToken(true)}>
+              ลงชื่อเข้าใช้ใหม่
+            </button>
+          </p>
+        )}
         {audio?.error && (
           <p className="note err web-alert" role="alert">
             {LOST_TEXT[audio.error]}

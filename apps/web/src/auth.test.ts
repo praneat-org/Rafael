@@ -87,6 +87,56 @@ test('clear() forgets the token', async () => {
   expect(auth.cached()).toBeNull();
 });
 
+test('keepFresh renews 5 min before expiry, so a reconnect never meets an expired token', async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fakeGis([
+      { access_token: 'a', expires_in: 3600 },
+      { access_token: 'b', expires_in: 3600 },
+    ]);
+    const auth = new WebAuth('x.apps.googleusercontent.com', async () => f.gis);
+    await auth.getToken(true);
+    const states: boolean[] = [];
+    const stop = auth.keepFresh((n) => states.push(n));
+    await vi.advanceTimersByTimeAsync(40 * 60_000);
+    expect(auth.cached()).toBe('a'); // not yet due
+    await vi.advanceTimersByTimeAsync(16 * 60_000); // 56 min: past exp - 5 min (exp is already 1 min early)
+    expect(auth.cached()).toBe('b');
+    expect(f.prompts).toEqual(['', 'none']); // silent, no popup
+    expect(states.at(-1)).toBe(false);
+    stop();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('keepFresh: silent renewal fails -> sign-in prompt, retried, cleared by a sign-in', async () => {
+  vi.useFakeTimers();
+  try {
+    const f = fakeGis([
+      { access_token: 'a', expires_in: 3600 },
+      'error', // silent renewal fails
+      'error', // retry fails too
+      { access_token: 'c', expires_in: 3600 }, // the user signs in
+    ]);
+    const auth = new WebAuth('x.apps.googleusercontent.com', async () => f.gis);
+    await auth.getToken(true);
+    const states: boolean[] = [];
+    const stop = auth.keepFresh((n) => states.push(n));
+    await vi.advanceTimersByTimeAsync(54 * 60_000 + 10_000); // due at 54 min (exp 59 - 5)
+    expect(states.at(-1)).toBe(true); // "sign in again", session untouched
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(f.prompts).toEqual(['', 'none', 'none']); // retried silently
+    expect(states.at(-1)).toBe(true);
+    expect(await auth.getToken(true)).toBe('c'); // user clicks the prompt
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(states.at(-1)).toBe(false);
+    stop();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 test('isClientId only accepts a Google OAuth client id', () => {
   expect(isClientId(undefined)).toBe(false);
   expect(isClientId('UNSET')).toBe(false);

@@ -150,6 +150,8 @@ try {
     await page.getByRole('link', { name: 'คู่มือใช้งาน (1 หน้า)' }).click();
     await page.getByRole('heading', { name: /Rafael: คู่มือใช้งาน 1 หน้า/ }).waitFor();
     await page.getByText('แชร์เสียงแท็บ').first().waitFor();
+    await page.getByText(/DRAFT/).waitFor(); // the customer notice is still a draft (dpo-brief)
+    await page.getByText(/UNVERIFIED/).waitFor(); // Thailand data residency caveat
     await ctx.close();
   }
 
@@ -243,6 +245,15 @@ try {
   assert.ok(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
     '360px: no x-scroll',
+  );
+  // the version badge never covers the ask input
+  const [ask, ver] = await Promise.all([
+    page.getByLabel('ถามจาก pack').boundingBox(),
+    page.locator('.web-ver').boundingBox(),
+  ]);
+  assert.ok(
+    ask && ver && (ver.y >= ask.y + ask.height || ver.x >= ask.x + ask.width),
+    'badge overlaps the ask input',
   );
   if (audioOk) await until(() => audioFrames > 5, 'audio frames reach the server');
 

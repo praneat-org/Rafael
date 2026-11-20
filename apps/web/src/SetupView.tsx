@@ -253,7 +253,8 @@ export function SetupView({
         </ol>
       )}
       <p className="note">
-        ก่อนเริ่มทุกครั้ง แจ้งลูกค้าว่าทีมใช้ระบบช่วยฟัง (ดู <a href="#/onboarding">คู่มือ</a> ข้อ "แจ้งลูกค้า")
+        ก่อนเริ่มทุกครั้ง แจ้งลูกค้าว่าทีมใช้ระบบช่วยฟัง (ดู <a href="#/onboarding">คู่มือ</a> ข้อ "แจ้งลูกค้า"
+        ถ้อยคำยังเป็นร่าง รอ DPO ยืนยัน)
       </p>
       <footer className="s-foot">
         <button type="button" className="primary" disabled={cantStart} onClick={start}>

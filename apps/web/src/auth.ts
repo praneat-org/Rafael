@@ -73,6 +73,39 @@ export class WebAuth {
     return this.inflight;
   }
 
+  /**
+   * While a session is live: renew the token silently `leadMs` before it expires, so a reconnect
+   * (Cloud Run cuts the socket every 60 min, the token lasts 60) never meets an expired token.
+   * `onNeedSignIn(true)` when the silent renewal failed (retried every `retryMs`; an interactive
+   * sign-in also clears it); the session itself is untouched. Returns stop().
+   */
+  keepFresh(
+    onNeedSignIn: (need: boolean) => void,
+    leadMs = 5 * 60_000,
+    retryMs = 30_000,
+  ): () => void {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = async () => {
+      if (stopped) return;
+      const wait = this.token ? this.token.exp - leadMs - this.now() : 0;
+      if (wait > 0) {
+        onNeedSignIn(false);
+        timer = setTimeout(run, wait);
+        return;
+      }
+      const t = await this.getToken(false, { fresh: true });
+      if (stopped) return;
+      onNeedSignIn(t === null);
+      timer = setTimeout(run, t ? 0 : retryMs);
+    };
+    void run();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }
+
   /** forget the token (sign-out of Rafael; the Google session stays) */
   clear() {
     this.token = null;

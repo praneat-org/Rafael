@@ -8,6 +8,9 @@ const at = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 // The extension's chrome-free modules, sidepanel views and docs/onboarding.md are imported by relative
 // path, not copied: one session core, one UI.
 export default defineConfig({
+  // one tsconfig for every file, extension files included: apps/extension/tsconfig.json extends
+  // .wxt/tsconfig.json, which only exists after `wxt prepare` (a fresh checkout / Docker build has none)
+  tsconfig: './tsconfig.json',
   plugins: [react()],
   resolve: {
     // files under apps/extension must resolve these from web's install (apps/extension may not be installed)

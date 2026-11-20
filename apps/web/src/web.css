@@ -1,24 +1,30 @@
 /* The side panel stylesheet is reused as is; this file only adds what a full browser tab needs. */
 .web-shell {
+  display: flex;
+  flex-direction: column;
   max-width: 520px; /* same width range as the side panel (360-500px): the views are built for it */
   margin: 0 auto;
-  min-height: 100vh;
+  height: 100vh;
   background: var(--bg);
 }
+/* the views size themselves to 100vh for the side panel: here they share the column with the badge row */
+.web-shell > .view,
+.web-shell > .liveview {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  overflow-y: auto;
+}
 .web-ver {
-  position: fixed;
-  right: 8px;
-  bottom: 4px;
+  flex: none;
+  padding: 2px 8px 4px;
+  text-align: right;
   font-size: 11px;
   color: var(--faint);
-  pointer-events: none;
 }
 .web-alert {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  width: min(480px, calc(100vw - 32px));
+  flex: none; /* in the column, above the badge: never covers the ask input / End */
+  margin: 0 12px 4px;
   background: var(--surface);
 }
 a.link,
@@ -61,4 +67,8 @@ button.link.inline {
   padding: 6px 12px;
   border-left: 3px solid var(--line);
   color: var(--muted);
+}
+.onboarding blockquote:first-of-type {
+  border-left-color: var(--warn);
+  color: var(--warn);
 }
