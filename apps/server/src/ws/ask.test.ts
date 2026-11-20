@@ -148,8 +148,18 @@ test('session end disposes the answerer: cache deleted at the provider', async (
 });
 
 test('session end logs one session.stats line: counts and ms only (D11)', async () => {
-  const t = await setup([`- ${ANSWER} ${A1}`]);
+  // the gate holds the answer back, so the cue latency is known to be well above 0
+  let release = () => {};
+  const t = await setup(
+    [`- ${ANSWER} ${A1}`],
+    () => pack,
+    new Promise<void>((r) => {
+      release = r;
+    }),
+  );
   t.send({ t: 'ask', text: QUESTION });
+  await new Promise((r) => setTimeout(r, 100)); // the ask is received, the answer is held back
+  release();
   await vi.waitFor(() => expect(cues(t.msgs).some((c) => !c.partial)).toBe(true));
   t.send({ t: 'session.end' });
   await vi.waitFor(() => expect(out.some((l) => l.includes('session.stats'))).toBe(true));
@@ -157,7 +167,11 @@ test('session end logs one session.stats line: counts and ms only (D11)', async 
   expect(lines).toHaveLength(1);
   const st = JSON.parse(lines[0] as string);
   expect(st).toMatchObject({ msg: 'session.stats', cueCount: 1, errorCount: 0, errorRate: 0 });
-  expect(st.cueP95Ms).toBeGreaterThanOrEqual(st.cueP50Ms);
+  const finalCue = cues(t.msgs).find((c) => !c.partial);
+  expect(finalCue?.latencyMs).toBeGreaterThanOrEqual(90);
+  // one cue: both percentiles are that cue's latency, not a 0 fallback
+  expect(st.cueP50Ms).toBe(finalCue?.latencyMs);
+  expect(st.cueP95Ms).toBe(finalCue?.latencyMs);
   expect(lines[0]).not.toMatch(/SECRET|ราคา/);
 });
 

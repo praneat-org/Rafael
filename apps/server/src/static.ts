@@ -1,6 +1,8 @@
 import { createReadStream, statSync } from 'node:fs';
+import { stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
+import { pipeline } from 'node:stream';
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -47,9 +49,10 @@ export const SECURITY_HEADERS = {
   'permissions-policy': 'microphone=(self), display-capture=(self), camera=()',
 };
 
-const fileOf = (p: string) => {
+// async: statSync in the request path would block the event loop (and every live WS) on a slow disk
+const fileOf = async (p: string) => {
   try {
-    const st = statSync(p);
+    const st = await stat(p);
     return st.isFile() ? st : undefined;
   } catch {
     return undefined;
@@ -71,7 +74,7 @@ export const isDir = (p: string) => {
  */
 export function createStaticHandler(dir: string) {
   const root = resolve(dir);
-  return (req: IncomingMessage, res: ServerResponse, path: string): boolean => {
+  return async (req: IncomingMessage, res: ServerResponse, path: string): Promise<boolean> => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return false;
     let rel: string;
     try {
@@ -90,14 +93,14 @@ export function createStaticHandler(dir: string) {
       res.writeHead(404).end();
       return true;
     }
-    let file = fileOf(abs);
+    let file = await fileOf(abs);
     let spa = false;
     if (!file) {
       if (extname(rel)) {
         res.writeHead(404, SECURITY_HEADERS).end();
         return true;
       }
-      file = fileOf(join(root, 'index.html'));
+      file = await fileOf(join(root, 'index.html'));
       spa = true;
       if (!file) return false;
     }
@@ -118,9 +121,8 @@ export function createStaticHandler(dir: string) {
       res.end();
       return true;
     }
-    createReadStream(target)
-      .on('error', () => res.destroy())
-      .pipe(res);
+    // pipeline destroys the file stream when the client aborts (no fd leak) and the response on a read error
+    pipeline(createReadStream(target), res, () => {});
     return true;
   };
 }

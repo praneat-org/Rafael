@@ -222,8 +222,8 @@ variable "monthly_budget_thb" {
   type        = number
   default     = 0
   validation {
-    condition     = var.monthly_budget_thb >= 0
-    error_message = "monthly_budget_thb must be >= 0."
+    condition     = var.monthly_budget_thb >= 0 && var.monthly_budget_thb == floor(var.monthly_budget_thb)
+    error_message = "monthly_budget_thb must be a whole number >= 0 (Money.units is an integer)."
   }
 }
 

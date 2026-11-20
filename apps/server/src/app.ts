@@ -141,7 +141,7 @@ export function createApp(ws?: Partial<WsOptions>, o: { webDist?: string } = {})
       res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
       return;
     }
-    if (web && !path.startsWith('/api/') && path !== '/ws' && web(req, res, path)) return;
+    if (web && !path.startsWith('/api/') && path !== '/ws' && (await web(req, res, path))) return;
     res.writeHead(404).end();
   });
   wsApi = attachWs(server, {

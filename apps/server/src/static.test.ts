@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { request } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -223,4 +223,25 @@ test('web origin entries are normalized: trailing slash, path and upper case sti
     api.closeAllConnections();
     api.close();
   }
+});
+
+test('an aborted download destroys the file stream (no leaked fd)', async () => {
+  writeFileSync(join(dir, 'assets', 'big-1.js'), Buffer.alloc(32 * 1024 * 1024, 97));
+  const fdsBefore = readdirSync('/proc/self/fd').length;
+  await new Promise<void>((resolve) => {
+    const req = request({ port, path: '/assets/big-1.js' }, (res) => {
+      res.once('data', () => {
+        req.destroy(); // client goes away mid-download
+        resolve();
+      });
+    });
+    req.on('error', () => {});
+    req.end();
+  }).catch(() => {});
+  await vi.waitFor(
+    () => expect(readdirSync('/proc/self/fd').length).toBeLessThanOrEqual(fdsBefore + 1),
+    {
+      timeout: 3000,
+    },
+  );
 });
