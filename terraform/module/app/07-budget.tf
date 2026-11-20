@@ -51,6 +51,10 @@ resource "google_billing_budget" "vertex" {
 
   lifecycle {
     precondition {
+      condition     = length(var.alert_emails) > 0
+      error_message = "billing_account is set: alert_emails must not be empty (the budget would alert nobody)."
+    }
+    precondition {
       condition     = var.monthly_budget_thb > 0
       error_message = "billing_account is set: monthly_budget_thb must be > 0 (a 0 THB budget alerts immediately)."
     }

@@ -39,6 +39,25 @@ export type WsOptions = {
   stt?: SttOptions;
 };
 
+/**
+ * Web origins from env (PUBLIC_ORIGIN, ALLOWED_WEB_ORIGINS): each entry goes through `new URL(o).origin`
+ * so a trailing slash, a path or upper case still match what the browser sends. Invalid or non-http(s)
+ * entries are skipped and reported to `onInvalid` (never the value: it is config, but keep logs boring).
+ */
+export function parseWebOrigins(entries: string[], onInvalid: () => void = () => {}): string[] {
+  const out: string[] = [];
+  for (const raw of entries.map((e) => e.trim()).filter(Boolean)) {
+    try {
+      const u = new URL(raw);
+      if (u.protocol === 'https:' || u.protocol === 'http:') out.push(u.origin);
+      else onInvalid();
+    } catch {
+      onInvalid();
+    }
+  }
+  return out;
+}
+
 function originAllowed(req: IncomingMessage, o: WsOptions): boolean {
   // never derived from the Host header: a client controls it
   const origin = req.headers.origin;

@@ -72,7 +72,7 @@ One Cloud Run service serves everything: the Vite build of `apps/web` as static 
 ### Human checklist (web version)
 
 1. DNS: set `custom_domain` in tfvars, apply, then add the records from `terraform output custom_domain_dns_records` at the registrar (the domain must be verified for the deploying account, Search Console). The first `cloudbuild` deploy has to have created the Cloud Run service before the mapping can be applied. The managed certificate appears some minutes after DNS resolves.
-2. OAuth client of type **Web application** (a new client, not the Chrome Extension one): Authorized JavaScript origins = `https://<custom domain>` (and the `run.app` URL if you test on it). No redirect URIs (GIS popup/token flow). Put its id in tfvars as `web_oauth_client_id`.
+2. OAuth client of type **Web application** (a new client, not the Chrome Extension one): Authorized JavaScript origins = `https://<custom domain>` (and the `run.app` URL if you test on it, which also has to be added to `allowed_web_origins` so `/ws` accepts it). No redirect URIs (GIS popup/token flow). Put its id in tfvars as `web_oauth_client_id`.
 3. Consent screen: **Internal** for prod (praneat.com workspace). Same scopes as the extension (D13).
 4. Budget: billing account id (`gcloud billing accounts list`) -> `billing_account`; amount in THB -> `monthly_budget_thb`; recipients -> `alert_emails`. Needs Billing Account Administrator (or Costs Manager) for whoever applies. If the alert never fires, check the Vertex AI service id in the budget filter (`services/C7E2-9256-1C43`) against Billing > Reports.
 5. Optional tfvars: `feedback_url`, `app_version`, `allowed_web_origins`.

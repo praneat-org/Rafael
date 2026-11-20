@@ -10,6 +10,7 @@ import { createDriveProvider } from './source/drive.js';
 import { createMcpProvider } from './source/driveMcp.js';
 import { isDir } from './static.js';
 import { createGeminiStt } from './stt/gemini.js';
+import { parseWebOrigins } from './ws/server.js';
 
 // fail-closed: dev conveniences only when explicitly NODE_ENV=development and not on Cloud Run
 const isDev = process.env.NODE_ENV === 'development' && !process.env.K_SERVICE;
@@ -55,9 +56,10 @@ const server = createApp(
         .filter(Boolean)
         .map((id) => `chrome-extension://${id.trim()}`),
       // PUBLIC_ORIGIN = the page's own https://host (custom domain); ALLOWED_WEB_ORIGINS = extra exact origins
-      ...[process.env.PUBLIC_ORIGIN ?? '', ...(process.env.ALLOWED_WEB_ORIGINS ?? '').split(',')]
-        .map((o) => o.trim())
-        .filter(Boolean),
+      ...parseWebOrigins(
+        [process.env.PUBLIC_ORIGIN ?? '', ...(process.env.ALLOWED_WEB_ORIGINS ?? '').split(',')],
+        () => log('warn', { reason: 'invalid web origin entry ignored' }),
+      ),
     ],
     allowLocalhost: isDev,
     stt: sttProvider && { provider: sttProvider },

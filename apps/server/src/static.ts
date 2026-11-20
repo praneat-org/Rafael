@@ -27,7 +27,8 @@ const CSP = [
   "script-src 'self' https://accounts.google.com/gsi/client",
   "style-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/style",
   "img-src 'self' data: https://*.googleusercontent.com",
-  "connect-src 'self' wss: https://accounts.google.com/gsi/ https://*.googleapis.com",
+  // 'self' covers the same-origin wss:// /ws; no blanket wss:
+  "connect-src 'self' https://accounts.google.com/gsi/ https://www.googleapis.com",
   'frame-src https://accounts.google.com/gsi/',
   "worker-src 'self' blob:",
   "object-src 'none'",
