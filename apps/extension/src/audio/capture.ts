@@ -1,7 +1,7 @@
 import { AudioPipeline, TARGET_RATE } from './pcm';
 
 export type CaptureOpts = { tab: boolean; mic: boolean };
-export type CaptureError = 'mic-permission' | 'tab-capture' | 'tab-no-audio';
+export type CaptureError = 'mic-permission' | 'mic-ended' | 'tab-capture' | 'tab-no-audio';
 export type CaptureHandle = { pause(): void; resume(): void; stop(): void };
 
 export class CaptureFailed extends Error {
@@ -67,7 +67,7 @@ export async function startCapture(
       });
       streams.push(mic);
       for (const t of mic.getAudioTracks()) {
-        t.addEventListener('ended', () => onLost?.('mic-permission'));
+        t.addEventListener('ended', () => onLost?.('mic-ended'));
       }
       ctx.createMediaStreamSource(mic).connect(node); // never to destination: no echo of own voice
     }

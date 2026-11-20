@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { LiveView } from '../../extension/entrypoints/sidepanel/LiveView';
 import { EndView } from '../../extension/entrypoints/sidepanel/views';
+import { MIC_ENDED } from '../../extension/src/error-text';
 import { checkSupport } from './browser-support';
 import { FEEDBACK_URL, VERSION } from './config';
 import { auth, getToken } from './identity';
@@ -14,6 +15,7 @@ const LOST_TEXT = {
   'tab-capture': 'การแชร์แท็บหยุดแล้ว — จะไม่มี cue จากเสียงลูกค้า กดจบ session แล้วเริ่มใหม่',
   'tab-no-audio':
     'ไม่ได้แชร์เสียงแท็บ — ตอนเลือกแท็บต้องติ๊ก "แชร์เสียงแท็บ" และเลือกแท็บ (ไม่ใช่หน้าต่างหรือทั้งจอ) กดจบ session แล้วเริ่มใหม่',
+  'mic-ended': `${MIC_ENDED.what} — ${MIC_ENDED.todo}`,
   'mic-permission': 'ใช้ไมค์ไม่ได้ — ตรวจสิทธิ์ไมค์ของเว็บนี้ใน Chrome แล้วเริ่มใหม่',
 } as const;
 

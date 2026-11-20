@@ -62,12 +62,14 @@ export class WebAuth {
    * Not interactive: the cached token, else a silent refresh (prompt none). null = no token.
    */
   async getToken(interactive: boolean, opts: { fresh?: boolean; select?: boolean } = {}) {
-    if (!opts.fresh && !opts.select) {
-      const c = this.cached();
-      if (c) return c;
-    }
+    const reusable = !opts.fresh && !opts.select;
+    if (reusable && this.cached()) return this.cached();
+    if (!interactive && this.inflight) return this.inflight; // silent joins a request already running
+    // a click must not join a silent request (it would get no popup): wait it out, then ask for itself
+    while (this.inflight) await this.inflight;
+    if (reusable && this.cached()) return this.cached(); // the silent one just got a token
     this.token = null;
-    this.inflight ??= this.request(interactive, opts.select).finally(() => {
+    this.inflight = this.request(interactive, opts.select).finally(() => {
       this.inflight = null;
     });
     return this.inflight;

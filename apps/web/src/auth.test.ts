@@ -137,6 +137,31 @@ test('keepFresh: silent renewal fails -> sign-in prompt, retried, cleared by a s
   }
 });
 
+test('a click while a silent refresh is in flight waits for it, then asks with prompt "" (popup shown)', async () => {
+  const prompts: (string | undefined)[] = [];
+  const cbs: ((r: { access_token?: string; expires_in?: number } | null) => void)[] = [];
+  const gis: Gis = {
+    initTokenClient(c) {
+      cbs.push((r) => (r ? c.callback(r) : c.error_callback({})));
+      return { requestAccessToken: (o) => void prompts.push(o?.prompt) };
+    },
+  };
+  const auth = new WebAuth('x.apps.googleusercontent.com', async () => gis);
+  const silent = auth.getToken(false, { fresh: true });
+  await vi.waitFor(() => expect(prompts).toEqual(['none']));
+  let clicked: string | null | undefined;
+  const click = auth.getToken(true).then((t) => (clicked = t));
+  await Promise.resolve();
+  expect(prompts).toEqual(['none']); // no second request until the silent one ends
+  cbs[0]?.(null); // silent refresh fails
+  expect(await silent).toBeNull();
+  await vi.waitFor(() => expect(prompts).toEqual(['none', '']));
+  expect(clicked).toBeUndefined(); // still waiting for the user in the popup
+  cbs[0]?.({ access_token: 'user', expires_in: 3600 });
+  expect(await click).toBe('user');
+  expect(auth.cached()).toBe('user');
+});
+
 test('isClientId only accepts a Google OAuth client id', () => {
   expect(isClientId(undefined)).toBe(false);
   expect(isClientId('UNSET')).toBe(false);

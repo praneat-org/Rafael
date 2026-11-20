@@ -67,3 +67,33 @@ test('no server url (prod page on plain http): a real start is refused, no token
   expect(ctl.state.phase).toBe('setup');
   expect(getToken).not.toHaveBeenCalled();
 });
+
+test('End: capture stops, the final log copy is kept for download, deleting clears it', async () => {
+  vi.useFakeTimers();
+  const { ctl, posts, stop } = make();
+  ctl.command({ k: 'start', mock: true, latencyMs: 0, capture: { tab: true, mic: false } });
+  await vi.advanceTimersByTimeAsync(50);
+  ctl.command({ k: 'end' });
+  expect(stop).toHaveBeenCalled(); // no more audio once End is pressed
+  await vi.advanceTimersByTimeAsync(50);
+  expect(ctl.state.endLog).toBe('ready');
+  ctl.command({ k: 'log', id: 'l1' });
+  const copy = posts.find((m) => m.k === 'log' && m.id === 'l1');
+  expect(copy).toMatchObject({ k: 'log', events: expect.any(Array) });
+  expect((copy as { events: { type: string }[] }).events.at(-1)?.type).toBe('session.end');
+  await vi.advanceTimersByTimeAsync(10_000); // the End timer must not fire after teardown
+  expect(ctl.state.endLog).toBe('ready');
+  ctl.command({ k: 'reset' });
+  ctl.command({ k: 'log', id: 'l2' });
+  expect(posts.find((m) => m.k === 'log' && m.id === 'l2')).toMatchObject({ events: null });
+});
+
+test('End with no log copy from the server: the End screen says so after the wait', async () => {
+  vi.useFakeTimers();
+  const { ctl } = make({ dev: false, serverUrl: 'http://127.0.0.1:1' }); // nothing listens: no log copy ever comes
+  ctl.command({ k: 'start', mock: false, latencyMs: 0, packId: 'folder-1' });
+  ctl.command({ k: 'end' });
+  expect(ctl.state.endLog).toBe('waiting');
+  await vi.advanceTimersByTimeAsync(6100);
+  expect(ctl.state.endLog).toBe('none');
+});
