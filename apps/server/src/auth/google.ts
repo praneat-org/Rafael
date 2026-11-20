@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import type { TokenVerifier } from './verifier.js';
 
 export type GoogleVerifierOptions = {
-  /** OAuth client id of the extension (BE-71); token `aud` must match (D13) */
-  clientId: string;
+  /** OAuth client id(s): extension (BE-71) and web app; token `aud` must be one of them (D13) */
+  clientId: string | string[];
   fetch?: typeof fetch; // injectable for tests
   now?: () => number;
   domain?: string;
@@ -23,6 +23,7 @@ const MAX_CACHE = 1000;
 export function createGoogleVerifier(o: GoogleVerifierOptions): TokenVerifier {
   const doFetch = o.fetch ?? fetch;
   const now = o.now ?? Date.now;
+  const audiences = new Set([o.clientId].flat());
   const suffix = `@${o.domain ?? 'praneat.com'}`;
   const allowed = new Set((o.allowedEmails ?? []).map((e) => e.trim().toLowerCase()));
   const cache = new Map<string, { email: string; exp: number }>();
@@ -51,7 +52,7 @@ export function createGoogleVerifier(o: GoogleVerifierOptions): TokenVerifier {
     const email = typeof info.email === 'string' ? info.email.toLowerCase() : '';
     const ttl = Number(info.expires_in);
     if (
-      info.aud !== o.clientId || // aud only: azp may name our client while aud is another resource
+      !audiences.has(String(info.aud)) || // aud only: azp may name our client while aud is another resource
       // tokeninfo returns email_verified as the string "true"
       !(info.email_verified === true || info.email_verified === 'true') ||
       !(email.endsWith(suffix) || allowed.has(email)) ||

@@ -89,3 +89,17 @@ test('cache: second call skips Google; expires after expires_in; failures not ca
   await bad.verify('t');
   expect(bad.f).toHaveBeenCalledTimes(2);
 });
+
+test('several client ids (extension + web): either aud passes, an unknown aud and a non-praneat account fail', async () => {
+  const WEB = 'web-456.apps.googleusercontent.com';
+  const v = (info: object) =>
+    createGoogleVerifier({
+      clientId: [CLIENT, WEB],
+      fetch: vi.fn(async () => json(info)) as unknown as typeof fetch,
+    })('t');
+  expect(await v({ ...good, aud: CLIENT })).toEqual({ email: 'alice@praneat.com' });
+  expect(await v({ ...good, aud: WEB })).toEqual({ email: 'alice@praneat.com' });
+  expect(await v({ ...good, aud: 'other.apps.googleusercontent.com' })).toBeNull();
+  expect(await v({ ...good, aud: undefined })).toBeNull();
+  expect(await v({ ...good, aud: WEB, email: 'bob@gmail.com' })).toBeNull();
+});

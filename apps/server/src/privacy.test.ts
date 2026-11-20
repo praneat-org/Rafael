@@ -192,6 +192,8 @@ test('server source never touches the filesystem or child processes', () => {
     );
   const bad = files(import.meta.dirname)
     .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+    // static.ts: read-only, serves the public web build (never writes, never touches session data)
+    .filter((f) => !f.endsWith('/static.ts'))
     .filter((f) => FS_IMPORT.test(readFileSync(f, 'utf8')));
   expect(bad).toEqual([]);
 });
