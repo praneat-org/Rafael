@@ -1,10 +1,12 @@
 import type { LogEvent } from '@rafael/protocol';
 import { useState } from 'react';
-import { downloadLog } from '../../src/conversation-log';
+import { downloadLog, logFileName, logToMarkdown } from '../../src/conversation-log';
+import { savePdf } from '../../src/pdf';
+import { DownloadMenu } from './DownloadMenu';
 
 export type GetLog = () => Promise<LogEvent[] | null>;
 
-/** Conversation Log download (.md for people, .json for Eval). The file is built on click (D11). */
+/** Conversation Log download (.md / PDF for people, .json for Eval). The file is built on click (D11). */
 export function LogButtons({
   getLog,
   disabled,
@@ -16,35 +18,24 @@ export function LogButtons({
 }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const save = async (ext: 'md' | 'json') => {
+  const save = async (ext: 'md' | 'pdf' | 'json') => {
     setBusy(true);
     setFailed(false);
     const events = await getLog();
     setBusy(false);
     if (!events) return setFailed(true);
-    downloadLog(events, ext);
+    if (ext === 'pdf') savePdf(logFileName(events, 'md'), logToMarkdown(events));
+    else downloadLog(events, ext);
     onSaved?.();
   };
   return (
     <>
-      <button
-        type="button"
-        className="ghost"
-        aria-label="Download log .md"
+      <DownloadMenu
+        label="Download log"
+        formats={{ md: 'Markdown (.md)', pdf: 'PDF', json: 'JSON (สำหรับ Eval)' }}
         disabled={disabled || busy}
-        onClick={() => save('md')}
-      >
-        log .md
-      </button>
-      <button
-        type="button"
-        className="ghost"
-        aria-label="Download log .json"
-        disabled={disabled || busy}
-        onClick={() => save('json')}
-      >
-        .json
-      </button>
+        onPick={save}
+      />
       {failed && (
         <span role="alert" className="log-fail">
           โหลด log ไม่ได้ ลองใหม่

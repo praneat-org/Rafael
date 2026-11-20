@@ -2,7 +2,9 @@ import type { MeetingSummary } from '@rafael/protocol';
 import { useState } from 'react';
 import { saveFile } from '../../src/conversation-log';
 import { summaryToMarkdown, UNSET, unsetCount } from '../../src/meeting-summary';
+import { savePdf } from '../../src/pdf';
 import type { SessionState } from '../../src/session';
+import { DownloadMenu } from './DownloadMenu';
 
 /** End: meeting summary draft. Built on click, edited here, then copied / exported. Memory only (D11). */
 export function SummaryPanel({
@@ -93,9 +95,13 @@ export function SummaryPanel({
             >
               {copied ? 'คัดลอกแล้ว' : 'คัดลอกสรุป'}
             </button>
-            <button type="button" onClick={() => saveFile(file, draft, 'text/markdown')}>
-              .md
-            </button>
+            <DownloadMenu
+              label="ดาวน์โหลด"
+              formats={{ md: 'Markdown (.md)', pdf: 'PDF' }}
+              onPick={(f) =>
+                f === 'pdf' ? savePdf(file, draft) : saveFile(file, draft, 'text/markdown')
+              }
+            />
           </div>
         </>
       )}

@@ -6,7 +6,7 @@
  *   pnpm --filter extension exec wxt build --mode development
  *   pnpm --filter extension exec tsx e2e/log-summary.e2e.ts
  *
- * Scenario: live session -> download log .json (file has session.start) -> End
+ * Scenario: live session -> download log .json (dropdown) (file has session.start) -> End
  *   -> End download works from the last copy -> "สร้างสรุป" -> draft over real HTTP (auth, host_permissions).
  */
 import assert from 'node:assert/strict';
@@ -78,7 +78,7 @@ try {
   const save = async () => {
     const [dl] = await Promise.all([
       page.waitForEvent('download', { timeout: 10_000 }),
-      page.getByRole('button', { name: 'Download log .json' }).click(),
+      page.getByRole('combobox', { name: 'Download log' }).selectOption('json'),
     ]);
     const file = JSON.parse(readFileSync((await dl.path()) as string, 'utf8')) as {
       events: { type: string; folderName?: string }[];
@@ -87,7 +87,7 @@ try {
   };
 
   // Live: fetched from the server now
-  await page.getByRole('button', { name: 'Download log .json' }).waitFor({ timeout: 15_000 });
+  await page.getByRole('combobox', { name: 'Download log' }).waitFor({ timeout: 15_000 });
   const live = await save();
   assert.equal(live[0]?.type, 'session.start');
 
@@ -104,7 +104,16 @@ try {
   // no audio here, so no transcript: the server answers without a model call (model path: unit tests)
   assert.match(await draft.inputValue(), /ACME e2e/);
   assert.equal(summaryCalls, 0);
-  console.log('e2e ok: live log, end log, meeting summary');
+
+  // PDF: printable tab with the draft (print dialog itself is Chrome's)
+  const [pdfTab] = await Promise.all([
+    ctx.waitForEvent('page', { timeout: 10_000 }),
+    page.getByRole('combobox', { name: 'ดาวน์โหลด' }).selectOption('pdf'),
+  ]);
+  await pdfTab.waitForLoadState();
+  assert.match(await pdfTab.title(), /^rafael_summary_.*ACME_e2e$/);
+  assert.match((await pdfTab.locator('h1').textContent()) ?? '', /ACME e2e/);
+  console.log('e2e ok: live log, end log, meeting summary, summary PDF');
 } finally {
   server?.closeAllConnections();
   server?.close();

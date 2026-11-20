@@ -831,3 +831,18 @@ sup.fn {
   color: var(--warn);
   font-weight: 600;
 }
+select.dl {
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0 6px;
+  min-height: 30px;
+  cursor: pointer;
+}
+.e-row select.dl {
+  min-height: 46px;
+  font-size: 14px;
+}
