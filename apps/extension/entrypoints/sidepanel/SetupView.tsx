@@ -6,7 +6,8 @@ import { errorText, MIC_DENIED } from '../../src/error-text';
 import { loadNames, shortId } from '../../src/folder-names';
 import { parseFolderId } from '../../src/folder-url';
 import { type PanelToOffscreen, TAB_GRANTED } from '../../src/messages';
-import { loadRecent, pushRecent, saveRecent } from '../../src/recent-folders';
+import { pushRecent } from '../../src/recent-folders';
+import { loadRecent, saveRecent } from '../../src/recent-storage';
 import { defaultSettings, loadSettings, type Settings, saveSettings } from '../../src/settings';
 import { defaultInputs, startBlock } from '../../src/setup-state';
 

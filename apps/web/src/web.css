@@ -1,0 +1,64 @@
+/* The side panel stylesheet is reused as is; this file only adds what a full browser tab needs. */
+.web-shell {
+  max-width: 520px; /* same width range as the side panel (360-500px): the views are built for it */
+  margin: 0 auto;
+  min-height: 100vh;
+  background: var(--bg);
+}
+.web-ver {
+  position: fixed;
+  right: 8px;
+  bottom: 4px;
+  font-size: 11px;
+  color: var(--faint);
+  pointer-events: none;
+}
+.web-alert {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(480px, calc(100vw - 32px));
+  background: var(--surface);
+}
+a.link,
+button.link.inline {
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+button.link.inline {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.view .note a {
+  color: var(--accent);
+}
+.note.warn {
+  color: var(--warn);
+}
+.onboarding article {
+  line-height: 1.7;
+}
+.onboarding h1 {
+  font-size: 20px;
+  margin: 8px 0;
+}
+.onboarding h2 {
+  font-size: 16px;
+  margin: 16px 0 4px;
+}
+.onboarding ul {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+.onboarding blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}

@@ -4,6 +4,7 @@ import type { Browser } from 'wxt/browser';
 import type { AudioState } from '../../src/audio/audio-state';
 import { type OffscreenToPanel, type PanelToOffscreen, PORT_NAME } from '../../src/messages';
 import { requestOffscreen } from '../../src/offscreen-client';
+import { PendingRequests } from '../../src/pending-requests';
 import { postOrFail } from '../../src/post-or-fail';
 import { initialState, type SessionState } from '../../src/session';
 
@@ -13,8 +14,7 @@ export function useSession() {
   const [audio, setAudio] = useState<AudioState | null>(null);
   const [offline, setOffline] = useState(false);
   const port = useRef<Browser.runtime.Port | null>(null);
-  // request id -> resolver: an answer only ever settles the request it was sent for
-  const pending = useRef(new Map<string, (v: unknown) => void>());
+  const pending = useRef(new PendingRequests());
 
   useEffect(() => {
     let alive = true;
@@ -25,9 +25,8 @@ export function useSession() {
       p.onMessage.addListener((m: OffscreenToPanel) => {
         if (m.k === 'state') setState(m.state);
         // only the answer to the newest request: a late one may be an older snapshot
-        else if (m.k === 'log' || m.k === 'summary') {
-          if (m.id) pending.current.get(m.id)?.(m.k === 'log' ? m.events : m.summary);
-        } else setAudio(m); // level number only, never audio (D11)
+        else if (m.k === 'log' || m.k === 'summary') pending.current.settle(m);
+        else setAudio(m); // level number only, never audio (D11)
       });
       p.onDisconnect.addListener(() => setOffline(true));
       port.current = p;
@@ -42,16 +41,12 @@ export function useSession() {
   const send = useCallback((cmd: PanelToOffscreen) => port.current?.postMessage(cmd), []);
   const request = useCallback(
     <T>(k: 'log' | 'summary', timeoutMs: number) =>
-      new Promise<T | null>((resolve) => {
-        const id = crypto.randomUUID();
-        const done = (v: unknown) => {
-          clearTimeout(timer);
-          pending.current.delete(id);
-          resolve((v as T | null) ?? null);
-        };
-        const timer = setTimeout(() => done(null), timeoutMs);
-        pending.current.set(id, done);
-        postOrFail(port.current, { k, id } satisfies PanelToOffscreen, () => done(null));
+      pending.current.request<T>(timeoutMs, (id) => {
+        let sent = true;
+        postOrFail(port.current, { k, id } satisfies PanelToOffscreen, () => {
+          sent = false;
+        });
+        return sent;
       }),
     [],
   );
