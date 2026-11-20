@@ -50,6 +50,7 @@ resource "google_cloudbuild_trigger" "cloudbuild_branch_trigger" {
     _WEB_OAUTH_CLIENT_ID   = var.web_oauth_client_id
     _FEEDBACK_URL          = var.feedback_url
     _APP_VERSION           = var.app_version
+    _PUBLIC_ORIGIN         = var.custom_domain == "" ? "" : "https://${var.custom_domain}"
     _ALLOWED_WEB_ORIGINS   = join(",", var.allowed_web_origins)
     _ALLOWED_EMAILS        = join(",", var.allowed_emails)
     _SECRETS               = join(",", [for id in var.app_secret_ids : "${id}=${id}:latest"])

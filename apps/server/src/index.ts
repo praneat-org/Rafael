@@ -54,9 +54,8 @@ const server = createApp(
         .split(',')
         .filter(Boolean)
         .map((id) => `chrome-extension://${id.trim()}`),
-      // exact https://host entries; the page's own origin needs no entry (same-origin)
-      ...(process.env.ALLOWED_WEB_ORIGINS ?? '')
-        .split(',')
+      // PUBLIC_ORIGIN = the page's own https://host (custom domain); ALLOWED_WEB_ORIGINS = extra exact origins
+      ...[process.env.PUBLIC_ORIGIN ?? '', ...(process.env.ALLOWED_WEB_ORIGINS ?? '').split(',')]
         .map((o) => o.trim())
         .filter(Boolean),
     ],

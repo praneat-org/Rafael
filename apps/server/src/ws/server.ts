@@ -27,8 +27,6 @@ export type WsOptions = {
   verifier: TokenVerifier;
   /** e.g. ["chrome-extension://<EXTENSION_ID>"] (D13) */
   allowedOrigins: string[];
-  /** web build served by this same server: accept an Origin equal to https://<Host header> */
-  sameOrigin?: boolean;
   /** dev only: also accept http(s)://localhost and 127.0.0.1 */
   allowLocalhost?: boolean;
   helloTimeoutMs?: number;
@@ -42,10 +40,10 @@ export type WsOptions = {
 };
 
 function originAllowed(req: IncomingMessage, o: WsOptions): boolean {
+  // never derived from the Host header: a client controls it
   const origin = req.headers.origin;
   if (!origin) return false;
   if (o.allowedOrigins.includes(origin)) return true;
-  if (o.sameOrigin && req.headers.host && origin === `https://${req.headers.host}`) return true;
   if (!o.allowLocalhost) return false;
   try {
     const { hostname } = new URL(origin);

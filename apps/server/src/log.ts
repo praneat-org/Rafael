@@ -57,12 +57,13 @@ const allowed = new Set<string>(ALLOWED);
 
 export const log = (
   msg: string,
-  fields: Partial<Record<Allowed, string | number | boolean>> = {},
+  fields: Partial<Record<Allowed, string | number | boolean | null>> = {},
 ) => {
   const kept: Record<string, unknown> = {};
   let droppedCount = 0;
   for (const [k, v] of Object.entries(fields)) {
-    if (allowed.has(k) && ['string', 'number', 'boolean'].includes(typeof v)) kept[k] = v;
+    if (allowed.has(k) && (v === null || ['string', 'number', 'boolean'].includes(typeof v)))
+      kept[k] = v;
     else droppedCount++;
   }
   console.log(JSON.stringify({ msg, ...kept, ...(droppedCount ? { droppedCount } : {}) }));

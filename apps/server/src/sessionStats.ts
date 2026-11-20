@@ -9,12 +9,16 @@ export function percentile(values: number[], p: number): number | undefined {
   return sorted[rank - 1];
 }
 
-export function summarizeCues(latenciesMs: number[], errorCount: number) {
-  const cueCount = latenciesMs.length;
+/** `latenciesMs` holds only the cues that have a latency; `cueCount` counts every cue. Percentiles are null without data. */
+export function summarizeCues(
+  latenciesMs: number[],
+  errorCount: number,
+  cueCount = latenciesMs.length,
+) {
   return {
     cueCount,
-    cueP50Ms: percentile(latenciesMs, 50) ?? 0,
-    cueP95Ms: percentile(latenciesMs, 95) ?? 0,
+    cueP50Ms: percentile(latenciesMs, 50) ?? null,
+    cueP95Ms: percentile(latenciesMs, 95) ?? null,
     errorCount,
     errorRate: cueCount ? Math.round((errorCount / cueCount) * 1000) / 1000 : 0,
   };
@@ -22,19 +26,21 @@ export function summarizeCues(latenciesMs: number[], errorCount: number) {
 
 /** In-memory tally per session; `end` logs the line and forgets the session. */
 export function createSessionStats() {
-  const bySession = new Map<string, { ms: number[]; errors: number }>();
+  const bySession = new Map<string, { ms: number[]; cues: number; errors: number }>();
   return {
     /** one final cue; `failed` = the model errored (not a plain "not in the pack") */
-    record(sessionId: string, latencyMs: number, failed: boolean) {
-      const t = bySession.get(sessionId) ?? { ms: [], errors: 0 };
+    record(sessionId: string, latencyMs: number | undefined, failed: boolean) {
+      const t = bySession.get(sessionId) ?? { ms: [], cues: 0, errors: 0 };
       bySession.set(sessionId, t);
-      t.ms.push(latencyMs);
+      t.cues++;
+      if (latencyMs !== undefined) t.ms.push(latencyMs); // a missing latency is not 0 ms
       if (failed) t.errors++;
     },
     end(sessionId: string) {
-      const t = bySession.get(sessionId);
+      // a session with no cues still logs a line, so error rate covers every session
+      const t = bySession.get(sessionId) ?? { ms: [], cues: 0, errors: 0 };
       bySession.delete(sessionId);
-      if (t) log('session.stats', { sessionId, ...summarizeCues(t.ms, t.errors) });
+      log('session.stats', { sessionId, ...summarizeCues(t.ms, t.errors, t.cues) });
     },
   };
 }

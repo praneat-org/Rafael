@@ -146,7 +146,6 @@ export function createApp(ws?: Partial<WsOptions>, o: { webDist?: string } = {})
   });
   wsApi = attachWs(server, {
     allowedOrigins: [],
-    sameOrigin: Boolean(web),
     ...ws,
     store,
     verifier,

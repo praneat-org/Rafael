@@ -25,7 +25,39 @@ test('summarizeCues: rate and zero case', () => {
     errorCount: 1,
     errorRate: 0.25,
   });
-  expect(summarizeCues([], 0)).toMatchObject({ cueCount: 0, errorRate: 0 });
+  expect(summarizeCues([], 0)).toEqual({
+    cueCount: 0,
+    cueP50Ms: null,
+    cueP95Ms: null,
+    errorCount: 0,
+    errorRate: 0,
+  });
+});
+
+test('cues without a latency count as cues but never as 0 ms; zero-cue session still logs', () => {
+  const out = vi.spyOn(console, 'log').mockImplementation(() => {});
+  const s = createSessionStats();
+  s.record('m', undefined, true);
+  s.record('m', 2000, false);
+  s.end('m');
+  s.end('empty');
+  const [m, e] = out.mock.calls.map((c) => JSON.parse(c[0] as string));
+  expect(m).toMatchObject({
+    cueCount: 2,
+    cueP50Ms: 2000,
+    cueP95Ms: 2000,
+    errorCount: 1,
+    errorRate: 0.5,
+  });
+  expect(e).toMatchObject({
+    msg: 'session.stats',
+    sessionId: 'empty',
+    cueCount: 0,
+    cueP50Ms: null,
+    cueP95Ms: null,
+    errorRate: 0,
+  });
+  out.mockRestore();
 });
 
 test('end logs one content-free line, then forgets the session', () => {
@@ -34,8 +66,6 @@ test('end logs one content-free line, then forgets the session', () => {
   s.record('a', 1200, false);
   s.record('a', 3400, true);
   s.end('a');
-  s.end('a'); // second end: nothing
-  s.end('never-had-cues');
   expect(out).toHaveBeenCalledTimes(1);
   expect(JSON.parse(out.mock.calls[0]![0] as string)).toEqual({
     msg: 'session.stats',

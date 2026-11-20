@@ -197,7 +197,7 @@ export function createPipeline(
       if (finalMsg) {
         if ('failed' in final) errored.add(finalMsg);
         // ended meanwhile: stats already flushed, a new tally would leak
-        if (store.get(s.id) === s) stats.record(s.id, finalMsg.latencyMs ?? 0, 'failed' in final);
+        if (store.get(s.id) === s) stats.record(s.id, finalMsg.latencyMs, 'failed' in final);
         s.cues.push(finalMsg);
         // a model failure is known only now: mark it, it is not a real "not in the pack"
         if ('failed' in final && logged?.body.type === 'not_found')

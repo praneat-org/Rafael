@@ -2,6 +2,6 @@
 **/dist
 .git
 **/.env*
-docs
+docs/*
+!docs/onboarding.md
 bench
-apps/extension

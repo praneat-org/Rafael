@@ -49,5 +49,12 @@ resource "google_billing_budget" "vertex" {
     disable_default_iam_recipients   = true
   }
 
+  lifecycle {
+    precondition {
+      condition     = var.monthly_budget_thb > 0
+      error_message = "billing_account is set: monthly_budget_thb must be > 0 (a 0 THB budget alerts immediately)."
+    }
+  }
+
   depends_on = [google_project_service.project_service]
 }

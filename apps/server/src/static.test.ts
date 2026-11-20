@@ -108,10 +108,13 @@ test('path traversal never leaves the web dir', async () => {
   expect((await raw('/%E0%A4%A')).status).toBe(400); // malformed escape
 });
 
-test('WS: same-origin page accepted, other origin refused; web served -> sameOrigin on', async () => {
-  const outcome = (origin: string) =>
+test('WS: Host is never trusted: Host evil.com + Origin https://evil.com -> 403', async () => {
+  const outcome = (origin: string, host?: string) =>
     new Promise<string>((res) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { origin });
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, {
+        origin,
+        ...(host && { headers: { host } }),
+      });
       ws.once('open', () => {
         ws.close();
         res('open');
@@ -119,23 +122,41 @@ test('WS: same-origin page accepted, other origin refused; web served -> sameOri
       ws.once('unexpected-response', (_r, resp) => res(String(resp.statusCode)));
       ws.once('error', () => {});
     });
-  expect(await outcome(`https://127.0.0.1:${port}`)).toBe('open');
-  expect(await outcome('https://evil.example')).toBe('403');
-  expect(await outcome(`http://127.0.0.1:${port}`)).toBe('403'); // same host, wrong scheme
+  expect(await outcome('https://evil.com', 'evil.com')).toBe('403');
+  expect(await outcome(`https://127.0.0.1:${port}`)).toBe('403'); // even the server's own host, unless listed
 });
 
-test('without a web dir nothing is served and same-origin is not trusted', async () => {
+test('WS: PUBLIC_ORIGIN (via allowedOrigins) accepted while the web build is served', async () => {
+  const web = createApp(
+    { allowedOrigins: ['https://rafael.example.com'] },
+    { webDist: dir },
+  ).listen(0);
+  try {
+    const p = (web.address() as AddressInfo).port;
+    const status = (origin: string) =>
+      new Promise<string>((res) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${p}/ws`, { origin });
+        ws.once('open', () => {
+          ws.close();
+          res('open');
+        });
+        ws.once('unexpected-response', (_r, resp) => res(String(resp.statusCode)));
+        ws.once('error', () => {});
+      });
+    expect(await status('https://rafael.example.com')).toBe('open');
+    expect(await status('https://evil.com')).toBe('403');
+  } finally {
+    web.shutdown();
+    web.closeAllConnections();
+    web.close();
+  }
+});
+
+test('without a web dir nothing is served', async () => {
   const api = createApp({ allowedOrigins: [] }).listen(0);
   try {
     const p = (api.address() as AddressInfo).port;
     expect((await fetch(`http://127.0.0.1:${p}/`)).status).toBe(404);
-    const status = await new Promise<string>((res) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${p}/ws`, { origin: `https://127.0.0.1:${p}` });
-      ws.once('unexpected-response', (_r, resp) => res(String(resp.statusCode)));
-      ws.once('open', () => res('open'));
-      ws.once('error', () => {});
-    });
-    expect(status).toBe('403');
   } finally {
     api.shutdown();
     api.closeAllConnections();
