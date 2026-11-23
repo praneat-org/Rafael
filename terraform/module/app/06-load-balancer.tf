@@ -65,9 +65,10 @@ resource "google_compute_backend_service" "web" {
 resource "google_compute_ssl_certificate" "web" {
   for_each = local.lb
 
-  # name_prefix: create_before_destroy needs a new name when the pem files change
+  # ponytail: fixed name. Changing the pem files (cert valid to 2039) clashes with create_before_destroy:
+  # bump the name suffix (e.g. -origin-cert-2) in the same change
   project     = var.project_id
-  name_prefix = "${var.cloud_run_service_name}-origin-"
+  name        = "${var.cloud_run_service_name}-origin-cert"
   certificate = file(var.pem_certificate)
   private_key = file(var.pem_private_key)
 
