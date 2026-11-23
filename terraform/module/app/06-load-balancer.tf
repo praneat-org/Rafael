@@ -51,7 +51,7 @@ resource "google_compute_backend_service" "web" {
     group = google_compute_region_network_endpoint_group.web[each.key].id
   }
 
-  # request logs carry URL paths only (/ws, /api/*, static files): no content (D11)
+  # request logs record the request URL, including any query string. Never put a token or content in a URL (D11)
   log_config {
     enable      = true
     sample_rate = 1
@@ -65,8 +65,9 @@ resource "google_compute_backend_service" "web" {
 resource "google_compute_ssl_certificate" "web" {
   for_each = local.lb
 
+  # name_prefix: create_before_destroy needs a new name when the pem files change
   project     = var.project_id
-  name        = "${var.cloud_run_service_name}-origin-cert"
+  name_prefix = "${var.cloud_run_service_name}-origin-"
   certificate = file(var.pem_certificate)
   private_key = file(var.pem_private_key)
 
