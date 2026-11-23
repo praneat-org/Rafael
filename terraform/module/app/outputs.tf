@@ -11,9 +11,9 @@ output "artifact_registry_path" {
   value       = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.artifact_registry_repository.repository_id}/rafael-server"
 }
 
-output "custom_domain_dns_records" {
-  description = "DNS records a human must add at the domain registrar (empty when custom_domain is empty)"
-  value       = var.custom_domain == "" ? [] : google_cloud_run_domain_mapping.web[0].status[0].resource_records
+output "custom_domain_ip" {
+  description = "Load balancer IP: add an A record <custom_domain> -> this IP (null when custom_domain is empty)"
+  value       = try(google_compute_global_address.web["web"].address, null)
 }
 
 output "cloudbuild_trigger_name" {

@@ -14,7 +14,7 @@ output "cloudbuild_trigger_name" {
   value       = module.app.cloudbuild_trigger_name
 }
 
-output "custom_domain_dns_records" {
-  description = "DNS records to add at the registrar (empty without custom_domain)"
-  value       = module.app.custom_domain_dns_records
+output "custom_domain_ip" {
+  description = "A record target for custom_domain (null without custom_domain)"
+  value       = module.app.custom_domain_ip
 }

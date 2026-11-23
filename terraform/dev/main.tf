@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 7.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 5.19"
+    }
   }
 
   ## Create once before init: gcloud storage buckets create gs://terraform-state-rafael-dev --project=rafael-512903 --location=asia-southeast1 --uniform-bucket-level-access, then: gcloud storage buckets update gs://terraform-state-rafael-dev --versioning ##
@@ -28,6 +32,11 @@ provider "google" {
     project_name = var.project_name
     environment  = var.environment
   }
+}
+
+## Token from tfvars (gitignored). Only used when custom_domain is set ##
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }
 
 module "app" {
@@ -70,6 +79,9 @@ module "app" {
   app_version         = var.app_version
   allowed_web_origins = var.allowed_web_origins
   custom_domain       = var.custom_domain
+  cloudflare_zone_id  = var.cloudflare_zone_id
+  pem_certificate     = var.pem_certificate
+  pem_private_key     = var.pem_private_key
   # ---------------- Cost + monitoring ---------------- #
   billing_account    = var.billing_account
   monthly_budget_thb = var.monthly_budget_thb

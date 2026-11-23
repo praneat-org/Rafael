@@ -198,7 +198,7 @@ variable "allowed_web_origins" {
 }
 
 variable "custom_domain" {
-  description = "Custom domain for the web version (Cloud Run domain mapping, HTTPS); empty = none. The domain must be verified for the deploying account in Search Console"
+  description = "Custom domain for the web version (external Application Load Balancer + Google-managed cert); empty = none. After apply, add an A record to output custom_domain_ip"
   type        = string
   default     = ""
 }
@@ -227,4 +227,34 @@ variable "alert_emails" {
   description = "Emails for the budget alert and the cue-error alert"
   type        = list(string)
   default     = []
+}
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Cloudflare (custom domain)
+#---------------------------------------------------------------------------------------------------------------------#
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID of the custom_domain zone (praneat.com)"
+  type        = string
+  default     = ""
+}
+
+variable "pem_certificate" {
+  description = "Path to the Cloudflare Origin Certificate (public) for the LB; needed when custom_domain is set"
+  type        = string
+  default     = ""
+}
+
+variable "pem_private_key" {
+  description = "Path to the Cloudflare Origin Certificate private key; needed when custom_domain is set"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API token (Zone DNS Edit on the custom_domain zone)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }
