@@ -21,9 +21,13 @@ By hand, in this order (dev project `rafael-512903`):
 
        cd terraform/dev
        gcloud secrets versions access latest --secret=rafael-dev-infra-tfvars --project=rafael-512903 > dev.auto.tfvars   # after the first apply; first time: write it by hand
+       # with custom_domain set: the Cloudflare Origin Certificate files named by pem_certificate / pem_private_key
+       for f in public-key private-key; do gcloud secrets versions access latest --secret=rafael-dev-origin-$f --project=rafael-512903 > $f.pem; done; chmod 600 private-key.pem
        gcloud auth application-default login
        terraform init && terraform apply
        gcloud secrets versions add rafael-dev-infra-tfvars --data-file=dev.auto.tfvars --project=rafael-512903
+
+   First time with `custom_domain` (pem files from the ValorVantageOCR infra, `*.praneat.com`): `for f in public-key private-key; do gcloud secrets create rafael-dev-origin-$f --replication-policy=user-managed --locations=asia-southeast1 --project=rafael-512903 --data-file=$f.pem; done`
 
 6. App secrets: none (D22, Gemini via Vertex uses the backend SA). If one is ever needed: add its id to `app_secret_ids`, apply, then `gcloud secrets versions add <ID> --data-file=-`.
 7. Prod (BE-127, after Go + DPO): **cutover, not side by side.** `terraform/prod` is ready but not applied. When dev work is done, dev is removed and prod takes its place in the same project `rafael-512903` (second root on the same module). Dev and prod never run together, because the Cloud Build SA roles are project-wide: a `develop` build could otherwise deploy over prod. Locked prod values (a wrong tfvars value fails `terraform plan`). `cloudbuild_approval_required` is no longer locked: CAR-3845 says merge to main deploys automatically, so the prod default is `false` (the card wins over the earlier approval rule; set `true` in tfvars to bring the gate back): `environment = "prod"`, branch `^main$`, service `rafael`, repo `rafael-prod`, connection `rafael-prod-github-connection`, `max_instance_count = 1`, `allowed_emails = []`, `stt_end_sensitivity = ""`.
