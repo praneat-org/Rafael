@@ -232,3 +232,26 @@ variable "alert_emails" {
   type        = list(string)
   default     = []
 }
+
+#---------------------------------------------------------------------------------------------------------------------#
+# Cloudflare (custom domain)
+#---------------------------------------------------------------------------------------------------------------------#
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare zone ID of the custom_domain zone (praneat.com)"
+  type        = string
+  default     = ""
+}
+
+variable "pem_certificate" {
+  description = "Path to the Cloudflare Origin Certificate (public) for the LB; needed when custom_domain is set"
+  type        = string
+  default     = ""
+}
+
+variable "pem_private_key" {
+  description = "Path to the Cloudflare Origin Certificate private key; needed when custom_domain is set"
+  type        = string
+  default     = ""
+  sensitive   = true
+}

@@ -1,9 +1,9 @@
-## Custom domain over HTTPS for the web version (CAR-3845): global external Application Load Balancer -> serverless NEG -> Cloud Run ##
-## Replaces Cloud Run domain mapping (Preview, not for production). Empty custom_domain = no load balancer ##
-## No Search Console verification needed: point an A record at the output custom_domain_ip, Google issues the cert once it resolves ##
-## Cloud Run itself is owned by cloudbuild.deploy.yaml; the NEG only references the service name ##
-## WebSocket works through the LB; for serverless NEG backends the Cloud Run request timeout (60 min) applies, not timeoutSec ##
-## Session affinity: Cloud Run's own affinity cookie passes through the LB unchanged ##
+## Custom domain over HTTPS for the web version (CAR-3845): Cloudflare (proxied) -> global external Application Load Balancer ##
+## -> serverless NEG -> Cloud Run. Same pattern as ValorVantageOCR infra. Empty custom_domain = none of this ##
+## TLS: browser <-> Cloudflare = Cloudflare edge cert; Cloudflare <-> LB = Cloudflare Origin Certificate (*.praneat.com, pem files) ##
+## Zone SSL mode must be Full (strict). Cloud Armor allows only Cloudflare IPs, so the LB IP cannot be hit directly ##
+## WebSocket: Cloudflare proxies it (idle timeout 100 s, the server pings every 25 s); Cloud Run 60 min request timeout applies ##
+## Session affinity: Cloud Run's own affinity cookie passes through Cloudflare and the LB unchanged ##
 ## ponytail: Cloud Run ingress stays "all" (the extension still talks to the run.app URL). Lock to ##
 ## internal-and-cloud-load-balancing once every client uses the custom domain ##
 
@@ -45,6 +45,7 @@ resource "google_compute_backend_service" "web" {
   name                  = "${var.cloud_run_service_name}-backend"
   load_balancing_scheme = "EXTERNAL_MANAGED"
   protocol              = "HTTPS"
+  security_policy       = google_compute_security_policy.cloudflare_only[each.key].id
 
   backend {
     group = google_compute_region_network_endpoint_group.web[each.key].id
@@ -59,15 +60,18 @@ resource "google_compute_backend_service" "web" {
   depends_on = [google_project_service.project_service]
 }
 
-## https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_managed_ssl_certificate ##
-resource "google_compute_managed_ssl_certificate" "web" {
+## Cloudflare Origin Certificate: trusted only by Cloudflare, so the record must stay proxied ##
+## https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_ssl_certificate ##
+resource "google_compute_ssl_certificate" "web" {
   for_each = local.lb
 
-  project = var.project_id
-  name    = "${var.cloud_run_service_name}-cert"
+  project     = var.project_id
+  name        = "${var.cloud_run_service_name}-origin-cert"
+  certificate = file(var.pem_certificate)
+  private_key = file(var.pem_private_key)
 
-  managed {
-    domains = [var.custom_domain]
+  lifecycle {
+    create_before_destroy = true
   }
 
   depends_on = [google_project_service.project_service]
@@ -88,7 +92,7 @@ resource "google_compute_target_https_proxy" "web" {
   project          = var.project_id
   name             = "${var.cloud_run_service_name}-https"
   url_map          = google_compute_url_map.web[each.key].id
-  ssl_certificates = [google_compute_managed_ssl_certificate.web[each.key].id]
+  ssl_certificates = [google_compute_ssl_certificate.web[each.key].id]
 }
 
 resource "google_compute_global_forwarding_rule" "web_https" {
@@ -135,4 +139,68 @@ resource "google_compute_global_forwarding_rule" "web_http" {
   ip_address            = google_compute_global_address.web[each.key].id
   port_range            = "80"
   target                = google_compute_target_http_proxy.web_redirect[each.key].id
+}
+
+## https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/resources/dns_record ##
+resource "cloudflare_dns_record" "web" {
+  for_each = local.lb
+
+  zone_id = var.cloudflare_zone_id
+  name    = var.custom_domain
+  content = google_compute_global_address.web[each.key].address
+  type    = "A"
+  proxied = true
+  ttl     = 1
+}
+
+## ---------------- Cloud Armor: only Cloudflare edge IPs reach the LB ---------------- ##
+## https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs/data-sources/ip_ranges ##
+data "cloudflare_ip_ranges" "cloudflare" {
+  for_each = local.lb
+}
+
+locals {
+  # Cloud Armor basic match allows max 10 src_ip_ranges per rule
+  cloudflare_cidr_chunks = chunklist(
+    flatten([for r in data.cloudflare_ip_ranges.cloudflare : concat(r.ipv4_cidrs, r.ipv6_cidrs)]),
+    10
+  )
+}
+
+## https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_security_policy ##
+resource "google_compute_security_policy" "cloudflare_only" {
+  for_each = local.lb
+
+  project     = var.project_id
+  name        = "${var.cloud_run_service_name}-cloudflare-only"
+  description = "Allow only Cloudflare IP ranges"
+
+  dynamic "rule" {
+    for_each = local.cloudflare_cidr_chunks
+    content {
+      action      = "allow"
+      priority    = 1000 + rule.key
+      description = "Allow Cloudflare IPs (${rule.key + 1}/${length(local.cloudflare_cidr_chunks)})"
+      match {
+        versioned_expr = "SRC_IPS_V1"
+        config {
+          src_ip_ranges = rule.value
+        }
+      }
+    }
+  }
+
+  rule {
+    action      = "deny(403)"
+    priority    = 2147483647
+    description = "Default deny"
+    match {
+      versioned_expr = "SRC_IPS_V1"
+      config {
+        src_ip_ranges = ["*"]
+      }
+    }
+  }
+
+  depends_on = [google_project_service.project_service]
 }
