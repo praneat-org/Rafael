@@ -236,7 +236,7 @@ variable "allowed_web_origins" {
 }
 
 variable "custom_domain" {
-  description = "Custom domain for the web version (Cloud Run domain mapping, HTTPS); empty = none. The domain must be verified for the deploying account in Search Console"
+  description = "Custom domain for the web version (external Application Load Balancer + Google-managed cert); empty = none. After apply, add an A record to output custom_domain_ip"
   type        = string
   default     = ""
 }
