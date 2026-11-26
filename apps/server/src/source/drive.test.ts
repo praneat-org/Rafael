@@ -141,6 +141,41 @@ test('Docs export as markdown', async () => {
   expect(calls[0]!.searchParams.get('supportsAllDrives')).toBe('true');
 });
 
+test('Docs: base64 images stripped; 403 on markdown export (too big) -> plain text, reason kept', async () => {
+  const img = '![][image1]\n\n[image1]: <data:image/png;base64,iVBORw0KGgo+/=>';
+  const ok = fakeFetch({ '/export': () => new Response(`# T\nbody\n${img}`) });
+  const p = createDriveProvider({ accessToken: 't', fetch: ok.fn });
+  expect(await p.readFile(file('application/vnd.google-apps.document'))).toEqual({
+    chunks: [{ locator: 'เอกสาร', text: '# T\nbody\n![][image1]\n\n[image1]: ' }],
+  });
+  const tooBig = j({
+    error: { code: 403, errors: [{ reason: 'exportSizeLimitExceeded', message: 'x' }] },
+  });
+  const { fn, calls } = fakeFetch({
+    '/export': (u) =>
+      u.searchParams.get('mimeType') === 'text/markdown'
+        ? new Response(tooBig.body, { status: 403 })
+        : new Response('plain body'),
+  });
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+      file('application/vnd.google-apps.document'),
+    ),
+  ).toEqual({ chunks: [{ locator: 'เอกสาร', text: 'plain body' }] });
+  expect(calls.map((c) => c.searchParams.get('mimeType'))).toEqual(['text/markdown', 'text/plain']);
+  const denied = fakeFetch({
+    '/export': () =>
+      new Response(JSON.stringify({ error: { errors: [{ reason: 'cannotDownloadFile' }] } }), {
+        status: 403,
+      }),
+  });
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: denied.fn }).readFile(
+      file('application/vnd.google-apps.document'),
+    ),
+  ).toEqual({ unreadable: 'google api 403 cannotDownloadFile' });
+});
+
 test('Sheets -> one CSV chunk per tab, quoting handled, empty tab skipped', async () => {
   const { fn, calls } = fakeFetch({
     batchGet: () =>
@@ -400,7 +435,7 @@ test('office: too large by listing, unpack cap (zip bomb), corrupt zip, legacy .
   const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: bomb.length });
   expect(bomb.length * 5).toBeLessThan(20_000);
   expect(await p.readFile(file(docx, bomb.length + 1))).toEqual({ unreadable: 'too large' });
-  expect(calls).toHaveLength(0); // listing size over cap: no download
+  expect(calls).toHaveLength(1); // listing over cap: ranged read; this fake ignores Range -> capped
   expect(await p.readFile(file(docx))).toEqual({ unreadable: 'too large' });
   const bad = media('not a zip');
   expect(
@@ -456,4 +491,59 @@ test('xlsx sparse rows over the cell budget -> too large; stored (level 0) zip s
   ).toEqual({
     chunks: [{ locator: 'tab S', text: '42' }],
   });
+});
+
+// Range-honouring fake for alt=media: records each request's span
+function ranged(body: Uint8Array<ArrayBuffer>, opts: { ignoreRange?: boolean } = {}) {
+  const spans: [number, number][] = [];
+  const fn = (async (_: string | URL | Request, init?: RequestInit) => {
+    const r = new Headers(init?.headers).get('range');
+    const m = r && !opts.ignoreRange ? /^bytes=(\d+)-(\d+)$/.exec(r) : null;
+    if (!m) return new Response(body);
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    spans.push([a, b]);
+    return new Response(body.slice(a, b + 1), { status: 206 });
+  }) as typeof fetch;
+  return { fn, spans };
+}
+
+test('docx over the download cap (photos): only the XML is fetched via Range; media never downloaded', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  const photo = new Uint8Array(300_000).map(() => Math.random() * 256); // incompressible, like a JPEG
+  const body = new Uint8Array(
+    zipSync({
+      '[Content_Types].xml': strToU8('<Types/>'),
+      'word/media/a.jpg': [photo, { level: 0 }],
+      'word/document.xml': strToU8('<w:p><w:r><w:t>ราคา</w:t></w:r></w:p>'.repeat(50)),
+      'word/media/b.jpg': [photo, { level: 0 }],
+      'word/_rels/document.xml.rels': strToU8('<Relationships/>'),
+    }),
+  );
+  const { fn, spans } = ranged(body);
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 20_000 });
+  const r = await p.readFile(file(docx, body.length));
+  expect(r).toEqual({ chunks: [{ locator: 'เอกสาร', text: Array(50).fill('ราคา').join('\n') }] });
+  const fetched = spans.reduce((n, [a, b]) => n + b - a + 1, 0);
+  expect(fetched).toBeLessThan(100_000); // 64 KB tail + XML runs, not the 600 KB of photos
+  expect(
+    await createDriveProvider({
+      accessToken: 't',
+      fetch: ranged(body, { ignoreRange: true }).fn,
+      maxFileBytes: 20_000,
+    }).readFile(file(docx, body.length)),
+  ).toEqual({ unreadable: 'too large' });
+  // XML over the unpack cap -> too large without fetching entries
+  const bomb = new Uint8Array(
+    zipSync({
+      'word/document.xml': strToU8('x'.repeat(200_000)),
+      'word/media/a.jpg': [photo, { level: 0 }],
+    }),
+  );
+  const b = ranged(bomb);
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: b.fn, maxFileBytes: 20_000 }).readFile(
+      file(docx, bomb.length),
+    ),
+  ).toEqual({ unreadable: 'too large' });
+  expect(b.spans).toHaveLength(1); // the tail only
 });
