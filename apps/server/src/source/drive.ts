@@ -95,17 +95,21 @@ const ENT: Record<string, string> = {
   apos: "'",
 };
 const unxml = (s: string) =>
-  s.replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (m, e: string) =>
-    e[0] === '#'
-      ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1))
-      : (ENT[e] ?? m),
-  );
+  s.replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (m, e: string) => {
+    if (e[0] !== '#') return ENT[e] ?? m;
+    const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1);
+    return n <= 0x10ffff ? String.fromCodePoint(n) : m; // out-of-range ref: keep as-is, don't throw
+  });
 const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
 const part = (z: Zip, path: string) => (z[path] ? new TextDecoder().decode(z[path]) : '');
-// text of every <tag>…</tag> run inside `xml`, e.g. w:t / a:t / t
+// text of every <tag>…</tag> run inside `xml` (w:t / a:t / t); <w:tab/> = tab, <w:br/> / <a:br/> = newline
 const runsOf = (xml: string, tag: string) =>
-  [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, 'g'))]
-    .map((m) => unxml(m[1]!))
+  [
+    ...xml.matchAll(
+      new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>|<\\w+:(tab|br)(?:\\s[^>]*)?/>`, 'g'),
+    ),
+  ]
+    .map((m) => (m[2] === 'tab' ? '\t' : m[2] === 'br' ? '\n' : unxml(m[1]!)))
     .join('');
 // one line per paragraph element (w:p / a:p); empty paragraphs dropped
 const paras = (xml: string, p: string, t: string) =>
@@ -157,9 +161,10 @@ function xlsxChunks(z: Zip): Chunk[] {
     const rows: string[][] = [];
     for (const [row] of xml.matchAll(/<row[\s>][\s\S]*?<\/row>/g)) {
       const cells: string[] = [];
-      for (const m of row.matchAll(/<c(\s[^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-        const [, a, body = ''] = m;
-        const t = attr(a!, 't');
+      let col = -1;
+      for (const m of row.matchAll(/<c(\s[^>]*?)?(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const [, a = '', body = ''] = m;
+        const t = attr(a, 't');
         const v = /<v>([^<]*)<\/v>/.exec(body)?.[1];
         // ponytail: dates stay as serial numbers (needs styles.xml numFmt lookup to render)
         const val =
@@ -168,7 +173,9 @@ function xlsxChunks(z: Zip): Chunk[] {
             : t === 'inlineStr'
               ? runsOf(body, 't')
               : unxml(v ?? '');
-        if (val) cells[colIndex(attr(a!, 'r') ?? '')] = val;
+        const r = attr(a, 'r');
+        col = r ? colIndex(r) : col + 1; // `r` is optional: no ref = the next column
+        if (val) cells[col] = val;
       }
       if (cells.length) rows.push(Array.from(cells, (c) => c ?? ''));
     }

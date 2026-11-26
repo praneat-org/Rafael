@@ -316,14 +316,16 @@ test('docx -> one chunk, one line per paragraph, entities decoded, tabs/props sk
     zip({
       'word/document.xml':
         '<w:document><w:body><w:p><w:pPr/><w:r><w:t>ราคา </w:t></w:r><w:r><w:t xml:space="preserve">100 &amp; VAT</w:t></w:r></w:p>' +
-        '<w:p/><w:p><w:r><w:tab/><w:t>SLA &#3614;</w:t></w:r></w:p></w:body></w:document>',
+        '<w:p/><w:p><w:r><w:t>SLA</w:t><w:tab/><w:t>&#3614;</w:t><w:br/><w:t>x&#x110000;</w:t></w:r></w:p></w:body></w:document>',
       'word/media/a.png': 'x',
     }),
   );
   const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
     file(`${OX}.wordprocessingml.document`),
   );
-  expect(r).toEqual({ chunks: [{ locator: 'เอกสาร', text: 'ราคา 100 & VAT\nSLA พ' }] });
+  expect(r).toEqual({
+    chunks: [{ locator: 'เอกสาร', text: 'ราคา 100 & VAT\nSLA\tพ\nx&#x110000;' }],
+  });
   expect(calls[0]!.searchParams.get('alt')).toBe('media');
 });
 
@@ -363,7 +365,7 @@ test('xlsx -> one CSV chunk per sheet; shared/inline/number cells keep their col
         '<sst><si><t>Plan</t></si><si><r><t>Pro</t></r><r><t xml:space="preserve"> plan, yearly</t></r></si></sst>',
       'xl/worksheets/sheet1.xml':
         '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="inlineStr"><is><t>Note</t></is></c></row>' +
-        '<row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2" s="1"/><c r="B2"><v>990</v></c></row></sheetData></worksheet>',
+        '<row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2" s="1"/><c r="B2"><v>990</v></c><c><v>7</v></c></row></sheetData></worksheet>',
       'xl/worksheets/sheet2.xml': '<worksheet><sheetData/></worksheet>',
     }),
   );
@@ -371,7 +373,7 @@ test('xlsx -> one CSV chunk per sheet; shared/inline/number cells keep their col
     file(`${OX}.spreadsheetml.sheet`),
   );
   expect(r).toEqual({
-    chunks: [{ locator: 'tab Price & Plan', text: 'Plan,,Note\n"Pro plan, yearly",990' }],
+    chunks: [{ locator: 'tab Price & Plan', text: 'Plan,,Note\n"Pro plan, yearly",990,7' }],
   });
 });
 
