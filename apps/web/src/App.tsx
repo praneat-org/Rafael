@@ -60,8 +60,13 @@ export function App() {
         <LiveView state={state} send={send} getLog={getLog} />
         {needSignIn && (
           <p className="note err web-alert" role="alert">
-            session ยังทำงานอยู่ แต่การลงชื่อเข้าใช้หมดอายุ ถ้าการเชื่อมต่อหลุดจะต่อใหม่ไม่ได้{' '}
-            <button type="button" className="link inline" onClick={() => auth?.getToken(true)}>
+            การลงชื่อเข้าใช้ใกล้หมดอายุ กดลงชื่อเข้าใช้ใหม่เพื่อให้ session ต่อได้หลังครบชั่วโมง (ถ้าหลุดไปแล้ว กดภายใน 5
+            นาที session จะต่อเอง){' '}
+            <button
+              type="button"
+              className="link inline"
+              onClick={async () => setNeedSignIn((await auth?.getToken(true)) == null)}
+            >
               ลงชื่อเข้าใช้ใหม่
             </button>
           </p>
