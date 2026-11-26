@@ -408,3 +408,52 @@ test('office: too large by listing, unpack cap (zip bomb), corrupt zip, legacy .
   ).toEqual({ unreadable: 'read failed' });
   expect(await p.readFile(file('application/msword'))).toEqual({ unreadable: 'unsupported mime' });
 });
+
+test('malformed OOXML stays linear: 100k opens with no close parse fast, no hang', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  const xml = '<w:p><w:t>a'.repeat(100_000) + '<w:t <w:t <w:pPr'.repeat(50_000);
+  const { fn } = media(zip({ 'word/document.xml': xml }));
+  const t0 = performance.now();
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(file(docx));
+  expect(performance.now() - t0).toBeLessThan(1000); // was quadratic with lazy regexes (seconds)
+  expect(r).toEqual({ unreadable: 'empty' });
+});
+
+test('xlsx sparse rows over the cell budget -> too large; stored (level 0) zip still reads', async () => {
+  const xlsx = `${OX}.spreadsheetml.sheet`;
+  const book = {
+    'xl/workbook.xml':
+      '<workbook><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':
+      '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+  };
+  const rows = Array.from({ length: 100 }, (_, i) => `<row><c r="XFD${i + 1}"><v>1</v></c></row>`);
+  const sparse = media(
+    zip({
+      ...book,
+      'xl/worksheets/sheet1.xml': `<worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`,
+    }),
+  );
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: sparse.fn }).readFile(file(xlsx)),
+  ).toEqual({
+    unreadable: 'too large',
+  });
+  const stored = new Uint8Array(
+    zipSync(
+      Object.fromEntries(
+        Object.entries({
+          ...book,
+          'xl/worksheets/sheet1.xml':
+            '<worksheet><sheetData><row><c r="A1"><v>42</v></c></row></sheetData></worksheet>',
+        }).map(([k, v]) => [k, [strToU8(v), { level: 0 }]]),
+      ),
+    ),
+  );
+  const ok = media(stored);
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: ok.fn }).readFile(file(xlsx)),
+  ).toEqual({
+    chunks: [{ locator: 'tab S', text: '42' }],
+  });
+});

@@ -106,23 +106,53 @@ const part = (z: Zip, path: string) => (z[path] ? new TextDecoder().decode(z[pat
 const runsOf = (xml: string, tag: string) =>
   [
     ...xml.matchAll(
-      new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>|<\\w+:(tab|br)(?:\\s[^>]*)?/>`, 'g'),
+      new RegExp(`<${tag}(?:\\s[^<>]*)?>([^<]*)</${tag}>|<\\w+:(tab|br)(?:\\s[^<>]*)?/>`, 'g'),
     ),
   ]
     .map((m) => (m[2] === 'tab' ? '\t' : m[2] === 'br' ? '\n' : unxml(m[1]!)))
     .join('');
+// `<name …>body</name>` / `<name …/>` in order. indexOf scan, not a lazy regex: malformed XML with
+// many opens and no close stays linear instead of rescanning to the end from every open tag.
+function* elements(xml: string, name: string): Generator<{ attrs: string; body: string }> {
+  const open = `<${name}`;
+  const close = `</${name}>`;
+  let i = 0;
+  for (;;) {
+    i = xml.indexOf(open, i);
+    if (i < 0) return;
+    const next = xml[i + open.length] ?? '';
+    if (next !== '>' && next !== '/' && !/\s/.test(next)) {
+      i += open.length; // a longer name (<w:pPr, <rows): skip before searching anything else
+      continue;
+    }
+    const end = xml.indexOf('>', i);
+    if (end < 0) return;
+    const selfClosing = xml[end - 1] === '/';
+    const attrs = xml.slice(i + open.length, selfClosing ? end - 1 : end);
+    if (selfClosing) {
+      yield { attrs, body: '' };
+      i = end + 1;
+      continue;
+    }
+    const c = xml.indexOf(close, end);
+    if (c < 0) return;
+    yield { attrs, body: xml.slice(end + 1, c) };
+    i = c + close.length;
+  }
+}
 // one line per paragraph element (w:p / a:p); empty paragraphs dropped
 const paras = (xml: string, p: string, t: string) =>
-  [...xml.matchAll(new RegExp(`<${p}[\\s>][\\s\\S]*?</${p}>`, 'g'))]
-    .map((m) => runsOf(m[0], t).trim())
+  [...elements(xml, p)]
+    .map((e) => runsOf(e.body, t).trim())
     .filter(Boolean)
     .join('\n');
+const MAX_CELLS = 1_000_000; // xlsx: sparse rows (a value only in column XFD) expand to 16k cells each
 // relationship id -> zip path, resolved against the part's folder (Target may be relative or /absolute)
 function rels(z: Zip, partPath: string): Map<string, string> {
   const dir = partPath.slice(0, partPath.lastIndexOf('/') + 1);
   const xml = part(z, `${dir}_rels/${partPath.slice(dir.length)}.rels`);
   const out = new Map<string, string>();
-  for (const [tag] of xml.matchAll(/<Relationship\s[^>]*>/g)) {
+  for (const [tag] of xml.matchAll(/<Relationship\s[^<>]*>/g)) {
     const id = attr(tag, 'Id');
     const target = attr(tag, 'Target');
     if (id && target) out.set(id, new URL(target, `file:///${dir}`).pathname.slice(1));
@@ -141,7 +171,7 @@ function docxChunks(z: Zip): Chunk[] {
 function pptxChunks(z: Zip): Chunk[] {
   // slide order comes from presentation.xml (file names keep their original number after reordering)
   const r = rels(z, 'ppt/presentation.xml');
-  const ids = [...part(z, 'ppt/presentation.xml').matchAll(/<p:sldId\s[^>]*>/g)].map(
+  const ids = [...part(z, 'ppt/presentation.xml').matchAll(/<p:sldId\s[^<>]*>/g)].map(
     ([tag]) => attr(tag, 'r:id') ?? '',
   );
   return ids.flatMap((id, i) => {
@@ -151,19 +181,19 @@ function pptxChunks(z: Zip): Chunk[] {
 }
 
 function xlsxChunks(z: Zip): Chunk[] {
-  const shared = [...part(z, 'xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) =>
-    runsOf(m[1]!, 't'),
+  const shared = [...elements(part(z, 'xl/sharedStrings.xml'), 'si')].map((e) =>
+    runsOf(e.body, 't'),
   );
+  let total = 0;
   const r = rels(z, 'xl/workbook.xml');
-  return [...part(z, 'xl/workbook.xml').matchAll(/<sheet\s[^>]*>/g)].flatMap(([tag]) => {
+  return [...part(z, 'xl/workbook.xml').matchAll(/<sheet\s[^<>]*>/g)].flatMap(([tag]) => {
     const name = unxml(attr(tag, 'name') ?? '');
     const xml = part(z, r.get(attr(tag, 'r:id') ?? '') ?? '');
     const rows: string[][] = [];
-    for (const [row] of xml.matchAll(/<row[\s>][\s\S]*?<\/row>/g)) {
+    for (const row of elements(xml, 'row')) {
       const cells: string[] = [];
       let col = -1;
-      for (const m of row.matchAll(/<c(\s[^>]*?)?(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-        const [, a = '', body = ''] = m;
+      for (const { attrs: a, body } of elements(row.body, 'c')) {
         const t = attr(a, 't');
         const v = /<v>([^<]*)<\/v>/.exec(body)?.[1];
         // ponytail: dates stay as serial numbers (needs styles.xml numFmt lookup to render)
@@ -177,6 +207,8 @@ function xlsxChunks(z: Zip): Chunk[] {
         col = r ? colIndex(r) : col + 1; // `r` is optional: no ref = the next column
         if (val) cells[col] = val;
       }
+      total += cells.length;
+      if (total > MAX_CELLS) throw new Error('too large'); // checked before expanding the row
       if (cells.length) rows.push(Array.from(cells, (c) => c ?? ''));
     }
     return rows.length ? [{ locator: `tab ${name}`, text: csv(rows) }] : [];
@@ -345,7 +377,9 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
           filter: (e) => {
             if (!/\.(xml|rels)$/.test(e.name) || /\/(media|embeddings)\//.test(e.name))
               return false;
-            unpacked += e.originalSize;
+            // fflate copies a stored entry by its compressed `size` without checking `originalSize`:
+            // count whichever is bigger, so lying metadata can't slip past the budget
+            unpacked += Math.max(e.size, e.originalSize);
             return unpacked <= maxBytes * 5;
           },
         });
