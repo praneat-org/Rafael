@@ -85,6 +85,15 @@ export class WsTransport implements Transport {
       if (this.packId) this.sendStart(ws);
     } catch {
       if (ws !== this.ws) return;
+      if (this.resumeToken) {
+        // reconnect with no token (web: GIS can't renew without a click, Cloud Run cuts at 60 min):
+        // keep the session and keep retrying; a sign-in from the panel lets the next try resume.
+        // The server drops the session after its resume grace -> SESSION_NOT_FOUND closes us.
+        ws.onclose = null;
+        this.ws = null;
+        ws.close(CLOSE_NORMAL);
+        return this.retryLater();
+      }
       this.emit({ v: 1, t: 'error', code: 'UNAUTHORIZED' });
       this.close();
     }
@@ -131,6 +140,10 @@ export class WsTransport implements Transport {
       return this.close();
     }
     // 1012 restart, 4408 hello timeout, 1006 abnormal, ...: back off and resume
+    this.retryLater();
+  }
+
+  private retryLater() {
     const min = this.o.minBackoffMs ?? 500;
     const delay = Math.min(this.o.maxBackoffMs ?? 8000, min * 2 ** this.attempt++);
     this.setStatus('reconnecting');
