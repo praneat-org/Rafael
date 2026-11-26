@@ -547,3 +547,33 @@ test('docx over the download cap (photos): only the XML is fetched via Range; me
   ).toEqual({ unreadable: 'too large' });
   expect(b.spans).toHaveLength(1); // the tail only
 });
+
+test('ranged read is bounded: XML spread among media stops at the byte cap; bad offsets -> read failed', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  const filler = new Uint8Array(30_000).map(() => Math.random() * 256);
+  const parts: Record<string, [Uint8Array, { level: 0 }]> = {};
+  for (let i = 0; i < 40; i++) {
+    parts[`word/p${i}.xml`] = [strToU8('<x/>'), { level: 0 }];
+    parts[`word/media/m${i}.jpg`] = [filler, { level: 0 }];
+  }
+  const body = new Uint8Array(zipSync(parts));
+  const { fn, spans } = ranged(body);
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 100_000 });
+  expect(await p.readFile(file(docx, body.length))).toEqual({ unreadable: 'too large' });
+  const fetched = spans.reduce((n, [a, b]) => n + b - a + 1, 0);
+  expect(fetched).toBeLessThanOrEqual(100_000 + 65_557);
+  // a central directory entry pointing at/after the directory itself
+  const ok = new Uint8Array(
+    zipSync({ 'word/document.xml': strToU8('<w:p/>'), 'word/media/a.jpg': [filler, { level: 0 }] }),
+  );
+  const v = new DataView(ok.buffer);
+  const cdOff = v.getUint32(ok.length - 22 + 16, true);
+  v.setUint32(cdOff + 42, cdOff, true);
+  expect(
+    await createDriveProvider({
+      accessToken: 't',
+      fetch: ranged(ok).fn,
+      maxFileBytes: 20_000,
+    }).readFile(file(docx, ok.length)),
+  ).toEqual({ unreadable: 'read failed' });
+});

@@ -289,7 +289,16 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
   // An upload over the download cap is usually photos / embedded files: read the zip's central
   // directory from the end with Range requests, then fetch only the XML entries (never the media)
   async function unzipRanged(url: string, size: number): Promise<Unzipped | null> {
-    const part = (from: number, to: number) => read(url, to - from, `bytes=${from}-${to - 1}`); // a server ignoring Range overflows `max` -> too large
+    // whole read: at most the tail + maxBytes fetched, 32 requests, 2x one request's timeout
+    let fetched = 0;
+    let requests = 0;
+    const deadline = Date.now() + timeoutMs * 2;
+    const part = (from: number, to: number) => {
+      fetched += to - from;
+      if (fetched > maxBytes + 65_557 || ++requests > 32) throw new Error('too large');
+      if (Date.now() > deadline) throw new Error('timeout');
+      return read(url, to - from, `bytes=${from}-${to - 1}`); // a server ignoring Range overflows `max` -> too large
+    };
     const dv = (b: Uint8Array) => new DataView(b.buffer, b.byteOffset, b.byteLength);
     const tailFrom = Math.max(0, size - 65_557); // end record (22) + max comment (65535)
     const tail = await part(tailFrom, size);
@@ -318,6 +327,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         off: v.getUint32(p + 42, true),
       };
       p += 46 + n + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+      if (ent.off + 30 > cdOff) throw new Error('bad zip'); // a local header must sit before the directory
       starts.push(ent.off);
       if (!ooxmlPart(name)) continue;
       unpacked += Math.max(ent.csize, ent.usize);
@@ -327,14 +337,14 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
     starts.sort((a, b) => a - b);
     want.sort((a, b) => a.off - b.off);
     const end = (off: number) => starts.find((s) => s > off) ?? cdOff;
-    // XML parts sit together in Office zips: one request per run of entries (gap < 1 MB, span <= cap)
+    // XML parts sit together in Office zips: one request per run of entries (gap < 64 KB, span <= cap)
     const z: Unzipped = {};
     for (let i = 0; i < want.length; ) {
       const from = want[i]!.off;
       let j = i + 1;
       while (
         j < want.length &&
-        want[j]!.off - end(want[j - 1]!.off) < 1 << 20 &&
+        want[j]!.off - end(want[j - 1]!.off) < 1 << 16 &&
         end(want[j]!.off) - from <= maxBytes
       )
         j++;
@@ -345,6 +355,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         const lv = dv(buf.subarray(x.off - from));
         if (lv.getUint32(0, true) !== 0x04034b50) throw new Error('bad zip');
         const at = x.off - from + 30 + lv.getUint16(26, true) + lv.getUint16(28, true);
+        if (at + x.csize > buf.length) throw new Error('bad zip'); // csize runs past the next entry
         const data = buf.subarray(at, at + x.csize);
         if (x.method === 0) z[x.name] = data.slice();
         else if (x.method === 8) z[x.name] = inflateSync(data, { out: new Uint8Array(x.usize) });
@@ -416,7 +427,7 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         // Markdown inlines every image as base64: a Doc with photos passes Drive's 10 MB export
         // limit (403 exportSizeLimitExceeded) -> fall back to plain text, which has no images
         const md = await text(`${DRIVE}/files/${id}/export?${p}`).catch((e: Error) => {
-          if (!e.message.startsWith('google api 403')) throw e;
+          if (e.message !== 'google api 403 exportSizeLimitExceeded') throw e;
           p.set('mimeType', 'text/plain');
           return text(`${DRIVE}/files/${id}/export?${p}`);
         });
