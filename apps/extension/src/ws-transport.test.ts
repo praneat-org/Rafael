@@ -205,6 +205,38 @@ describe('reconnect + resume', () => {
   });
 });
 
+describe('reconnect without a token (web, token expired at the 60 min cut)', () => {
+  test('keeps retrying instead of closing, resumes once a token is back', async () => {
+    const { t, getToken } = make();
+    const got: ServerMessage[] = [];
+    t.onMessage((m) => got.push(m));
+    t.connect();
+    t.send({ v: 1, t: 'session.start', packId: 'p1' });
+    last().open();
+    await flushP();
+    last().recv(ready('rt-1'));
+    getToken.mockRejectedValue(new Error('no token'));
+    last().drop(1006);
+    for (let i = 0; i < 3; i++) {
+      await vi.advanceTimersByTimeAsync(8000);
+      last().open();
+      await flushP();
+      expect(last().readyState).toBe(3); // closed by us, never sent hello
+      expect(last().sent).toEqual([]);
+    }
+    expect(got.filter((m) => m.t === 'error')).toEqual([]); // no UNAUTHORIZED: session kept
+    expect(statuses.at(-1)).toBe('reconnecting');
+    getToken.mockResolvedValue('tok-2'); // user signed in from the panel
+    await vi.advanceTimersByTimeAsync(8000);
+    last().open();
+    await flushP();
+    expect(last().texts()).toEqual([
+      { v: 1, t: 'hello', accessToken: 'tok-2' },
+      { v: 1, t: 'session.start', packId: 'p1', resumeToken: 'rt-1' },
+    ]);
+  });
+});
+
 describe('audio buffer', () => {
   test('keeps only the newest 3 s (30 frames) while not ready, flushes in order', async () => {
     const { t } = make();
