@@ -1,4 +1,4 @@
-import { unzipSync } from 'fflate';
+import { inflateSync, type Unzipped, unzipSync } from 'fflate';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { log } from '../log.js';
 
@@ -234,30 +234,126 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
   const timeoutMs = opts.requestTimeoutMs ?? 30_000;
 
   // errors carry only the status — never the response body (may echo content / token)
-  async function get(url: string, signal: AbortSignal): Promise<Response> {
+  async function get(url: string, signal: AbortSignal, range?: string): Promise<Response> {
     const res = await f(url, {
-      headers: { Authorization: `Bearer ${opts.accessToken}` },
+      headers: { Authorization: `Bearer ${opts.accessToken}`, ...(range ? { Range: range } : {}) },
       signal,
     });
-    if (!res.ok) throw new Error(`google api ${res.status}`);
+    if (!res.ok) {
+      // Google's error `reason` is a fixed enum (exportSizeLimitExceeded, ...): safe to keep, the message is not
+      const why = await readCapped(res, 8192)
+        .then((b) => JSON.parse(new TextDecoder().decode(b ?? undefined)).error.errors[0].reason)
+        .catch(() => '');
+      throw new Error(`google api ${res.status}${/^[A-Za-z]{1,64}$/.test(why) ? ` ${why}` : ''}`);
+    }
     return res;
   }
   // every body is read through the byte cap (Docs/Sheets/Slides have no `size` to pre-check)
   // and under one deadline: the race also fires for a fetch / stream that ignores the signal
-  const read = async (url: string, max: number) => {
+  const read = async (url: string, max: number, range?: string) => {
     const signal = AbortSignal.timeout(timeoutMs);
     const timedOut = new Promise<never>((_, rej) =>
       signal.addEventListener('abort', () => rej(new Error('timeout')), {
         once: true,
       }),
     );
-    const b = await Promise.race([get(url, signal).then((r) => readCapped(r, max)), timedOut]);
+    const b = await Promise.race([
+      get(url, signal, range).then((r) => readCapped(r, max)),
+      timedOut,
+    ]);
     if (!b) throw new Error('too large');
     return b;
   };
   const text = async (url: string, max = maxBytes) =>
     new TextDecoder().decode(await read(url, max));
   const json = async <T>(url: string, max = maxBytes) => JSON.parse(await text(url, max)) as T;
+
+  // OOXML: only the XML parts, inflated size capped (zip bomb). fflate checks entries one by one,
+  // so nothing past the cap gets inflated. null = over the cap
+  const ooxmlPart = (name: string) =>
+    /\.(xml|rels)$/.test(name) && !/\/(media|embeddings)\//.test(name);
+  function unzipSmall(buf: Uint8Array): Unzipped | null {
+    let unpacked = 0;
+    const z = unzipSync(buf, {
+      filter: (e) => {
+        if (!ooxmlPart(e.name)) return false;
+        // fflate copies a stored entry by its compressed `size` without checking `originalSize`:
+        // count whichever is bigger, so lying metadata can't slip past the budget
+        unpacked += Math.max(e.size, e.originalSize);
+        return unpacked <= maxBytes * 5;
+      },
+    });
+    return unpacked > maxBytes * 5 ? null : z;
+  }
+
+  // An upload over the download cap is usually photos / embedded files: read the zip's central
+  // directory from the end with Range requests, then fetch only the XML entries (never the media)
+  async function unzipRanged(url: string, size: number): Promise<Unzipped | null> {
+    const part = (from: number, to: number) => read(url, to - from, `bytes=${from}-${to - 1}`); // a server ignoring Range overflows `max` -> too large
+    const dv = (b: Uint8Array) => new DataView(b.buffer, b.byteOffset, b.byteLength);
+    const tailFrom = Math.max(0, size - 65_557); // end record (22) + max comment (65535)
+    const tail = await part(tailFrom, size);
+    let e = tail.length - 22;
+    while (e >= 0 && dv(tail).getUint32(e, true) !== 0x06054b50) e--;
+    if (e < 0) throw new Error('bad zip');
+    const cdLen = dv(tail).getUint32(e + 12, true);
+    const cdOff = dv(tail).getUint32(e + 16, true); // zip64 (> 4 GB) overflows: bad zip
+    if (cdOff + cdLen > size || cdLen > maxBytes) throw new Error('bad zip');
+    const cd =
+      cdOff >= tailFrom
+        ? tail.subarray(cdOff - tailFrom, cdOff - tailFrom + cdLen)
+        : await part(cdOff, cdOff + cdLen);
+    const v = dv(cd);
+    const starts = [cdOff]; // every local header offset: an entry's bytes end where the next begins
+    const want: { name: string; method: number; csize: number; usize: number; off: number }[] = [];
+    let unpacked = 0;
+    for (let p = 0; p + 46 <= cd.length && v.getUint32(p, true) === 0x02014b50; ) {
+      const n = v.getUint16(p + 28, true);
+      const name = new TextDecoder().decode(cd.subarray(p + 46, p + 46 + n));
+      const ent = {
+        name,
+        method: v.getUint16(p + 10, true),
+        csize: v.getUint32(p + 20, true),
+        usize: v.getUint32(p + 24, true),
+        off: v.getUint32(p + 42, true),
+      };
+      p += 46 + n + v.getUint16(p + 30, true) + v.getUint16(p + 32, true);
+      starts.push(ent.off);
+      if (!ooxmlPart(name)) continue;
+      unpacked += Math.max(ent.csize, ent.usize);
+      if (unpacked > maxBytes * 5) return null;
+      want.push(ent);
+    }
+    starts.sort((a, b) => a - b);
+    want.sort((a, b) => a.off - b.off);
+    const end = (off: number) => starts.find((s) => s > off) ?? cdOff;
+    // XML parts sit together in Office zips: one request per run of entries (gap < 1 MB, span <= cap)
+    const z: Unzipped = {};
+    for (let i = 0; i < want.length; ) {
+      const from = want[i]!.off;
+      let j = i + 1;
+      while (
+        j < want.length &&
+        want[j]!.off - end(want[j - 1]!.off) < 1 << 20 &&
+        end(want[j]!.off) - from <= maxBytes
+      )
+        j++;
+      const to = end(want[j - 1]!.off);
+      if (to - from > maxBytes) return null;
+      const buf = await part(from, to);
+      for (const x of want.slice(i, j)) {
+        const lv = dv(buf.subarray(x.off - from));
+        if (lv.getUint32(0, true) !== 0x04034b50) throw new Error('bad zip');
+        const at = x.off - from + 30 + lv.getUint16(26, true) + lv.getUint16(28, true);
+        const data = buf.subarray(at, at + x.csize);
+        if (x.method === 0) z[x.name] = data.slice();
+        else if (x.method === 8) z[x.name] = inflateSync(data, { out: new Uint8Array(x.usize) });
+        else throw new Error('bad zip');
+      }
+      i = j;
+    }
+    return z;
+  }
 
   async function listFolder(folderIdOrUrl: string): Promise<DriveFile[]> {
     const id = parseFolderId(folderIdOrUrl);
@@ -317,8 +413,15 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
           supportsAllDrives: 'true',
         });
         // ponytail: Docs have no pages — one chunk; split by heading when packs need finer anchors
-        const md = await text(`${DRIVE}/files/${id}/export?${p}`);
-        return md.trim() ? { chunks: [{ locator: 'เอกสาร', text: md }] } : { unreadable: 'empty' };
+        // Markdown inlines every image as base64: a Doc with photos passes Drive's 10 MB export
+        // limit (403 exportSizeLimitExceeded) -> fall back to plain text, which has no images
+        const md = await text(`${DRIVE}/files/${id}/export?${p}`).catch((e: Error) => {
+          if (!e.message.startsWith('google api 403')) throw e;
+          p.set('mimeType', 'text/plain');
+          return text(`${DRIVE}/files/${id}/export?${p}`);
+        });
+        const t = md.replace(/<?data:image\/[\w.+-]+;base64,[\w+/=]*>?/g, ''); // base64 is no use to the model
+        return t.trim() ? { chunks: [{ locator: 'เอกสาร', text: t }] } : { unreadable: 'empty' };
       }
       case M.sheet: {
         const meta = await json<{
@@ -368,22 +471,11 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
       case M.docx:
       case M.xlsx:
       case M.pptx: {
-        const buf = await media();
-        if (!buf) return { unreadable: 'too large' };
-        // zip bomb guard: inflate only the XML parts we parse, capped by their declared unpacked
-        // size (fflate checks entries one by one, so nothing past the cap gets inflated)
-        let unpacked = 0;
-        const z = unzipSync(buf, {
-          filter: (e) => {
-            if (!/\.(xml|rels)$/.test(e.name) || /\/(media|embeddings)\//.test(e.name))
-              return false;
-            // fflate copies a stored entry by its compressed `size` without checking `originalSize`:
-            // count whichever is bigger, so lying metadata can't slip past the budget
-            unpacked += Math.max(e.size, e.originalSize);
-            return unpacked <= maxBytes * 5;
-          },
-        });
-        if (unpacked > maxBytes * 5) return { unreadable: 'too large' };
+        const big = file.size !== undefined && file.size > maxBytes;
+        const z = big
+          ? await unzipRanged(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`, file.size!)
+          : unzipSmall((await media())!);
+        if (!z) return { unreadable: 'too large' };
         const chunks =
           file.mimeType === M.docx
             ? docxChunks(z)
