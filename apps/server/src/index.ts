@@ -72,7 +72,10 @@ const server = createApp(
           ? createMcpProvider({ accessToken, fallback: api })
           : api;
       },
-      build: { countTokens: packTokenCounter(llm, brain?.config.answererModel) },
+      build: {
+        countTokens: packTokenCounter(llm, brain?.config.answererModel),
+        maxTokens: Number(process.env.PACK_MAX_TOKENS) || undefined, // unset / bad -> default
+      },
     },
   },
   { webDist: hasWeb ? webDist : undefined },

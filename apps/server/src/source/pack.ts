@@ -65,7 +65,7 @@ export class PackTooLargeError extends Error {
 
 export interface BuildOptions {
   countTokens?: TokenCounter;
-  maxTokens?: number; // PACK_MAX_TOKENS, default 150k
+  maxTokens?: number; // PACK_MAX_TOKENS, default 400k (Gemini takes ~1M; cost and latency grow with it)
   warnRatio?: number; // log warn above this share of maxTokens
   concurrency?: number;
   maxHints?: number;
@@ -131,7 +131,7 @@ export async function buildPack(
 ): Promise<Pack> {
   const now = o.now ?? Date.now;
   const count: TokenCounter = o.countTokens ?? estimateTokens;
-  const max = o.maxTokens ?? 150_000;
+  const max = o.maxTokens ?? 400_000;
   const concurrency = o.concurrency ?? 4;
   const warnRatio = o.warnRatio ?? 0.8;
   const maxHints = o.maxHints ?? 100;
@@ -211,11 +211,15 @@ export async function buildPack(
   const files = order.filter((f) => chunks.some((c) => c.fileId === f.fileId)).map(ref);
 
   if (tokens > max) {
-    // ponytail: per-file numbers are the sync estimate (no extra counter calls that could fail or
-    // fan out): the UI shows them as approximate; exact per-file counts need a bounded counter pass
-    const perFile = files.map((f) => ({
+    // ponytail: per-file numbers are the sync estimate scaled to the real total (no extra counter
+    // calls that could fail or fan out): shown as approximate; exact counts need a bounded counter pass
+    const est = files.map((f) =>
+      estimateTokens(renderPackText(chunks.filter((c) => c.fileId === f.fileId))),
+    );
+    const sum = est.reduce((a, b) => a + b, 0);
+    const perFile = files.map((f, i) => ({
       ...f,
-      tokens: estimateTokens(renderPackText(chunks.filter((c) => c.fileId === f.fileId))),
+      tokens: sum ? Math.round((est[i]! * tokens) / sum) : 0,
     }));
     emit('error', tokens);
     log('pack.too_large', { tokens, max, files: files.length });

@@ -184,6 +184,8 @@ test('over PACK_MAX_TOKENS -> PACK_TOO_LARGE with files largest first, and statu
   expect(err.code).toBe('PACK_TOO_LARGE');
   expect(err.files.map((f) => f.file)).toEqual(['Zzz', 'Aaa']);
   expect(states.at(-1)).toBe('error');
+  // per-file numbers are scaled to the counted total, not the raw over-estimate
+  expect(Math.abs(err.files.reduce((n, f) => n + f.tokens, 0) - err.tokens)).toBeLessThanOrEqual(1);
   expect(
     ServerMessage.safeParse({
       v: 1,
