@@ -1,3 +1,4 @@
+import { unzipSync } from 'fflate';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { log } from '../log.js';
 
@@ -38,7 +39,12 @@ const M = {
   sheet: 'application/vnd.google-apps.spreadsheet',
   slides: 'application/vnd.google-apps.presentation',
   pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
+// plain uploads read as-is; legacy binary .doc/.xls/.ppt stay unsupported (open in Google format instead)
+const PLAIN = new Set(['text/plain', 'text/markdown', 'text/x-markdown', 'text/csv']);
 
 export function parseFolderId(input: string): string {
   const s = input.trim();
@@ -79,6 +85,97 @@ const slideText = (els: SlideEl[] = []): string =>
     .join('\n')
     .trim();
 
+// --- OOXML (.docx/.xlsx/.pptx): a zip of XML parts. Regex over the few tags we need, no XML lib.
+type Zip = Record<string, Uint8Array>;
+const ENT: Record<string, string> = {
+  lt: '<',
+  gt: '>',
+  amp: '&',
+  quot: '"',
+  apos: "'",
+};
+const unxml = (s: string) =>
+  s.replace(/&(#x[\da-f]+|#\d+|\w+);/gi, (m, e: string) =>
+    e[0] === '#'
+      ? String.fromCodePoint(e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : +e.slice(1))
+      : (ENT[e] ?? m),
+  );
+const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+const part = (z: Zip, path: string) => (z[path] ? new TextDecoder().decode(z[path]) : '');
+// text of every <tag>…</tag> run inside `xml`, e.g. w:t / a:t / t
+const runsOf = (xml: string, tag: string) =>
+  [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>([^<]*)</${tag}>`, 'g'))]
+    .map((m) => unxml(m[1]!))
+    .join('');
+// one line per paragraph element (w:p / a:p); empty paragraphs dropped
+const paras = (xml: string, p: string, t: string) =>
+  [...xml.matchAll(new RegExp(`<${p}[\\s>][\\s\\S]*?</${p}>`, 'g'))]
+    .map((m) => runsOf(m[0], t).trim())
+    .filter(Boolean)
+    .join('\n');
+// relationship id -> zip path, resolved against the part's folder (Target may be relative or /absolute)
+function rels(z: Zip, partPath: string): Map<string, string> {
+  const dir = partPath.slice(0, partPath.lastIndexOf('/') + 1);
+  const xml = part(z, `${dir}_rels/${partPath.slice(dir.length)}.rels`);
+  const out = new Map<string, string>();
+  for (const [tag] of xml.matchAll(/<Relationship\s[^>]*>/g)) {
+    const id = attr(tag, 'Id');
+    const target = attr(tag, 'Target');
+    if (id && target) out.set(id, new URL(target, `file:///${dir}`).pathname.slice(1));
+  }
+  return out;
+}
+const colIndex = (ref: string) =>
+  [...(/^[A-Z]+/.exec(ref)?.[0] ?? 'A')].reduce((n, c) => n * 26 + c.charCodeAt(0) - 64, 0) - 1;
+
+function docxChunks(z: Zip): Chunk[] {
+  // ponytail: one chunk like Google Docs; tables flatten to one line per cell paragraph
+  const text = paras(part(z, 'word/document.xml'), 'w:p', 'w:t');
+  return text ? [{ locator: 'เอกสาร', text }] : [];
+}
+
+function pptxChunks(z: Zip): Chunk[] {
+  // slide order comes from presentation.xml (file names keep their original number after reordering)
+  const r = rels(z, 'ppt/presentation.xml');
+  const ids = [...part(z, 'ppt/presentation.xml').matchAll(/<p:sldId\s[^>]*>/g)].map(
+    ([tag]) => attr(tag, 'r:id') ?? '',
+  );
+  return ids.flatMap((id, i) => {
+    const text = paras(part(z, r.get(id) ?? ''), 'a:p', 'a:t');
+    return text ? [{ locator: `slide ${i + 1}`, text }] : [];
+  });
+}
+
+function xlsxChunks(z: Zip): Chunk[] {
+  const shared = [...part(z, 'xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) =>
+    runsOf(m[1]!, 't'),
+  );
+  const r = rels(z, 'xl/workbook.xml');
+  return [...part(z, 'xl/workbook.xml').matchAll(/<sheet\s[^>]*>/g)].flatMap(([tag]) => {
+    const name = unxml(attr(tag, 'name') ?? '');
+    const xml = part(z, r.get(attr(tag, 'r:id') ?? '') ?? '');
+    const rows: string[][] = [];
+    for (const [row] of xml.matchAll(/<row[\s>][\s\S]*?<\/row>/g)) {
+      const cells: string[] = [];
+      for (const m of row.matchAll(/<c(\s[^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const [, a, body = ''] = m;
+        const t = attr(a!, 't');
+        const v = /<v>([^<]*)<\/v>/.exec(body)?.[1];
+        // ponytail: dates stay as serial numbers (needs styles.xml numFmt lookup to render)
+        const val =
+          t === 's'
+            ? (shared[Number(v)] ?? '')
+            : t === 'inlineStr'
+              ? runsOf(body, 't')
+              : unxml(v ?? '');
+        if (val) cells[colIndex(attr(a!, 'r') ?? '')] = val;
+      }
+      if (cells.length) rows.push(Array.from(cells, (c) => c ?? ''));
+    }
+    return rows.length ? [{ locator: `tab ${name}`, text: csv(rows) }] : [];
+  });
+}
+
 // stream the body and stop at the cap, so a file with no `size` can't be fully buffered first
 async function readCapped(res: Response, max: number): Promise<Uint8Array | null> {
   const parts: Uint8Array[] = [];
@@ -99,7 +196,10 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
 
   // errors carry only the status — never the response body (may echo content / token)
   async function get(url: string, signal: AbortSignal): Promise<Response> {
-    const res = await f(url, { headers: { Authorization: `Bearer ${opts.accessToken}` }, signal });
+    const res = await f(url, {
+      headers: { Authorization: `Bearer ${opts.accessToken}` },
+      signal,
+    });
     if (!res.ok) throw new Error(`google api ${res.status}`);
     return res;
   }
@@ -108,7 +208,9 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
   const read = async (url: string, max: number) => {
     const signal = AbortSignal.timeout(timeoutMs);
     const timedOut = new Promise<never>((_, rej) =>
-      signal.addEventListener('abort', () => rej(new Error('timeout')), { once: true }),
+      signal.addEventListener('abort', () => rej(new Error('timeout')), {
+        once: true,
+      }),
     );
     const b = await Promise.race([get(url, signal).then((r) => readCapped(r, max)), timedOut]);
     if (!b) throw new Error('too large');
@@ -132,9 +234,10 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         includeItemsFromAllDrives: 'true',
       });
       if (pageToken) p.set('pageToken', pageToken);
-      const r = await json<{ nextPageToken?: string; files?: Record<string, string>[] }>(
-        `${DRIVE}/files?${p}`,
-      );
+      const r = await json<{
+        nextPageToken?: string;
+        files?: Record<string, string>[];
+      }>(`${DRIVE}/files?${p}`);
       for (const x of r.files ?? [])
         out.push({
           fileId: x.id!,
@@ -150,7 +253,10 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
   }
 
   async function folderName(folderIdOrUrl: string): Promise<string> {
-    const p = new URLSearchParams({ fields: 'name', supportsAllDrives: 'true' });
+    const p = new URLSearchParams({
+      fields: 'name',
+      supportsAllDrives: 'true',
+    });
     const r = await json<{ name?: string }>(
       `${DRIVE}/files/${parseFolderId(folderIdOrUrl)}?${p}`,
       64 * 1024,
@@ -160,9 +266,17 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
 
   async function convert(file: DriveFile): Promise<ReadResult> {
     const id = encodeURIComponent(file.fileId);
+    // raw upload bytes; null when the listing already says it is over the cap
+    const media = async () =>
+      file.size !== undefined && file.size > maxBytes
+        ? null
+        : read(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`, maxBytes);
     switch (file.mimeType) {
       case M.doc: {
-        const p = new URLSearchParams({ mimeType: 'text/markdown', supportsAllDrives: 'true' });
+        const p = new URLSearchParams({
+          mimeType: 'text/markdown',
+          supportsAllDrives: 'true',
+        });
         // ponytail: Docs have no pages — one chunk; split by heading when packs need finer anchors
         const md = await text(`${DRIVE}/files/${id}/export?${p}`);
         return md.trim() ? { chunks: [{ locator: 'เอกสาร', text: md }] } : { unreadable: 'empty' };
@@ -197,8 +311,8 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         return chunks.length ? { chunks } : { unreadable: 'empty' };
       }
       case M.pdf: {
-        if (file.size !== undefined && file.size > maxBytes) return { unreadable: 'too large' };
-        const buf = await read(`${DRIVE}/files/${id}?alt=media&supportsAllDrives=true`, maxBytes);
+        const buf = await media();
+        if (!buf) return { unreadable: 'too large' };
         const doc = await getDocumentProxy(buf);
         let text: string[];
         try {
@@ -212,8 +326,38 @@ export function createDriveProvider(opts: DriveOptions): SourceProvider {
         );
         return chunks.length ? { chunks } : { unreadable: 'no text layer (scanned?)' };
       }
-      default:
-        return { unreadable: 'unsupported mime' };
+      case M.docx:
+      case M.xlsx:
+      case M.pptx: {
+        const buf = await media();
+        if (!buf) return { unreadable: 'too large' };
+        // zip bomb guard: inflate only the XML parts we parse, capped by their declared unpacked
+        // size (fflate checks entries one by one, so nothing past the cap gets inflated)
+        let unpacked = 0;
+        const z = unzipSync(buf, {
+          filter: (e) => {
+            if (!/\.(xml|rels)$/.test(e.name) || /\/(media|embeddings)\//.test(e.name))
+              return false;
+            unpacked += e.originalSize;
+            return unpacked <= maxBytes * 5;
+          },
+        });
+        if (unpacked > maxBytes * 5) return { unreadable: 'too large' };
+        const chunks =
+          file.mimeType === M.docx
+            ? docxChunks(z)
+            : file.mimeType === M.pptx
+              ? pptxChunks(z)
+              : xlsxChunks(z);
+        return chunks.length ? { chunks } : { unreadable: 'empty' };
+      }
+      default: {
+        if (!PLAIN.has(file.mimeType)) return { unreadable: 'unsupported mime' };
+        const buf = await media();
+        if (!buf) return { unreadable: 'too large' };
+        const t = new TextDecoder().decode(buf).trim();
+        return t ? { chunks: [{ locator: 'เอกสาร', text: t }] } : { unreadable: 'empty' };
+      }
     }
   }
 
