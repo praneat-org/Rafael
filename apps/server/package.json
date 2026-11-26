@@ -20,6 +20,7 @@
   "dependencies": {
     "@google/genai": "2.31.0",
     "@rafael/protocol": "workspace:*",
+    "fflate": "0.8.3",
     "unpdf": "1.9.1",
     "ws": "8.22.0",
     "zod": "4.6.7"

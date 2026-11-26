@@ -1,3 +1,4 @@
+import { strToU8, zipSync } from 'fflate';
 import { expect, test, vi } from 'vitest';
 
 // spy on every pdf.js document so tests can assert it is released; failExtract forces the parse-error path
@@ -299,5 +300,160 @@ test('stalled body read hits the same deadline', async () => {
   const p = createDriveProvider({ accessToken: 't', fetch: stall, requestTimeoutMs: 20 });
   expect(await p.readFile(file('application/vnd.google-apps.document'))).toEqual({
     unreadable: 'timeout',
+  });
+});
+
+// --- uploaded Office / plain files: synthetic OOXML zips with only the parts we read
+const zip = (parts: Record<string, string>) =>
+  new Uint8Array(
+    zipSync(Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, strToU8(v)]))),
+  );
+const OX = 'application/vnd.openxmlformats-officedocument';
+const media = (body: BodyInit) => fakeFetch({ 'alt=media': () => new Response(body) });
+
+test('docx -> one chunk, one line per paragraph, entities decoded, tabs/props skipped', async () => {
+  const { fn, calls } = media(
+    zip({
+      'word/document.xml':
+        '<w:document><w:body><w:p><w:pPr/><w:r><w:t>ราคา </w:t></w:r><w:r><w:t xml:space="preserve">100 &amp; VAT</w:t></w:r></w:p>' +
+        '<w:p/><w:p><w:r><w:t>SLA</w:t><w:tab/><w:t>&#3614;</w:t><w:br/><w:t>x&#x110000;</w:t></w:r></w:p></w:body></w:document>',
+      'word/media/a.png': 'x',
+    }),
+  );
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file(`${OX}.wordprocessingml.document`),
+  );
+  expect(r).toEqual({
+    chunks: [{ locator: 'เอกสาร', text: 'ราคา 100 & VAT\nSLA\tพ\nx&#x110000;' }],
+  });
+  expect(calls[0]!.searchParams.get('alt')).toBe('media');
+});
+
+test('pptx -> one chunk per slide in presentation order, empty slide skipped', async () => {
+  const slide = (t: string) =>
+    `<p:sld><a:p><a:r><a:t>${t}</a:t></a:r></a:p><a:p><a:pPr/></a:p></p:sld>`;
+  const { fn } = media(
+    zip({
+      'ppt/presentation.xml':
+        '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId3"/><p:sldId id="257" r:id="rId2"/><p:sldId id="258" r:id="rId4"/></p:sldIdLst></p:presentation>',
+      'ppt/_rels/presentation.xml.rels':
+        '<Relationships><Relationship Id="rId2" Type="x" Target="slides/slide1.xml"/><Relationship Target="/ppt/slides/slide2.xml" Id="rId3" Type="x"/><Relationship Id="rId4" Target="slides/slide3.xml"/></Relationships>',
+      'ppt/slides/slide1.xml': slide('Pricing'),
+      'ppt/slides/slide2.xml': slide('Intro'),
+      'ppt/slides/slide3.xml': '<p:sld/>',
+    }),
+  );
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file(`${OX}.presentationml.presentation`),
+  );
+  expect(r).toEqual({
+    chunks: [
+      { locator: 'slide 1', text: 'Intro' },
+      { locator: 'slide 2', text: 'Pricing' },
+    ],
+  });
+});
+
+test('xlsx -> one CSV chunk per sheet; shared/inline/number cells keep their column', async () => {
+  const { fn } = media(
+    zip({
+      'xl/workbook.xml':
+        '<workbook><sheets><sheet name="Price &amp; Plan" sheetId="1" r:id="rId1"/><sheet name="Empty" sheetId="2" r:id="rId2"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
+      'xl/sharedStrings.xml':
+        '<sst><si><t>Plan</t></si><si><r><t>Pro</t></r><r><t xml:space="preserve"> plan, yearly</t></r></si></sst>',
+      'xl/worksheets/sheet1.xml':
+        '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="inlineStr"><is><t>Note</t></is></c></row>' +
+        '<row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2" s="1"/><c r="B2"><v>990</v></c><c><v>7</v></c></row></sheetData></worksheet>',
+      'xl/worksheets/sheet2.xml': '<worksheet><sheetData/></worksheet>',
+    }),
+  );
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file(`${OX}.spreadsheetml.sheet`),
+  );
+  expect(r).toEqual({
+    chunks: [{ locator: 'tab Price & Plan', text: 'Plan,,Note\n"Pro plan, yearly",990,7' }],
+  });
+});
+
+test('plain text / markdown / csv uploads -> one chunk; empty -> unreadable', async () => {
+  const { fn } = media('# FAQ\nQ: ราคา?\n');
+  const p = createDriveProvider({ accessToken: 't', fetch: fn });
+  for (const m of ['text/plain', 'text/markdown', 'text/csv'])
+    expect(await p.readFile(file(m))).toEqual({
+      chunks: [{ locator: 'เอกสาร', text: '# FAQ\nQ: ราคา?' }],
+    });
+  const empty = media('  \n');
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: empty.fn }).readFile(file('text/plain')),
+  ).toEqual({
+    unreadable: 'empty',
+  });
+});
+
+test('office: too large by listing, unpack cap (zip bomb), corrupt zip, legacy .doc -> unreadable', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  // 20k of 'x' deflates to a few dozen bytes: fits the download cap, blows the 5x unpack cap
+  const bomb = zip({ 'word/document.xml': `<w:p><w:t>${'x'.repeat(20_000)}</w:t></w:p>` });
+  const { fn, calls } = media(bomb);
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: bomb.length });
+  expect(bomb.length * 5).toBeLessThan(20_000);
+  expect(await p.readFile(file(docx, bomb.length + 1))).toEqual({ unreadable: 'too large' });
+  expect(calls).toHaveLength(0); // listing size over cap: no download
+  expect(await p.readFile(file(docx))).toEqual({ unreadable: 'too large' });
+  const bad = media('not a zip');
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: bad.fn }).readFile(file(docx)),
+  ).toEqual({ unreadable: 'read failed' });
+  expect(await p.readFile(file('application/msword'))).toEqual({ unreadable: 'unsupported mime' });
+});
+
+test('malformed OOXML stays linear: 100k opens with no close parse fast, no hang', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  const xml = '<w:p><w:t>a'.repeat(100_000) + '<w:t <w:t <w:pPr'.repeat(50_000);
+  const { fn } = media(zip({ 'word/document.xml': xml }));
+  const t0 = performance.now();
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(file(docx));
+  expect(performance.now() - t0).toBeLessThan(1000); // was quadratic with lazy regexes (seconds)
+  expect(r).toEqual({ unreadable: 'empty' });
+});
+
+test('xlsx sparse rows over the cell budget -> too large; stored (level 0) zip still reads', async () => {
+  const xlsx = `${OX}.spreadsheetml.sheet`;
+  const book = {
+    'xl/workbook.xml':
+      '<workbook><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':
+      '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+  };
+  const rows = Array.from({ length: 100 }, (_, i) => `<row><c r="XFD${i + 1}"><v>1</v></c></row>`);
+  const sparse = media(
+    zip({
+      ...book,
+      'xl/worksheets/sheet1.xml': `<worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`,
+    }),
+  );
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: sparse.fn }).readFile(file(xlsx)),
+  ).toEqual({
+    unreadable: 'too large',
+  });
+  const stored = new Uint8Array(
+    zipSync(
+      Object.fromEntries(
+        Object.entries({
+          ...book,
+          'xl/worksheets/sheet1.xml':
+            '<worksheet><sheetData><row><c r="A1"><v>42</v></c></row></sheetData></worksheet>',
+        }).map(([k, v]) => [k, [strToU8(v), { level: 0 }]]),
+      ),
+    ),
+  );
+  const ok = media(stored);
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: ok.fn }).readFile(file(xlsx)),
+  ).toEqual({
+    chunks: [{ locator: 'tab S', text: '42' }],
   });
 });
