@@ -124,10 +124,10 @@ describe('answerer anchor check (D10)', () => {
 });
 
 describe('answerer format limits', () => {
-  it('keeps at most 3 bullets', async () => {
+  it('keeps at most 5 bullets', async () => {
     const line = (n: number) => `- ข้อ${n} ${A1}\n`;
-    const r = await run([{ deltas: [line(1) + line(2) + line(3) + line(4) + line(5)] }]);
-    expect(r.final.bullets).toHaveLength(3);
+    const r = await run([{ deltas: [[1, 2, 3, 4, 5, 6, 7].map(line).join('')] }]);
+    expect(r.final.bullets).toHaveLength(5);
   });
 
   it('drops a bullet over 50 words; a natural Thai sentence (~25 segmented words) stays', async () => {

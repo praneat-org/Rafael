@@ -31,7 +31,7 @@ Scope: every claim is limited to our own system and says providers process under
 PLANNED flow, not running on develop: STT (BE-89) not built, audio frames are only counted; Drive reader merged (BE-90 #16) but not wired into the session; Gemini not called.
 Rep mic + tab audio -> Chrome extension -> WSS -> Cloud Run asia-southeast1 (content in memory only: intended, see table)
   audio PCM -------------------------> STT provider (Chirp 3 or Deepgram, undecided) -> transcript text
-  transcript window + Session Pack (from rep's Drive) -> Vertex AI Gemini -> cue (<=3 bullets + [file > page])
+  transcript window + Session Pack (from rep's Drive) -> Vertex AI Gemini -> cue (<=5 bullets + [file > page])
   cue -> extension side panel (rep's screen only)
 ```
 
