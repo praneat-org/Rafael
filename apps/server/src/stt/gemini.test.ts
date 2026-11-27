@@ -1,0 +1,285 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createGeminiSttProvider, type LiveConnect, parseWatchdogMs } from './gemini.js';
+
+function setup(o: { connectFails?: boolean } = {}) {
+  const sent: any[] = [];
+  let cb: any;
+  let cfg: any;
+  let closed = 0;
+  const connect: LiveConnect = async (p) => {
+    cb = p.callbacks;
+    cfg = p.config;
+    if (o.connectFails) throw new Error('boom');
+    return {
+      sendRealtimeInput: (x) => sent.push(x),
+      close: () => closed++,
+    };
+  };
+  const ev = { partials: [] as string[], finals: [] as string[], errors: 0 };
+  const stt = createGeminiSttProvider({ connect, model: 'm', flushTimeoutMs: 20 }).start(
+    ['Nimbus'],
+    {
+      onPartial: (t) => ev.partials.push(t),
+      onFinal: (t) => ev.finals.push(t),
+      onError: () => ev.errors++,
+    },
+  );
+  const msg = (serverContent: any) => cb.onmessage({ serverContent });
+  return { stt, sent, ev, msg, cb: () => cb, cfg: () => cfg, closed: () => closed };
+}
+const frame = () => new Int16Array(1600);
+const tick = () => new Promise((r) => setTimeout(r, 0));
+
+describe('gemini stt', () => {
+  it('passes hints, queues frames until connected, maps partial/final', async () => {
+    const t = setup();
+    t.stt.push(frame());
+    await tick();
+    expect(t.cfg().inputAudioTranscription).toEqual({ customVocabulary: ['Nimbus'] });
+    expect(t.sent).toHaveLength(1);
+    expect(t.sent[0].audio.mimeType).toBe('audio/pcm;rate=16000');
+    expect(Buffer.from(t.sent[0].audio.data, 'base64')).toHaveLength(3200);
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    t.msg({ inputTranscription: { text: 'abc' } });
+    expect(t.ev).toMatchObject({ partials: ['a'], finals: ['abc'] });
+  });
+
+  it('close(): audioStreamEnd, waits for the final, then resolves; no duplicate interim', async () => {
+    const t = setup();
+    await tick();
+    t.msg({ interimInputTranscription: { text: 'ab' } });
+    const p = t.stt.close();
+    await tick();
+    expect(t.sent.at(-1)).toEqual({ audioStreamEnd: true });
+    t.msg({ inputTranscription: { text: 'abc' } });
+    await p;
+    expect(t.ev.finals).toEqual(['abc']);
+    expect(t.closed()).toBe(1);
+    expect(t.ev.errors).toBe(0);
+  });
+
+  it('close(): no final in time -> interim flushed as final before resolve', async () => {
+    const t = setup();
+    await tick();
+    t.msg({ interimInputTranscription: { text: 'ab' } });
+    await t.stt.close();
+    expect(t.ev.finals).toEqual(['ab']);
+  });
+
+  it('close(): audio pushed but no partial yet -> still sends audioStreamEnd and waits for the final', async () => {
+    const t = setup();
+    t.stt.push(frame());
+    await tick();
+    const p = t.stt.close();
+    await tick();
+    expect(t.sent.at(-1)).toEqual({ audioStreamEnd: true });
+    t.msg({ inputTranscription: { text: 'tail' } });
+    await p;
+    expect(t.ev.finals).toEqual(['tail']);
+  });
+
+  it('close(): no audio since last final -> no wait', async () => {
+    const t = setup();
+    t.stt.push(frame());
+    await tick();
+    t.msg({ inputTranscription: { text: 'x' } });
+    const t0 = Date.now();
+    await t.stt.close();
+    expect(Date.now() - t0).toBeLessThan(15); // flushMs is 20 in setup
+    expect(t.ev.finals).toEqual(['x']);
+  });
+
+  it('server closing the socket = onError once; own close() is not an error', async () => {
+    const t = setup();
+    await tick();
+    t.cb().onclose({});
+    t.cb().onerror(new Error('x'));
+    expect(t.ev.errors).toBe(1);
+    const u = setup();
+    await tick();
+    const p = u.stt.close();
+    u.cb().onclose({});
+    await p;
+    expect(u.ev.errors).toBe(0);
+  });
+
+  it('connect failure = onError', async () => {
+    const t = setup({ connectFails: true });
+    await tick();
+    expect(t.ev.errors).toBe(1);
+    await t.stt.close();
+  });
+});
+
+describe('gemini stt watchdog (BE-116)', () => {
+  afterEach(() => vi.useRealTimers());
+  const speech = () => new Int16Array(1600).fill(5000);
+  async function wd(ms: number | undefined) {
+    vi.useFakeTimers();
+    let cb: any;
+    const errors: { n: number; soft?: boolean } = { n: 0 };
+    const stt = createGeminiSttProvider({
+      model: 'm',
+      watchdogMs: ms,
+      connect: async (p) => {
+        cb = p.callbacks;
+        return { sendRealtimeInput: () => {}, close: () => {} };
+      },
+    }).start([], {
+      onPartial() {},
+      onFinal() {},
+      onError: (soft) => {
+        errors.n += 1;
+        errors.soft = soft;
+      },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    return { stt, errors, msg: (c: any) => cb.onmessage({ serverContent: c }) };
+  }
+
+  it('speech with no partial/final -> onError after N ms, once', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(999);
+    expect(t.errors.n).toBe(0);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(t.errors.n).toBe(1);
+    expect(t.errors.soft).toBe(true); // watchdog = soft: never an outage
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('watchdog before the session is connected is a hard error', async () => {
+    vi.useFakeTimers();
+    let soft: boolean | undefined;
+    const stt = createGeminiSttProvider({
+      model: 'm',
+      watchdogMs: 1000,
+      connect: () => new Promise(() => {}), // never connects
+    }).start([], {
+      onPartial() {},
+      onFinal() {},
+      onError: (s) => {
+        soft = s;
+      },
+    });
+    stt.push(new Int16Array(1600).fill(5000));
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(soft).toBe(false);
+  });
+
+  it('a partial or final disarms it; silence frames never arm it', async () => {
+    const t = await wd(1000);
+    t.stt.push(new Int16Array(1600));
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(500);
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(0);
+    const s = await wd(1000);
+    s.stt.push(new Int16Array(1600));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(s.errors.n).toBe(0);
+  });
+
+  it('close() disarms; watchdogMs 0 is off', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    void t.stt.close();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(0);
+    const off = await wd(0);
+    off.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(off.errors.n).toBe(0);
+  });
+
+  it('default is 8000 ms', async () => {
+    const t = await wd(undefined);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(7999);
+    expect(t.errors.n).toBe(0);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('peak 1000 does not arm, 1001 arms', async () => {
+    const lo = await wd(1000);
+    lo.stt.push(new Int16Array(1600).fill(1000));
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(lo.errors.n).toBe(0);
+    const hi = await wd(1000);
+    hi.stt.push(new Int16Array(1600).fill(1001));
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(hi.errors.n).toBe(1);
+  });
+
+  it('repeated speech does not stack/reset the timer', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(600);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(401); // fires at 1000 from the first push, not 1600
+    expect(t.errors.n).toBe(1);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('stale timer does not fire after a partial', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    await vi.advanceTimersByTimeAsync(500);
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    t.stt.push(speech()); // re-arms: fires at 1500, not at the stale 1000
+    await vi.advanceTimersByTimeAsync(600);
+    expect(t.errors.n).toBe(0);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(t.errors.n).toBe(1);
+  });
+
+  it('a partial clears the only armed timer (no stacked second timer)', async () => {
+    const t = await wd(1000);
+    t.stt.push(speech());
+    t.stt.push(speech());
+    t.msg({ interimInputTranscription: { text: 'a' } });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(t.errors.n).toBe(0);
+  });
+
+  it('parseWatchdogMs: invalid -> default, 0 stays 0', () => {
+    expect(parseWatchdogMs('abc')).toBeUndefined();
+    expect(parseWatchdogMs('-5')).toBeUndefined();
+    expect(parseWatchdogMs(undefined)).toBeUndefined();
+    expect(parseWatchdogMs('0')).toBe(0);
+    expect(parseWatchdogMs('3000')).toBe(3000);
+  });
+});
+
+describe('gemini stt VAD config (BE-89)', () => {
+  const cfgOf = async (extra: object) => {
+    let cfg: any;
+    const connect: LiveConnect = async (p) => {
+      cfg = p.config;
+      return { sendRealtimeInput: () => {}, close: () => {} };
+    };
+    createGeminiSttProvider({ connect, model: 'm', ...extra }).start([], {
+      onPartial: () => {},
+      onFinal: () => {},
+      onError: () => {},
+    });
+    await tick();
+    return cfg;
+  };
+  it('endSensitivity is opt-in', async () => {
+    expect((await cfgOf({})).realtimeInputConfig).toBeUndefined();
+    expect((await cfgOf({ silenceMs: 300 })).realtimeInputConfig).toEqual({
+      automaticActivityDetection: { silenceDurationMs: 300 },
+    });
+    expect((await cfgOf({ silenceMs: 300, endSensitivity: 'HIGH' })).realtimeInputConfig).toEqual({
+      automaticActivityDetection: {
+        silenceDurationMs: 300,
+        endOfSpeechSensitivity: 'END_SENSITIVITY_HIGH',
+      },
+    });
+  });
+});

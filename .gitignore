@@ -20,3 +20,6 @@ coverage/
 
 # local agent memory
 .remember/
+
+# STT test audio + scripts (D11)
+.stt-audio/

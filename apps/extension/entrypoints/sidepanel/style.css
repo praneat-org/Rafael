@@ -1,0 +1,881 @@
+/* Theme "บัตรคิว" (cue card): paper + ink, one ink-blue accent, highlighter only on sources.
+   Tokens on :root; dark via system or [data-theme="dark"]. Thai text: never letter-spacing. */
+:root {
+  color-scheme: light;
+  --bg: #f6f4ef;
+  --surface: #ffffff;
+  --text: #1c1b19;
+  --muted: #6b675f;
+  --faint: #8f8a80;
+  --line: #e4e0d6;
+  --accent: #1f3a8a;
+  --on-accent: #ffffff;
+  --mark: #ffe58a;
+  --mark-text: #1c1b19;
+  --ok: #1d7a46;
+  --warn: #9a6200;
+  --bad: #b42318;
+  --font: "Noto Sans Thai", "Noto Sans Thai UI", "Leelawadee UI", "Thonburi", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #161514;
+    --surface: #1f1e1c;
+    --text: #ece9e2;
+    --muted: #a39e94;
+    --faint: #858076;
+    --line: #2e2c29;
+    --accent: #9db1f2;
+    --on-accent: #101523;
+    --mark: rgb(255 214 90 / 0.24);
+    --mark-text: #f3d77a;
+    --ok: #5fc98a;
+    --warn: #e7b14a;
+    --bad: #f08a80;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #161514;
+  --surface: #1f1e1c;
+  --text: #ece9e2;
+  --muted: #a39e94;
+  --faint: #858076;
+  --line: #2e2c29;
+  --accent: #9db1f2;
+  --on-accent: #101523;
+  --mark: rgb(255 214 90 / 0.24);
+  --mark-text: #f3d77a;
+  --ok: #5fc98a;
+  --warn: #e7b14a;
+  --bad: #f08a80;
+}
+* {
+  box-sizing: border-box;
+}
+html {
+  line-break: auto;
+}
+body {
+  margin: 0;
+  font: 14px / 1.55 var(--font);
+  color: var(--text);
+  background: var(--bg);
+}
+h1,
+h2,
+p {
+  margin: 0;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- controls: one grammar. 8px radius, 1px line, ink-blue focus, press = 1px down ---- */
+button,
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+button {
+  min-height: 36px;
+  padding: 0 12px;
+}
+button:not(:disabled) {
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+button.primary {
+  border: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+button.primary:disabled {
+  opacity: 1;
+  background: var(--line);
+  color: var(--muted);
+}
+input {
+  min-height: 36px;
+  padding: 0 10px;
+}
+input[type="checkbox"] {
+  min-height: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.note {
+  color: var(--muted);
+}
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.row:has(input[type="checkbox"]) {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---- errors, steps, hints ---- */
+.err {
+  color: var(--bad);
+}
+.note.err {
+  padding: 10px 12px;
+  border: 1px solid var(--bad);
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+.note.err > p {
+  margin: 0;
+}
+.note.err button {
+  margin-top: 8px;
+}
+.note.err ul {
+  margin: 6px 0;
+  padding-left: 4px;
+  list-style: none;
+  color: var(--text);
+}
+.err-what {
+  font-weight: 600;
+}
+.err-todo {
+  margin-top: 2px;
+  color: var(--text);
+}
+.err-code {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.steps {
+  margin: 6px 0 0;
+  padding-left: 22px;
+  color: var(--text);
+}
+.steps li {
+  margin: 0 0 4px;
+}
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font:
+    12px / 18px ui-monospace,
+    monospace;
+  background: var(--surface);
+}
+.hint {
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ================= Setup / End: full-height column, primary action pinned at the bottom ================= */
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100vh;
+  min-width: 320px;
+  padding: 18px 16px 16px;
+}
+.brand h1 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 20px;
+  font-weight: 700;
+}
+.mark {
+  border-radius: 6px;
+}
+.tagline {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.devbox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--faint);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.checklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.step {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 0 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+.step > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.dotn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1.5px solid var(--faint);
+  color: var(--muted);
+}
+.step.now .dotn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.step.done .dotn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.st {
+  font-weight: 600;
+}
+.step.done .st {
+  font-weight: 500;
+  color: var(--muted);
+}
+.sd {
+  margin-top: -6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field .sd {
+  margin-top: -4px;
+}
+.field input {
+  width: 100%;
+  font-size: 13px;
+}
+.field input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+.step-btn {
+  align-self: flex-start;
+}
+.recent {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.recent button {
+  min-height: 28px;
+  max-width: 100%;
+  padding: 0 10px;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recent button[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.src {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-size: 13.5px;
+  cursor: pointer;
+}
+.src:has(input:checked) {
+  border-color: var(--accent);
+}
+.meter-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.meter-row button {
+  min-height: 32px;
+  font-size: 13px;
+}
+.meter {
+  flex: 1;
+  height: 8px;
+  accent-color: var(--ok);
+}
+.s-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+}
+.s-foot button.primary {
+  width: 100%;
+  min-height: 46px;
+  font-size: 15px;
+}
+
+/* End */
+.view.end h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+.e-sec h2 {
+  margin: 4px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.e-sec h2 .num {
+  color: var(--accent);
+}
+.fu {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+.fu li {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+.fu .h-time {
+  padding-top: 2px;
+}
+.e-row {
+  display: flex;
+  gap: 8px;
+}
+.e-row button {
+  min-height: 46px;
+}
+.e-row button.primary {
+  flex: 1;
+  font-size: 15px;
+}
+button.link {
+  align-self: center;
+  min-height: 32px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ================= Live: one screen, nothing outside the scroll areas can move (CLS = 0) ================= */
+:root {
+  --cue: 400px;
+  --answer: 24px; /* cue bullets >= 24px (CAR-3823) */
+}
+@media (max-width: 420px) {
+  :root {
+    --cue: 440px; /* 360px panel: at 24px a max cue (3 x 15 words + 3 sources) is ~600px and scrolls inside the slot */
+    --answer: 24px;
+  }
+}
+.liveview {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 320px;
+  overflow-x: hidden;
+}
+.bar {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap; /* paused text + 2 buttons wrap instead of clipping */
+  align-items: center;
+  gap: 6px 8px;
+  min-height: 44px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.status.live {
+  color: var(--ok);
+}
+.status.connecting,
+.status.reconnecting {
+  color: var(--warn);
+}
+.status.paused,
+.status.closed {
+  color: var(--bad);
+}
+.actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+.actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  border-radius: 6px;
+}
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+button.danger {
+  border-color: var(--bad);
+  background: transparent;
+  color: var(--bad);
+  font-weight: 600;
+}
+.pack {
+  flex: none;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.pack summary {
+  cursor: pointer;
+}
+.pack ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+.liveview > .note.err {
+  flex: none;
+  margin: 8px 12px 0;
+}
+
+/* latest cue: reserved slot, card fills it, long cues scroll inside */
+.latestwrap {
+  flex: none;
+  height: var(--cue);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.latest {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 14px 16px 12px;
+  overflow-y: auto;
+  overflow-anchor: none; /* streaming partials must not scroll the question away */
+  overflow-wrap: break-word;
+  transition: opacity 150ms;
+}
+.latest.partial {
+  opacity: 0.65;
+}
+.waiting {
+  margin: auto;
+}
+.q-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.latest .question {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: var(--muted);
+}
+.bullets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bullets li {
+  display: flex;
+  gap: 10px;
+  font-size: var(--answer);
+  line-height: 1.4;
+  font-weight: 600;
+}
+.bullets li::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: calc(var(--answer) * 0.7 - 3px);
+  border-radius: 1px;
+  background: var(--accent);
+}
+sup.fn {
+  margin-left: 2px;
+  font-size: 11px;
+  color: var(--accent);
+}
+.anchors {
+  margin: 14px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px dashed var(--line);
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.anchors b {
+  margin-right: 6px;
+  color: var(--accent);
+}
+.hl {
+  padding: 0 3px;
+  color: var(--mark-text);
+  background: linear-gradient(transparent 18%, var(--mark) 18%, var(--mark) 88%, transparent 88%);
+}
+.latest.nf {
+  background: var(--bg);
+}
+.nf-box {
+  padding: 14px;
+  border: 1.5px dashed var(--faint);
+  border-radius: 8px;
+}
+.nf-title {
+  font-size: 21px;
+  font-weight: 600;
+}
+.nf-sub {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.nf-sub b {
+  color: var(--text);
+  font-weight: 600;
+}
+/* new cue: one highlighter sweep across the source names */
+.latest.arrive .hl {
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  animation: sweep 250ms ease-out 1;
+}
+@keyframes sweep {
+  from {
+    background-size: 0% 100%;
+  }
+  to {
+    background-size: 100% 100%;
+  }
+}
+
+/* history: newest first */
+.previous {
+  flex: 1 1 0;
+  min-height: 60px;
+  overflow-y: auto;
+}
+.hist-h {
+  margin: 10px 16px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--faint);
+}
+.previous ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.prev {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px; /* one tap on iPad (CAR-3823) */
+  padding: 10px 16px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+}
+.prev[aria-current] {
+  background: var(--surface);
+  box-shadow: inset 3px 0 var(--accent);
+}
+.h-time {
+  flex: none;
+  width: 42px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.h-q {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* not in source: dashed tag, same language as the nf box */
+.h-nf {
+  flex: none;
+  padding: 0 6px;
+  font-size: 11.5px;
+  color: var(--warn);
+  border: 1px dashed var(--warn);
+  border-radius: 4px;
+}
+.prev.nf .h-q {
+  color: var(--muted);
+}
+/* back to Live from a history cue; no motion, colour only when a new cue waits */
+.back {
+  flex: none;
+  align-self: flex-start;
+  margin-bottom: 8px;
+  min-height: 32px;
+  font-size: 13px;
+}
+.back-q {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.back-go {
+  flex: none;
+}
+.back.new {
+  display: flex;
+  gap: 4px;
+  max-width: 100%;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* listening line + transcript */
+.transcript {
+  flex: none;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.transcript summary {
+  display: flex;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+}
+.transcript summary::-webkit-details-marker {
+  display: none;
+}
+.listen {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--faint);
+}
+.listen::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+}
+.heard {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.transcript ul {
+  max-height: 120px;
+  margin: 6px 0 0;
+  padding-left: 16px;
+  overflow-y: auto;
+}
+.transcript .partial {
+  opacity: 0.65;
+}
+.ask {
+  flex: none;
+  display: flex;
+  padding: 0 12px 12px;
+}
+.ask input {
+  flex: 1;
+  min-width: 0;
+  min-height: 38px;
+  padding: 0 12px;
+}
+.ask input::placeholder {
+  color: var(--faint);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .latest,
+  .latest.arrive .hl {
+    transition: none;
+    animation: none;
+  }
+  button:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* Conversation Log download (Live bar + End) */
+.log-fail {
+  font-size: 12px;
+  color: var(--bad);
+}
+.log-row {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.log-row .log-h {
+  flex: 1;
+  font-size: 13px;
+  color: var(--muted);
+}
+.log-row button {
+  min-height: 36px;
+}
+.warn-del {
+  color: var(--bad);
+  text-align: center;
+}
+
+/* End: meeting summary draft */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.summary .draft {
+  width: 100%;
+  min-height: 280px;
+  font:
+    13px / 1.5 ui-monospace,
+    monospace;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  resize: vertical;
+}
+.summary .draft.has-blank {
+  border-color: var(--warn);
+  outline: 2px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.warn-blank {
+  color: var(--warn);
+  font-weight: 600;
+}
+details.dl {
+  position: relative;
+}
+details.dl summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+details.dl summary::-webkit-details-marker {
+  display: none;
+}
+details.dl summary[aria-disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+.e-row details.dl summary {
+  min-height: 46px;
+  font-size: 14px;
+}
+.dl-menu {
+  position: absolute;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  margin-top: 4px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.15);
+}
+details.dl .dl-menu button {
+  min-height: 36px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+}

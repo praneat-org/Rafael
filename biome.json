@@ -1,0 +1,17 @@
+{
+  "files": {
+    "includes": [
+      "apps/**",
+      "packages/**",
+      "bench/**",
+      "*.json",
+      "!.mcp.json",
+      "!**/.wxt",
+      "!**/.output",
+      "!**/dist",
+      "!!.claude"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "lineWidth": 100 },
+  "javascript": { "formatter": { "quoteStyle": "single" } }
+}

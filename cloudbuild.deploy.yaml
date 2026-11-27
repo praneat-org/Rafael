@@ -1,0 +1,64 @@
+# Cloud Build: build -> Artifact Registry -> Cloud Run. Nothing secret in here (names only).
+# dev trigger (push develop): defaults below.
+# prod trigger (push main, deploys automatically, CAR-3845): override
+#   _SERVICE=rafael, _REPO=rafael-prod  (and _MIN/_MAX if decided differently); _STT_END_SENSITIVITY stays empty (dev-only experiment)
+substitutions:
+  _REGION: asia-southeast1
+  _SERVICE: rafael-dev
+  _REPO: rafael # Artifact Registry repo, same region
+  _MIN: '1' # CAR-3845 chosen option: max = 1 + session affinity, in-memory sessions; min = 1 always (no cold start)
+  _MAX: '1' # >1 breaks resume (session affinity is best effort)
+  _ALLOWED_EXTENSION_IDS: '' # chrome-extension ids (not secret), comma separated, set on the trigger
+  _SECRETS: '' # ENV=SecretName:version, comma separated; empty = no app secrets (D22)
+  _RUNTIME_SA: '' # runtime service account email from BE-71 (set on the trigger)
+  _OAUTH_CLIENT_ID: '' # Chrome Extension OAuth client id (not secret); empty = server denies every hello
+  _VERTEX_LOCATION: asia-southeast1 # GOOGLE_CLOUD_LOCATION for Gemini on Vertex (D20)
+  _STT_MODEL: '' # Gemini transcribe model (BE-89); empty = no STT. Location below: these models only exist at global
+  _STT_LOCATION: global
+  _STT_END_SENSITIVITY: '' # BE-89 dev field experiment (HIGH|LOW|empty = model default); set to HIGH only by the dev trigger (terraform/dev), prod stays empty
+  _DETECTOR_MODEL: '' # Gemini model ids (D20), set on the trigger
+  _ANSWERER_MODEL: ''
+  _SUMMARY_MODEL: ''
+  _WEB_OAUTH_CLIENT_ID: '' # OAuth client of type Web application (not secret): GOOGLE_OAUTH_WEB_CLIENT_ID on the server + VITE_OAUTH_CLIENT_ID in the web bundle
+  _FEEDBACK_URL: '' # VITE_FEEDBACK_URL (web bundle)
+  _APP_VERSION: '' # VITE_APP_VERSION (web bundle)
+  _PUBLIC_ORIGIN: '' # https://<custom domain>: the web page's own origin, allowed on /ws (Host header is never trusted)
+  _ALLOWED_WEB_ORIGINS: '' # extra exact https://host origins for /ws, comma separated
+  _ALLOWED_EMAILS: '' # dev only: exact emails allowed outside praneat.com (D13 exception), comma separated; empty on prod
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args: ['build', '-f', 'apps/server/Dockerfile', '--build-arg', 'VITE_COMMIT_SHA=$COMMIT_SHA', '--build-arg', 'VITE_APP_VERSION=${_APP_VERSION}', '--build-arg', 'VITE_OAUTH_CLIENT_ID=${_WEB_OAUTH_CLIENT_ID}', '--build-arg', 'VITE_FEEDBACK_URL=${_FEEDBACK_URL}', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA', '.']
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA']
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        # optional flags: empty _SECRETS clears secrets (D22: none needed), empty _RUNTIME_SA keeps the service's current identity
+        extra=()
+        if [ -n '${_SECRETS}' ]; then extra+=(--set-secrets='${_SECRETS}'); else extra+=(--clear-secrets); fi
+        if [ -n '${_RUNTIME_SA}' ]; then extra+=(--service-account='${_RUNTIME_SA}'); fi
+        gcloud run deploy ${_SERVICE} \
+          --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/rafael-server:$COMMIT_SHA \
+          --region=${_REGION} \
+          --port=8080 \
+          --timeout=3600 \
+          --session-affinity \
+          --min-instances=${_MIN} \
+          --max-instances=${_MAX} \
+          --allow-unauthenticated \
+          --set-env-vars='^|^ALLOWED_EXTENSION_IDS=${_ALLOWED_EXTENSION_IDS}|GOOGLE_OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID}|GOOGLE_OAUTH_WEB_CLIENT_ID=${_WEB_OAUTH_CLIENT_ID}|PUBLIC_ORIGIN=${_PUBLIC_ORIGIN}|ALLOWED_WEB_ORIGINS=${_ALLOWED_WEB_ORIGINS}|GOOGLE_GENAI_USE_VERTEXAI=true|GOOGLE_CLOUD_PROJECT=$PROJECT_ID|GOOGLE_CLOUD_LOCATION=${_VERTEX_LOCATION}|STT_MODEL=${_STT_MODEL}|STT_LOCATION=${_STT_LOCATION}|STT_END_SENSITIVITY=${_STT_END_SENSITIVITY}|DETECTOR_MODEL=${_DETECTOR_MODEL}|ANSWERER_MODEL=${_ANSWERER_MODEL}|SUMMARY_MODEL=${_SUMMARY_MODEL}|ALLOWED_EMAILS=${_ALLOWED_EMAILS}' \
+          --startup-probe=httpGet.path=/api/health,httpGet.port=8080 \
+          --liveness-probe=httpGet.path=/api/health,httpGet.port=8080 \
+          "$${extra[@]}"
+        # --set-env-vars delimiter is | because emails contain @
+        # --timeout=3600: WS is cut at 60 min, client reconnects + resumes
+        # --allow-unauthenticated: auth is the Google token in WS hello (D13/D19, needs BE-87 verifier; until then /ws denies every hello), /api/health is open (D18)
+
+options:
+  logging: CLOUD_LOGGING_ONLY

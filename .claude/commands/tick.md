@@ -9,9 +9,11 @@ argument-hint: "[be|fe]"
 
 | argument | ลำดับ |
 | -- | -- |
-| `be` | `be-dev` → `qa` (scope: Backend) → `jira-sync` → Project Update |
-| `fe` | `fe-dev` → `qa` (scope: Frontend) → `jira-sync` → Project Update |
-| ว่าง | `be-dev` → `fe-dev` → `qa` (scope: ทั้งสองทีม) → `jira-sync` → Project Update |
+| `be` | `be-dev` → `qa` (scope: Backend) → `reviewer` → `jira-sync` → Project Update |
+| `fe` | `fe-dev` → `qa` (scope: Frontend) → `reviewer` → `jira-sync` → Project Update |
+| ว่าง | `be-dev` → `fe-dev` → `qa` (scope: ทั้งสองทีม) → `reviewer` → `jira-sync` → Project Update |
+
+`reviewer` (แทน CodeRabbit): ส่ง PR ที่ไม่ใช่ draft ของใบใน scope ที่ status `CodeRabbit` และ CodeRabbit ยังไม่ review commit ล่าสุด (rate limited / paused / ไม่มาเกิน 1 tick) หรือมี thread `[Reviewer]` ที่ Dev ตอบแล้วรอตรวจ · ไม่มี PR แบบนี้ → ข้าม node · QA จะอ่านผลใน tick หน้า (เหมือนรอ CodeRabbit)
 
 argument อื่นนอกจาก `be` / `fe` / ว่าง → หยุดแล้วบอกวิธีใช้ ไม่ต้องรันอะไร
 

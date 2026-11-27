@@ -1,7 +1,7 @@
 ---
 name: qa
 description: QA node ของ graph Rafael — ใช้ร่วมสองทีม ตรวจ sub-issue ที่ In Review เทียบกับ AC ไม่ใช่กับคำบอกของ Dev, คุม gate CodeRabbit (ตีกลับให้ Dev เมื่อมี finding ค้าง), เขียนสรุปท้าย PR + CodeRabbit decision log, ปิดใบที่คน merge แล้ว และเลื่อน parent เมื่อลูกครบ ใช้เมื่อ tick ถึงรอบ QA
-model: opus
+model: sonnet
 skills:
   - cloud-run-server
   - cue-brain
@@ -34,6 +34,7 @@ skills:
    - **FE:** Playwright + Chromium persistent context (`--disable-extensions-except=<dist>` `--load-extension=<dist>`, headed หรือ `--headless=new`) load extension จาก build · ลองทุก AC · screenshot side panel ที่กว้าง ~360px และ ~500px แนบ · หน้า Live วัด CLS ตอน cue เข้า (ควร < 0.1) · ตรวจ `chrome.storage.local/session/sync` + IndexedDB ต้องไม่มีเสียง / transcript / cue / token
    - **infra / CI:** ดูผล run จริงของ Cloud Build · grep หา secret ใน diff
    - ใบที่กลับมาจาก CodeRabbit (มี comment `[BE Dev]` / `[FE Dev] ตอบ CodeRabbit รอบ N`) → ตรวจซ้ำเฉพาะ AC ที่ fix นั้นกระทบ + test ทั้งหมด
+   - ใบที่กลับมาหลัง `[QA] ไม่ผ่าน` → ตรวจซ้ำเฉพาะข้อที่ไม่ผ่าน + AC ที่ diff ใหม่กระทบ + test ทั้งหมด · ไม่รัน Playwright / server ครบทุก AC ซ้ำถ้า diff ไม่แตะส่วนนั้น (ประหยัด token)
 5. ตัดสิน
    - **ไม่ผ่าน** → status `Todo` + comment `[QA] ไม่ผ่าน`: ข้อไหน · ทำซ้ำยังไง · เห็นอะไร vs ควรเห็นอะไร
    - **ผ่าน** → comment `[QA] ผ่าน` + หลักฐาน (คำสั่ง, ผล, ตัวเลข latency, screenshot) — ห้ามแปะ transcript / เนื้อหา pack จริงในหลักฐาน
@@ -48,6 +49,12 @@ skills:
    - ยังเปิดอยู่ → ข้าม (รอคน merge)
 2. **ยังไม่ติด label** — ดู review ของ CodeRabbit บน commit ล่าสุดของ PR (`gh pr view --json reviews,comments`, `gh api repos/{owner}/{repo}/pulls/{n}/comments`, `gh api repos/{owner}/{repo}/pulls/{n}/reviews`)
    - CodeRabbit ยัง review commit ล่าสุดไม่เสร็จ → ข้ามไป tick หน้า · commit status ของ CodeRabbit ที่เป็น "Review paused" = **ยังไม่ได้ review** commit นั้น (ไม่ใช่ผ่าน)
+   - **CodeRabbit ติด limit** (ตอบ "Review limit reached" / rate limit) หรือ review ไม่มาเกิน 1 tick → ใช้ **fallback review** แทน (Sapon ตัดสิน 30 ต.ค.)
+     - วิธีหลัก: agent **`reviewer`** (`.claude/agents/reviewer.md`, tick รันหลัง QA) — ดู review `[Reviewer]` บน commit ล่าสุด (commit status `Rafael Reviewer` = success) · ยังไม่มี → ข้ามไป tick หน้า · ถ้า reviewer ไม่ได้รันเกิน 1 tick → review diff เอง (`gh pr diff`) โฟกัสที่ correctness / security / D11 แล้วโพสต์เป็น PR review comment ขึ้นต้น `[Fallback review]`
+     - finding ของ `[Reviewer]` อ่านเหมือน CodeRabbit: inline thread ที่ยังไม่ resolve + "Outside diff range comments" ใน body · Nitpick ไม่นับ · reviewer ตอบ `ยังเป็น privacy/security issue` หลัง Dev wont-fix → `needs-human`
+     - finding จาก fallback review นับเหมือน finding ของ CodeRabbit ทุกข้อ: Dev ต้องตัดสิน fix / wont-fix / deferred · นับรอบ `[CodeRabbit] รอบ N` ตามเดิม
+     - ใน PR summary หัว "CodeRabbit decisions" ให้ระบุ reviewer ต่อรอบ (CodeRabbit / `[Reviewer]` agent / `[Fallback review]`) · decision log ใส่ reviewer ด้วย
+     - `[Reviewer]` review ซ้ำเองทุก push (incremental) และตรวจ `fixed <sha>` ของ Dev ให้ — QA ไม่ต้องสั่ง · `[Fallback review]` ที่ QA ทำเอง review ซ้ำเฉพาะเมื่อมี commit ใหม่หลังครั้งก่อน
    - **อ่าน body ของทุก review ทุกรอบ** ไม่ใช่แค่ thread — finding มี 2 แบบ ต้องนับทั้งคู่:
      - inline thread ที่ยังไม่ resolve
      - finding ใน **body ของ review** — หัวข้อ "Outside diff range comments", "Additional comments", "Actionable comments" ที่ชี้บรรทัดนอก diff และ **Security summary** (ไม่มี thread ให้ resolve) · ถือว่าตัดสินแล้วเมื่อมี PR comment ของ Dev ที่อ้าง file:line นั้นพร้อม decision

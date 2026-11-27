@@ -1,0 +1,579 @@
+import { strToU8, zipSync } from 'fflate';
+import { expect, test, vi } from 'vitest';
+
+// spy on every pdf.js document so tests can assert it is released; failExtract forces the parse-error path
+const pdfSpy = vi.hoisted(() => ({
+  destroys: [] as ReturnType<typeof vi.fn>[],
+  failExtract: false,
+}));
+vi.mock('unpdf', async (orig) => {
+  const real = await orig<typeof import('unpdf')>();
+  return {
+    ...real,
+    getDocumentProxy: async (...a: Parameters<typeof real.getDocumentProxy>) => {
+      const doc = await real.getDocumentProxy(...a);
+      const destroy = vi.fn(doc.loadingTask.destroy.bind(doc.loadingTask));
+      doc.loadingTask.destroy = destroy;
+      pdfSpy.destroys.push(destroy);
+      return doc;
+    },
+    extractText: (...a: Parameters<typeof real.extractText>) =>
+      pdfSpy.failExtract ? Promise.reject(new Error('boom')) : real.extractText(...a),
+  };
+});
+
+import { createDriveProvider, type DriveFile, parseFolderId } from './drive.js';
+
+// Synthetic fixtures in the shape of the real API responses — no customer data.
+const j = (o: unknown) =>
+  new Response(JSON.stringify(o), { headers: { 'content-type': 'application/json' } });
+
+function fakeFetch(routes: Record<string, (u: URL) => Response>) {
+  const calls: URL[] = [];
+  const headers: (string | null)[] = [];
+  const fn = (async (input: string | URL | Request, init?: RequestInit) => {
+    const u = new URL(String(input));
+    calls.push(u);
+    headers.push(new Headers(init?.headers).get('authorization'));
+    const h = Object.entries(routes).find(([k]) => u.href.includes(k));
+    return h ? h[1](u) : new Response('nope', { status: 404 });
+  }) as typeof fetch;
+  return { fn, calls, headers };
+}
+const file = (mimeType: string, size?: number): DriveFile => ({
+  fileId: 'f1',
+  name: 'n',
+  mimeType,
+  size,
+});
+
+// minimal valid PDF; each page string is drawn as text ('' = blank page, like a scan)
+function pdf(pages: string[]): Uint8Array<ArrayBuffer> {
+  const objs: string[] = [];
+  const kids = pages.map((_, i) => `${4 + i * 2} 0 R`).join(' ');
+  objs.push(
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  );
+  pages.forEach((t, i) => {
+    const body = t ? `BT /F1 12 Tf 20 100 Td (${t}) Tj ET` : '';
+    objs.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 3 0 R >> >> /Contents ${5 + i * 2} 0 R >>`,
+    );
+    objs.push(`<< /Length ${body.length} >>\nstream\n${body}\nendstream`);
+  });
+  let out = '%PDF-1.4\n';
+  const off: number[] = [];
+  objs.forEach((o, i) => {
+    off.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const x = out.length;
+  out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${off.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`;
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF`;
+  return new TextEncoder().encode(out);
+}
+
+test('parseFolderId accepts id, folder url, open?id url; rejects injection', () => {
+  expect(parseFolderId('abc_123-X')).toBe('abc_123-X');
+  expect(parseFolderId('https://drive.google.com/drive/folders/abc123?usp=sharing')).toBe('abc123');
+  expect(parseFolderId('https://drive.google.com/open?id=abc123')).toBe('abc123');
+  expect(() => parseFolderId("x' or '1'='1")).toThrow();
+});
+
+test('listFolder paginates, sends Shared Drive params and the user token', async () => {
+  const { fn, calls, headers } = fakeFetch({
+    '/drive/v3/files': (u) =>
+      u.searchParams.get('pageToken')
+        ? j({ files: [{ id: 'b', name: 'B', mimeType: 'application/pdf', size: '10' }] })
+        : j({
+            nextPageToken: 'p2',
+            files: [{ id: 'a', name: 'A', mimeType: 'x', modifiedTime: 't' }],
+          }),
+  });
+  const files = await createDriveProvider({ accessToken: 'tok', fetch: fn }).listFolder(
+    'https://drive.google.com/drive/folders/F1',
+  );
+  expect(files.map((x) => x.fileId)).toEqual(['a', 'b']);
+  expect(files[1]!.size).toBe(10);
+  expect(calls).toHaveLength(2);
+  for (const u of calls) {
+    expect(u.searchParams.get('supportsAllDrives')).toBe('true');
+    expect(u.searchParams.get('includeItemsFromAllDrives')).toBe('true');
+    expect(u.searchParams.get('q')).toContain("'F1' in parents and trashed=false");
+  }
+  expect(headers).toEqual(['Bearer tok', 'Bearer tok']);
+});
+
+test('folderName: files.get name, Shared Drive param, user token', async () => {
+  const { fn, calls, headers } = fakeFetch({
+    '/drive/v3/files/F1': () => j({ name: 'Acme pitch' }),
+  });
+  const p = createDriveProvider({ accessToken: 'tok', fetch: fn });
+  expect(await p.folderName!('https://drive.google.com/drive/folders/F1')).toBe('Acme pitch');
+  expect(calls).toHaveLength(1);
+  expect(calls[0]!.searchParams.get('fields')).toBe('name');
+  expect(calls[0]!.searchParams.get('supportsAllDrives')).toBe('true');
+  expect(headers).toEqual(['Bearer tok']);
+});
+
+test('folderName: body over 64 KB rejects as too large', async () => {
+  const { fn } = fakeFetch({ '/drive/v3/files/F1': () => j({ name: 'x'.repeat(70 * 1024) }) });
+  await expect(
+    createDriveProvider({ accessToken: 't', fetch: fn }).folderName!('F1'),
+  ).rejects.toThrow('too large');
+});
+
+test.each([403, 404])('folderName: %i rejects with the status only', async (status) => {
+  const { fn } = fakeFetch({ '/drive/v3/files/F1': () => new Response('secret body', { status }) });
+  const r = createDriveProvider({ accessToken: 't', fetch: fn }).folderName!('F1');
+  await expect(r).rejects.toThrow(`google api ${status}`);
+});
+
+test('Docs export as markdown', async () => {
+  const { fn, calls } = fakeFetch({ '/export': () => new Response('# Title\nbody') });
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file('application/vnd.google-apps.document'),
+  );
+  expect(r).toEqual({ chunks: [{ locator: 'เอกสาร', text: '# Title\nbody' }] });
+  expect(calls[0]!.searchParams.get('mimeType')).toBe('text/markdown');
+  expect(calls[0]!.searchParams.get('supportsAllDrives')).toBe('true');
+});
+
+test('Docs: base64 images stripped; 403 on markdown export (too big) -> plain text, reason kept', async () => {
+  const img = '![][image1]\n\n[image1]: <data:image/png;base64,iVBORw0KGgo+/=>';
+  const ok = fakeFetch({ '/export': () => new Response(`# T\nbody\n${img}`) });
+  const p = createDriveProvider({ accessToken: 't', fetch: ok.fn });
+  expect(await p.readFile(file('application/vnd.google-apps.document'))).toEqual({
+    chunks: [{ locator: 'เอกสาร', text: '# T\nbody\n![][image1]\n\n[image1]: ' }],
+  });
+  const tooBig = j({
+    error: { code: 403, errors: [{ reason: 'exportSizeLimitExceeded', message: 'x' }] },
+  });
+  const { fn, calls } = fakeFetch({
+    '/export': (u) =>
+      u.searchParams.get('mimeType') === 'text/markdown'
+        ? new Response(tooBig.body, { status: 403 })
+        : new Response('plain body'),
+  });
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+      file('application/vnd.google-apps.document'),
+    ),
+  ).toEqual({ chunks: [{ locator: 'เอกสาร', text: 'plain body' }] });
+  expect(calls.map((c) => c.searchParams.get('mimeType'))).toEqual(['text/markdown', 'text/plain']);
+  const denied = fakeFetch({
+    '/export': () =>
+      new Response(JSON.stringify({ error: { errors: [{ reason: 'cannotDownloadFile' }] } }), {
+        status: 403,
+      }),
+  });
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: denied.fn }).readFile(
+      file('application/vnd.google-apps.document'),
+    ),
+  ).toEqual({ unreadable: 'google api 403 cannotDownloadFile' });
+});
+
+test('Sheets -> one CSV chunk per tab, quoting handled, empty tab skipped', async () => {
+  const { fn, calls } = fakeFetch({
+    batchGet: () =>
+      j({
+        valueRanges: [
+          {
+            values: [
+              ['a', 'b,c'],
+              ['1', 'say "hi"'],
+            ],
+          },
+          {},
+          { values: [['x']] },
+        ],
+      }),
+    '/spreadsheets/f1': () =>
+      j({
+        sheets: [
+          { properties: { title: 'Price', sheetType: 'GRID' } },
+          { properties: { title: 'Chart', sheetType: 'OBJECT' } },
+          { properties: { title: 'Empty', sheetType: 'GRID' } },
+          { properties: { title: "Bob's", sheetType: 'GRID' } },
+        ],
+      }),
+  });
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file('application/vnd.google-apps.spreadsheet'),
+  );
+  expect(r).toEqual({
+    chunks: [
+      { locator: 'tab Price', text: 'a,"b,c"\n1,"say ""hi"""' },
+      { locator: "tab Bob's", text: 'x' },
+    ],
+  });
+  expect(calls.at(-1)!.searchParams.getAll('ranges')).toEqual(["'Price'", "'Empty'", "'Bob''s'"]);
+});
+
+test('Slides -> one chunk per slide (shapes, tables, groups); blank slide skipped but numbering kept', async () => {
+  const t = (s: string) => ({ text: { textElements: [{ textRun: { content: s } }] } });
+  const { fn } = fakeFetch({
+    '/presentations/f1': () =>
+      j({
+        slides: [
+          {
+            pageElements: [
+              { shape: t('Hello\n') },
+              { elementGroup: { children: [{ shape: t('Grouped') }] } },
+            ],
+          },
+          { pageElements: [] },
+          { pageElements: [{ table: { tableRows: [{ tableCells: [t('A'), t('B')] }] } }] },
+        ],
+      }),
+  });
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file('application/vnd.google-apps.presentation'),
+  );
+  expect(r).toEqual({
+    chunks: [
+      { locator: 'slide 1', text: 'Hello\n\nGrouped' },
+      { locator: 'slide 3', text: 'A | B' },
+    ],
+  });
+});
+
+test('PDF -> text per page; blank pages skipped', async () => {
+  const { fn, calls } = fakeFetch({
+    'alt=media': () => new Response(pdf(['Alpha page', '', 'Gamma page'])),
+  });
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file('application/pdf', 100),
+  );
+  expect(r).toEqual({
+    chunks: [
+      { locator: 'หน้า 1', text: 'Alpha page' },
+      { locator: 'หน้า 3', text: 'Gamma page' },
+    ],
+  });
+  expect(calls[0]!.searchParams.get('supportsAllDrives')).toBe('true');
+});
+
+test('scanned PDF (no text layer) -> unreadable', async () => {
+  const { fn } = fakeFetch({ 'alt=media': () => new Response(pdf(['', ''])) });
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file('application/pdf'),
+  );
+  expect(r).toEqual({ unreadable: 'no text layer (scanned?)' });
+});
+
+test('too large, unsupported mime, http error, corrupt pdf -> unreadable with reason, no throw', async () => {
+  const { fn } = fakeFetch({
+    '/export': () => new Response('secret body', { status: 403 }),
+    'alt=media': () => new Response('not a pdf'),
+  });
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 50 });
+  expect(await p.readFile(file('application/pdf', 51))).toEqual({ unreadable: 'too large' });
+  expect(await p.readFile(file('image/png'))).toEqual({ unreadable: 'unsupported mime' });
+  expect(await p.readFile(file('application/vnd.google-apps.document'))).toEqual({
+    unreadable: 'google api 403',
+  });
+  expect(await p.readFile(file('application/pdf', 9))).toEqual({ unreadable: 'read failed' });
+});
+
+test('PDF with no size in listing is capped while downloading', async () => {
+  const { fn } = fakeFetch({ 'alt=media': () => new Response(pdf(['Alpha page'])) });
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 100 });
+  expect(await p.readFile(file('application/pdf'))).toEqual({ unreadable: 'too large' });
+});
+
+test('pdf.js document is destroyed on success, parse error, and too-many-pages', async () => {
+  const { fn } = fakeFetch({ 'alt=media': () => new Response(pdf(['A', 'B'])) });
+  const read = (maxPdfPages?: number) =>
+    createDriveProvider({ accessToken: 't', fetch: fn, maxPdfPages }).readFile(
+      file('application/pdf'),
+    );
+  pdfSpy.destroys.length = 0;
+  expect(await read()).toHaveProperty('chunks');
+  expect(await read(1)).toEqual({ unreadable: 'too many pages' });
+  pdfSpy.failExtract = true;
+  expect(await read()).toEqual({ unreadable: 'read failed' });
+  pdfSpy.failExtract = false;
+  expect(pdfSpy.destroys).toHaveLength(3);
+  for (const d of pdfSpy.destroys) expect(d).toHaveBeenCalledTimes(1);
+});
+
+test('Docs / Sheets / Slides bodies are capped too (no size in Drive listing)', async () => {
+  const big = 'x'.repeat(200);
+  const { fn } = fakeFetch({
+    '/export': () => new Response(big),
+    '/spreadsheets/f1': () => j({ sheets: [{ properties: { title: big, sheetType: 'GRID' } }] }),
+    '/presentations/f1': () =>
+      j({
+        slides: [
+          {
+            pageElements: [{ shape: { text: { textElements: [{ textRun: { content: big } }] } } }],
+          },
+        ],
+      }),
+  });
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 100 });
+  for (const m of ['document', 'spreadsheet', 'presentation'])
+    expect(await p.readFile(file(`application/vnd.google-apps.${m}`))).toEqual({
+      unreadable: 'too large',
+    });
+});
+
+test('stalled request: file -> unreadable timeout, list throws', async () => {
+  const never = (() => new Promise(() => {})) as unknown as typeof fetch; // ignores the signal too
+  const p = createDriveProvider({ accessToken: 't', fetch: never, requestTimeoutMs: 20 });
+  expect(await p.readFile(file('application/pdf'))).toEqual({ unreadable: 'timeout' });
+  await expect(p.listFolder('F1')).rejects.toThrow('timeout');
+});
+
+test('stalled body read hits the same deadline', async () => {
+  const stall = (async () =>
+    new Response(new ReadableStream({ start() {} }))) as unknown as typeof fetch;
+  const p = createDriveProvider({ accessToken: 't', fetch: stall, requestTimeoutMs: 20 });
+  expect(await p.readFile(file('application/vnd.google-apps.document'))).toEqual({
+    unreadable: 'timeout',
+  });
+});
+
+// --- uploaded Office / plain files: synthetic OOXML zips with only the parts we read
+const zip = (parts: Record<string, string>) =>
+  new Uint8Array(
+    zipSync(Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, strToU8(v)]))),
+  );
+const OX = 'application/vnd.openxmlformats-officedocument';
+const media = (body: BodyInit) => fakeFetch({ 'alt=media': () => new Response(body) });
+
+test('docx -> one chunk, one line per paragraph, entities decoded, tabs/props skipped', async () => {
+  const { fn, calls } = media(
+    zip({
+      'word/document.xml':
+        '<w:document><w:body><w:p><w:pPr/><w:r><w:t>ราคา </w:t></w:r><w:r><w:t xml:space="preserve">100 &amp; VAT</w:t></w:r></w:p>' +
+        '<w:p/><w:p><w:r><w:t>SLA</w:t><w:tab/><w:t>&#3614;</w:t><w:br/><w:t>x&#x110000;</w:t></w:r></w:p></w:body></w:document>',
+      'word/media/a.png': 'x',
+    }),
+  );
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file(`${OX}.wordprocessingml.document`),
+  );
+  expect(r).toEqual({
+    chunks: [{ locator: 'เอกสาร', text: 'ราคา 100 & VAT\nSLA\tพ\nx&#x110000;' }],
+  });
+  expect(calls[0]!.searchParams.get('alt')).toBe('media');
+});
+
+test('pptx -> one chunk per slide in presentation order, empty slide skipped', async () => {
+  const slide = (t: string) =>
+    `<p:sld><a:p><a:r><a:t>${t}</a:t></a:r></a:p><a:p><a:pPr/></a:p></p:sld>`;
+  const { fn } = media(
+    zip({
+      'ppt/presentation.xml':
+        '<p:presentation><p:sldIdLst><p:sldId id="256" r:id="rId3"/><p:sldId id="257" r:id="rId2"/><p:sldId id="258" r:id="rId4"/></p:sldIdLst></p:presentation>',
+      'ppt/_rels/presentation.xml.rels':
+        '<Relationships><Relationship Id="rId2" Type="x" Target="slides/slide1.xml"/><Relationship Target="/ppt/slides/slide2.xml" Id="rId3" Type="x"/><Relationship Id="rId4" Target="slides/slide3.xml"/></Relationships>',
+      'ppt/slides/slide1.xml': slide('Pricing'),
+      'ppt/slides/slide2.xml': slide('Intro'),
+      'ppt/slides/slide3.xml': '<p:sld/>',
+    }),
+  );
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file(`${OX}.presentationml.presentation`),
+  );
+  expect(r).toEqual({
+    chunks: [
+      { locator: 'slide 1', text: 'Intro' },
+      { locator: 'slide 2', text: 'Pricing' },
+    ],
+  });
+});
+
+test('xlsx -> one CSV chunk per sheet; shared/inline/number cells keep their column', async () => {
+  const { fn } = media(
+    zip({
+      'xl/workbook.xml':
+        '<workbook><sheets><sheet name="Price &amp; Plan" sheetId="1" r:id="rId1"/><sheet name="Empty" sheetId="2" r:id="rId2"/></sheets></workbook>',
+      'xl/_rels/workbook.xml.rels':
+        '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/></Relationships>',
+      'xl/sharedStrings.xml':
+        '<sst><si><t>Plan</t></si><si><r><t>Pro</t></r><r><t xml:space="preserve"> plan, yearly</t></r></si></sst>',
+      'xl/worksheets/sheet1.xml':
+        '<worksheet><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="C1" t="inlineStr"><is><t>Note</t></is></c></row>' +
+        '<row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2" s="1"/><c r="B2"><v>990</v></c><c><v>7</v></c></row></sheetData></worksheet>',
+      'xl/worksheets/sheet2.xml': '<worksheet><sheetData/></worksheet>',
+    }),
+  );
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(
+    file(`${OX}.spreadsheetml.sheet`),
+  );
+  expect(r).toEqual({
+    chunks: [{ locator: 'tab Price & Plan', text: 'Plan,,Note\n"Pro plan, yearly",990,7' }],
+  });
+});
+
+test('plain text / markdown / csv uploads -> one chunk; empty -> unreadable', async () => {
+  const { fn } = media('# FAQ\nQ: ราคา?\n');
+  const p = createDriveProvider({ accessToken: 't', fetch: fn });
+  for (const m of ['text/plain', 'text/markdown', 'text/csv'])
+    expect(await p.readFile(file(m))).toEqual({
+      chunks: [{ locator: 'เอกสาร', text: '# FAQ\nQ: ราคา?' }],
+    });
+  const empty = media('  \n');
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: empty.fn }).readFile(file('text/plain')),
+  ).toEqual({
+    unreadable: 'empty',
+  });
+});
+
+test('office: too large by listing, unpack cap (zip bomb), corrupt zip, legacy .doc -> unreadable', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  // 20k of 'x' deflates to a few dozen bytes: fits the download cap, blows the 5x unpack cap
+  const bomb = zip({ 'word/document.xml': `<w:p><w:t>${'x'.repeat(20_000)}</w:t></w:p>` });
+  const { fn, calls } = media(bomb);
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: bomb.length });
+  expect(bomb.length * 5).toBeLessThan(20_000);
+  expect(await p.readFile(file(docx, bomb.length + 1))).toEqual({ unreadable: 'too large' });
+  expect(calls).toHaveLength(1); // listing over cap: ranged read; this fake ignores Range -> capped
+  expect(await p.readFile(file(docx))).toEqual({ unreadable: 'too large' });
+  const bad = media('not a zip');
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: bad.fn }).readFile(file(docx)),
+  ).toEqual({ unreadable: 'read failed' });
+  expect(await p.readFile(file('application/msword'))).toEqual({ unreadable: 'unsupported mime' });
+});
+
+test('malformed OOXML stays linear: 100k opens with no close parse fast, no hang', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  const xml = '<w:p><w:t>a'.repeat(100_000) + '<w:t <w:t <w:pPr'.repeat(50_000);
+  const { fn } = media(zip({ 'word/document.xml': xml }));
+  const t0 = performance.now();
+  const r = await createDriveProvider({ accessToken: 't', fetch: fn }).readFile(file(docx));
+  expect(performance.now() - t0).toBeLessThan(1000); // was quadratic with lazy regexes (seconds)
+  expect(r).toEqual({ unreadable: 'empty' });
+});
+
+test('xlsx sparse rows over the cell budget -> too large; stored (level 0) zip still reads', async () => {
+  const xlsx = `${OX}.spreadsheetml.sheet`;
+  const book = {
+    'xl/workbook.xml':
+      '<workbook><sheets><sheet name="S" sheetId="1" r:id="rId1"/></sheets></workbook>',
+    'xl/_rels/workbook.xml.rels':
+      '<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>',
+  };
+  const rows = Array.from({ length: 100 }, (_, i) => `<row><c r="XFD${i + 1}"><v>1</v></c></row>`);
+  const sparse = media(
+    zip({
+      ...book,
+      'xl/worksheets/sheet1.xml': `<worksheet><sheetData>${rows.join('')}</sheetData></worksheet>`,
+    }),
+  );
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: sparse.fn }).readFile(file(xlsx)),
+  ).toEqual({
+    unreadable: 'too large',
+  });
+  const stored = new Uint8Array(
+    zipSync(
+      Object.fromEntries(
+        Object.entries({
+          ...book,
+          'xl/worksheets/sheet1.xml':
+            '<worksheet><sheetData><row><c r="A1"><v>42</v></c></row></sheetData></worksheet>',
+        }).map(([k, v]) => [k, [strToU8(v), { level: 0 }]]),
+      ),
+    ),
+  );
+  const ok = media(stored);
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: ok.fn }).readFile(file(xlsx)),
+  ).toEqual({
+    chunks: [{ locator: 'tab S', text: '42' }],
+  });
+});
+
+// Range-honouring fake for alt=media: records each request's span
+function ranged(body: Uint8Array<ArrayBuffer>, opts: { ignoreRange?: boolean } = {}) {
+  const spans: [number, number][] = [];
+  const fn = (async (_: string | URL | Request, init?: RequestInit) => {
+    const r = new Headers(init?.headers).get('range');
+    const m = r && !opts.ignoreRange ? /^bytes=(\d+)-(\d+)$/.exec(r) : null;
+    if (!m) return new Response(body);
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    spans.push([a, b]);
+    return new Response(body.slice(a, b + 1), { status: 206 });
+  }) as typeof fetch;
+  return { fn, spans };
+}
+
+test('docx over the download cap (photos): only the XML is fetched via Range; media never downloaded', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  const photo = new Uint8Array(300_000).map(() => Math.random() * 256); // incompressible, like a JPEG
+  const body = new Uint8Array(
+    zipSync({
+      '[Content_Types].xml': strToU8('<Types/>'),
+      'word/media/a.jpg': [photo, { level: 0 }],
+      'word/document.xml': strToU8('<w:p><w:r><w:t>ราคา</w:t></w:r></w:p>'.repeat(50)),
+      'word/media/b.jpg': [photo, { level: 0 }],
+      'word/_rels/document.xml.rels': strToU8('<Relationships/>'),
+    }),
+  );
+  const { fn, spans } = ranged(body);
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 20_000 });
+  const r = await p.readFile(file(docx, body.length));
+  expect(r).toEqual({ chunks: [{ locator: 'เอกสาร', text: Array(50).fill('ราคา').join('\n') }] });
+  const fetched = spans.reduce((n, [a, b]) => n + b - a + 1, 0);
+  expect(fetched).toBeLessThan(100_000); // 64 KB tail + XML runs, not the 600 KB of photos
+  expect(
+    await createDriveProvider({
+      accessToken: 't',
+      fetch: ranged(body, { ignoreRange: true }).fn,
+      maxFileBytes: 20_000,
+    }).readFile(file(docx, body.length)),
+  ).toEqual({ unreadable: 'too large' });
+  // XML over the unpack cap -> too large without fetching entries
+  const bomb = new Uint8Array(
+    zipSync({
+      'word/document.xml': strToU8('x'.repeat(200_000)),
+      'word/media/a.jpg': [photo, { level: 0 }],
+    }),
+  );
+  const b = ranged(bomb);
+  expect(
+    await createDriveProvider({ accessToken: 't', fetch: b.fn, maxFileBytes: 20_000 }).readFile(
+      file(docx, bomb.length),
+    ),
+  ).toEqual({ unreadable: 'too large' });
+  expect(b.spans).toHaveLength(1); // the tail only
+});
+
+test('ranged read is bounded: XML spread among media stops at the byte cap; bad offsets -> read failed', async () => {
+  const docx = `${OX}.wordprocessingml.document`;
+  const filler = new Uint8Array(30_000).map(() => Math.random() * 256);
+  const parts: Record<string, [Uint8Array, { level: 0 }]> = {};
+  for (let i = 0; i < 40; i++) {
+    parts[`word/p${i}.xml`] = [strToU8('<x/>'), { level: 0 }];
+    parts[`word/media/m${i}.jpg`] = [filler, { level: 0 }];
+  }
+  const body = new Uint8Array(zipSync(parts));
+  const { fn, spans } = ranged(body);
+  const p = createDriveProvider({ accessToken: 't', fetch: fn, maxFileBytes: 100_000 });
+  expect(await p.readFile(file(docx, body.length))).toEqual({ unreadable: 'too large' });
+  const fetched = spans.reduce((n, [a, b]) => n + b - a + 1, 0);
+  expect(fetched).toBeLessThanOrEqual(100_000 + 65_557);
+  // a central directory entry pointing at/after the directory itself
+  const ok = new Uint8Array(
+    zipSync({ 'word/document.xml': strToU8('<w:p/>'), 'word/media/a.jpg': [filler, { level: 0 }] }),
+  );
+  const v = new DataView(ok.buffer);
+  const cdOff = v.getUint32(ok.length - 22 + 16, true);
+  v.setUint32(cdOff + 42, cdOff, true);
+  expect(
+    await createDriveProvider({
+      accessToken: 't',
+      fetch: ranged(ok).fn,
+      maxFileBytes: 20_000,
+    }).readFile(file(docx, ok.length)),
+  ).toEqual({ unreadable: 'read failed' });
+});

@@ -1,0 +1,191 @@
+import type { ErrorCode, ServerMessage, Source } from '@rafael/protocol';
+import type { TransportStatus } from './transport';
+
+// D11: this state lives in memory (offscreen document) only — never persisted.
+export type Phase = 'setup' | 'live' | 'end';
+export type Segment = { segId: string; text: string; final: boolean; speaker?: string };
+export type Cue = {
+  cueId: string;
+  question: string;
+  bullets: string[];
+  sources: Source[];
+  partial: boolean;
+  notFound: boolean;
+  latencyMs: number;
+  /** epoch ms: server emit time when sent, else when the panel got it (client clock) */
+  at: number;
+};
+/** End screen: a customer question the pack could not answer (D10). Memory only (D11). */
+export type Unanswered = { at: number; question: string };
+export type PackInfo = {
+  files: { file: string; fileId: string }[];
+  unreadable: { file: string; fileId: string }[];
+  tokens: number;
+  /** files read so far / found (optional in protocol v1, BE-110) */
+  read?: number;
+  total?: number;
+};
+const PACK_ERRORS: SessionState['error'][] = [
+  'PACK_TOO_LARGE',
+  'PACK_NOT_READY',
+  'PACK_BUILD_FAILED',
+];
+export type PackState = 'loading' | 'ready' | 'error';
+
+export type SessionState = {
+  phase: Phase;
+  status: TransportStatus | 'idle';
+  segments: Segment[];
+  cues: Cue[];
+  pack: PackState | null;
+  /** file names only, no content (D11) */
+  packInfo: PackInfo | null;
+  /** PACK_TOO_LARGE: largest first, names + approx tokens only (D11) */
+  tooLarge: { id?: string; name: string; tokens: number }[] | null;
+  error: ErrorCode | 'CONNECTION_CLOSED' | null; // CONNECTION_CLOSED is client-only (transport closed for good)
+  /** audio is not being sent (Pause) */
+  paused: boolean;
+  /** a pack refresh request is in flight: retry / rebuild buttons are disabled (FE-49) */
+  refreshing: boolean;
+  /** filled on `end`, emptied by `reset` */
+  unanswered: Unanswered[];
+  /** End screen: the server's last copy of the Conversation Log (held in offscreen memory) */
+  endLog: 'waiting' | 'ready' | 'none';
+  /** typed at Setup for the meeting summary; memory only (D11) */
+  attendees: string;
+  /** End: from the last log copy, for the summary header */
+  endMeta: { folderName: string; startTs: string; endTs: string } | null;
+};
+
+export const initialState: SessionState = {
+  phase: 'setup',
+  status: 'idle',
+  segments: [],
+  cues: [],
+  pack: null,
+  packInfo: null,
+  tooLarge: null,
+  error: null,
+  paused: false,
+  refreshing: false,
+  unanswered: [],
+  endLog: 'none',
+  attendees: '',
+  endMeta: null,
+};
+
+export type Action =
+  | { k: 'start'; attendees?: string }
+  | { k: 'end' }
+  | { k: 'reset' }
+  | { k: 'pause' }
+  | { k: 'resume' }
+  | { k: 'refreshing'; on: boolean }
+  | { k: 'end-log'; ok: boolean; meta?: SessionState['endMeta'] }
+  | { k: 'status'; status: TransportStatus }
+  | { k: 'server'; msg: ServerMessage; at?: number };
+
+/** Replace the item with the same id in place (partial -> final keeps its slot), else append. */
+function upsert<T>(list: T[], item: T, same: (a: T) => boolean): T[] {
+  const i = list.findIndex(same);
+  return i < 0 ? [...list, item] : list.map((x, j) => (j === i ? item : x));
+}
+
+export function reduce(s: SessionState, a: Action): SessionState {
+  switch (a.k) {
+    case 'start':
+      return { ...initialState, phase: 'live', status: 'connecting', attendees: a.attendees ?? '' };
+    case 'end':
+      if (s.phase === 'end') return s; // repeated end must not wipe the list
+      // D11: drop transcript / cues when the session ends; keep only the unanswered questions
+      // for the End screen until the user deletes the session (`reset`)
+      return {
+        ...initialState,
+        phase: 'end',
+        status: 'closed',
+        endLog: 'waiting',
+        attendees: s.attendees,
+        unanswered: s.cues
+          .filter((c) => c.notFound && !c.partial)
+          .map((c) => ({ at: c.at, question: c.question })),
+      };
+    case 'reset':
+      return initialState;
+    case 'end-log':
+      return s.phase === 'end' && s.endLog === 'waiting'
+        ? { ...s, endLog: a.ok ? 'ready' : 'none', endMeta: (a.ok && a.meta) || null }
+        : s;
+    case 'refreshing':
+      return { ...s, refreshing: a.on };
+    case 'pause':
+    case 'resume':
+      return s.phase === 'live' ? { ...s, paused: a.k === 'pause' } : s;
+    case 'status':
+      if (s.phase !== 'live') return s;
+      // permanent close (4001, 4401, token failure): leave live, back to setup with a readable reason
+      if (a.status === 'closed') return { ...initialState, error: 'CONNECTION_CLOSED' };
+      return { ...s, status: a.status };
+    case 'server': {
+      if (s.phase !== 'live') return s;
+      const m = a.msg;
+      switch (m.t) {
+        case 'transcript': {
+          const seg: Segment = { segId: m.segId, text: m.text, final: m.final, speaker: m.speaker };
+          return { ...s, segments: upsert(s.segments, seg, (x) => x.segId === m.segId) };
+        }
+        case 'cue': {
+          const cue: Cue = {
+            cueId: m.cueId,
+            question: m.question,
+            bullets: m.bullets,
+            sources: m.sources,
+            partial: m.partial,
+            notFound: m.notFound,
+            latencyMs: m.latencyMs,
+            at: m.at ?? a.at ?? 0, // server time first: a resume replay keeps the original time
+          };
+          return { ...s, cues: upsert(s.cues, cue, (x) => x.cueId === m.cueId) };
+        }
+        case 'pack.status':
+          return {
+            ...s,
+            pack: m.state,
+            packInfo: {
+              files: m.files,
+              unreadable: m.unreadable,
+              tokens: m.tokens,
+              read: m.read,
+              total: m.total,
+            },
+            // a good rebuild clears the old over-limit error
+            // a new build (loading) or a good one (ready) drops the old over-limit list;
+            // ready also clears pack errors only, never STT_/LLM_UNAVAILABLE
+            ...(m.state !== 'error' ? { tooLarge: null } : {}),
+            ...(m.state === 'ready' && s.error && PACK_ERRORS.includes(s.error)
+              ? { error: null }
+              : {}),
+          };
+        case 'error':
+          // PACK_NOT_READY after a too-large build must not hide the file list (defence in depth)
+          if (m.code === 'PACK_NOT_READY' && s.tooLarge) return s;
+          // ...and must not replace the retry prompt after a failed build
+          if (m.code === 'PACK_NOT_READY' && s.error === 'PACK_BUILD_FAILED') return s;
+          // resume failed (server restarted): the session is gone, back to Setup with the reason
+          if (m.code === 'SESSION_NOT_FOUND') return { ...initialState, error: m.code };
+          return {
+            ...s,
+            error: m.code,
+            // a failed build makes the old over-limit list stale (BE-118)
+            tooLarge:
+              m.code === 'PACK_TOO_LARGE'
+                ? (m.files ?? [])
+                : m.code === 'PACK_BUILD_FAILED'
+                  ? null
+                  : s.tooLarge,
+          };
+        default:
+          return s; // session.ready: resumeToken is kept by WsTransport (FE-35), not in UI state
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "sttPerMinute": 0.01,
+  "perMillionTokens": { "input": 1, "cacheRead": 0.1, "cacheWrite": 1.25, "output": 4 }
+}
