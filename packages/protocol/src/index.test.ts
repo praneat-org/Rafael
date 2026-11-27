@@ -151,10 +151,10 @@ describe('server messages', () => {
   test('D10: notFound=true with no sources is accepted', () => {
     expect(parseServerMessage(j({ ...cue, bullets: [], notFound: true })).ok).toBe(true);
   });
-  test('more than 3 bullets rejected', () => {
-    expect(parseServerMessage(j({ ...cue, sources: src, bullets: ['a', 'b', 'c', 'd'] })).ok).toBe(
-      false,
-    );
+  test('5 bullets accepted, more than 5 rejected', () => {
+    const b = ['a', 'b', 'c', 'd', 'e'];
+    expect(parseServerMessage(j({ ...cue, sources: src, bullets: b })).ok).toBe(true);
+    expect(parseServerMessage(j({ ...cue, sources: src, bullets: [...b, 'f'] })).ok).toBe(false);
   });
 });
 

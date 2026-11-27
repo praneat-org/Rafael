@@ -63,11 +63,11 @@ export function loadBrainConfig(env: Record<string, string | undefined>): BrainC
     pipeline: { sttFinalBudgetMs: 800, firstCueBudgetMs: 5000 },
     history: { maxTurns: 6, maxChars: 2000 },
     answerer: {
-      maxBullets: 3,
+      maxBullets: 5,
       // Intl.Segmenter splits Thai finely: a plain 15-word sentence counts ~20. The prompt asks for 30;
       // this is the hard drop line (a bullet is never cut: cutting could change the claim)
       maxWordsPerBullet: 50,
-      maxTokens: 800,
+      maxTokens: 1000,
       timeoutMs: 8000,
       firstTokenBudgetMs: 1200,
       cacheTtlSeconds: 3600,
