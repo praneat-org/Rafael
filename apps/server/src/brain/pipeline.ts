@@ -88,6 +88,7 @@ export function createPipeline(
             outputTokens: a.outputTokens,
             historyTurns: a.historyTurns,
             historyChars: a.historyChars,
+            dropped: a.dropped,
           }),
       }),
       chain: Promise.resolve(),

@@ -130,19 +130,22 @@ describe('answerer format limits', () => {
     expect(r.final.bullets).toHaveLength(3);
   });
 
-  it('drops a bullet over 15 words (Thai segmented by Intl.Segmenter)', async () => {
-    const long = Array.from({ length: 16 }, (_, i) => `word${i}`).join(' ');
-    const ok = Array.from({ length: 15 }, (_, i) => `word${i}`).join(' ');
+  it('drops a bullet over 50 words; a natural Thai sentence (~25 segmented words) stays', async () => {
+    const long = Array.from({ length: 51 }, (_, i) => `word${i}`).join(' ');
+    const ok = Array.from({ length: 50 }, (_, i) => `word${i}`).join(' ');
     const r = await run([{ deltas: [`- ${long} ${A1}\n- ${ok} ${A2}`] }]);
     expect(r.final.bullets).toEqual([`${ok} ${A2}`]);
-    const thai = await run([
-      {
-        deltas: [
-          `- ${'ระบบรองรับผู้ใช้พร้อมกันหลายคนและมีความเสถียรสูงมากในทุกสถานการณ์การใช้งานจริงของลูกค้าองค์กรขนาดใหญ่'} ${A1}`,
-        ],
-      },
-    ]);
-    expect(thai.final.bullets).toEqual([]);
+    const sentence =
+      'ระบบรองรับผู้ใช้พร้อมกันหลายคนและมีความเสถียรสูงมากในทุกสถานการณ์การใช้งานจริงของลูกค้าองค์กรขนาดใหญ่';
+    const thai = await run([{ deltas: [`- ${sentence} ${A1}`] }]);
+    expect(thai.final.bullets).toEqual([`${sentence} ${A1}`]);
+    const tooLong = await run([{ deltas: [`- ${sentence.repeat(3)} ${A1}`] }]);
+    expect(tooLong.final.bullets).toEqual([]);
+  });
+
+  it('accepts an anchor followed by punctuation or with odd spacing', async () => {
+    const r = await run([{ deltas: [`- ราคา 100 ${A1}.\n- SLA ${A2.replace(' › ', '›')}`] }]);
+    expect(r.final.bullets).toEqual([`ราคา 100 ${A1}`, `SLA ${A2}`]);
   });
 });
 
