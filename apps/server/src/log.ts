@@ -47,6 +47,7 @@ const ALLOWED = [
   'blankedWhen',
   // session end stats: counts / ms / rate only
   'cueCount',
+  'dropped',
   'cueP50Ms',
   'cueP95Ms',
   'errorCount',

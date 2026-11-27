@@ -36,6 +36,8 @@ export type AnswererLog = {
   /** Q/A turns sent as context (0 = none) and their size: the extra input from history, logged apart */
   historyTurns: number;
   historyChars: number;
+  /** answer lines thrown away by verifyBullet (bad/unknown anchor, too long): counts only (D11) */
+  dropped: number;
 };
 
 export const NOT_FOUND_MARK = 'NOT_FOUND';
@@ -44,9 +46,10 @@ export const NOT_FOUND_MARK = 'NOT_FOUND';
 export const SYSTEM_PROMPT = `You are a live sales-meeting assistant. Answer the customer's question using ONLY the Session Pack below. Never use outside knowledge.
 Output format, plain text, nothing else:
 - one bullet per line, starting with "- "
-- at most 3 bullets, at most 15 words each, in the language of the question
+- at most 3 bullets, at most 30 words each, in the language of the question; use them all when the answer has several parts (a list, steps, numbers)
 - every bullet ends with exactly one anchor copied verbatim from a pack chunk header, like [file › page]
-- a chunk must state the answer to the question directly. Never infer, extrapolate, or answer from a related topic (e.g. a question about X when the pack only covers a different option Y); a related but non-answering chunk means the answer is missing
+- the customer may ask indirectly or in other words than the pack (synonyms, Thai vs English terms, a summary of a section, "what does the plan say about ..."): answer when a chunk covers what they mean, even if worded differently
+- never infer beyond the pack, extrapolate, or answer from a different topic (e.g. a question about X when the pack only covers a different option Y); a chunk on a different topic means the answer is missing
 - if the pack does not directly contain the answer, output exactly ${NOT_FOUND_MARK} and nothing else
 - the user message may start with "CONVERSATION SO FAR:" (earlier questions and short answers of this meeting). Use it ONLY to understand what the QUESTION refers to. It is NOT a source: every fact must come from a pack chunk, never from an earlier answer. If the QUESTION changes topic, ignore the conversation
 Each pack chunk starts with its anchor header line "[file › page]".`;
@@ -63,7 +66,7 @@ export function countWords(s: string): number {
   return n;
 }
 
-const ANCHOR_TAIL = /\[([^\][›]+?) › ([^\]]+?)\]\s*$/;
+const ANCHOR_TAIL = /\[([^\][›]+?)\s*›\s*([^\]]+?)\]\s*[.,;:。]*\s*$/; // tolerate "[a›b]." from the model
 
 /**
  * D10: a bullet survives only if it ends with an anchor that exists in the pack,
@@ -77,7 +80,8 @@ export function verifyBullet(
   const text = line.replace(/^\s*[-*•]\s*/, '').trim();
   const m = ANCHOR_TAIL.exec(text);
   if (!m) return undefined;
-  const source = anchors.get(`[${m[1]?.trim()} › ${m[2]?.trim()}]`);
+  const norm = (x = '') => x.normalize('NFC').replace(/\s+/g, ' ').trim();
+  const source = anchors.get(`[${norm(m[1])} › ${norm(m[2])}]`);
   if (!source) return undefined;
   const body = text.slice(0, m.index).trim();
   // ponytail: drop (not truncate) an over-long bullet: cutting words could change the claim
@@ -208,6 +212,7 @@ export function createAnswerer(deps: AnswererDeps) {
     const answerPrefix = prefix;
     const answerCache = cache;
     const bullets: string[] = [];
+    let dropped = 0;
     const sources = new Map<string, PackChunk>();
     let firstTokenMs: number | undefined;
     let firstCueMs: number | undefined;
@@ -231,7 +236,10 @@ export function createAnswerer(deps: AnswererDeps) {
       if (!l || bullets.length >= cfg.maxBullets) return;
       if (l.startsWith(NOT_FOUND_MARK)) return; // same end as "no verified bullet": notFound
       const v = verifyBullet(l, answerAnchors, cfg.maxWordsPerBullet);
-      if (!v) return;
+      if (!v) {
+        dropped++;
+        return;
+      }
       bullets.push(v.bullet);
       sources.set(v.source.anchor, v.source);
       firstCueMs ??= Math.round(perf() - t0);
@@ -292,6 +300,7 @@ export function createAnswerer(deps: AnswererDeps) {
       cached: cache !== undefined,
       historyTurns: history.turns,
       historyChars: history.text.length,
+      dropped,
     });
     // provider error: a separate object so the emitted cue (protocol) never carries this flag
     return failed ? { ...final, failed: true as const } : final;
